@@ -1,0 +1,327 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="abcem_nonMasterArchiveAsset"
+	name="abcem_Archive A Non-master Asset"
+	executionLabelExpression="Archiving Source File for ${subject.name}"
+	description=""
+	subjectDOClassName="AssetMaster"
+	showInUserInterface="true"
+	deadlineExpression=""
+	sdkVersion="">
+	
+	<initialStepName>validate source file exists</initialStepName>
+	
+	<!-- 
+		
+		This was used when we had an AC of *only older than 2 years*
+		
+		
+		Calculate current timestamp 
+	<setContextData name="set time"
+		targetDataDef="currentTime" 
+		valueExpression="${#newDate()}"
+		pctComplete="5"
+		devStep="true"
+		nextStep="current time" />
+	
+	
+	<testStep name="current time"
+		outputExpression="Today is ${currentTime}"
+		nextStep="set archive date" />
+	
+	
+	<setContextData name="set archive date"
+		targetDataDef="archiveDate" 
+		valueExpression="${#addYears(currentTime, -2)}"
+		pctComplete="10"
+		devStep="true"
+		nextStep="save archive time" />
+	
+	
+	<setContextData name="save archive time"
+		executionLabelExpression="archive date time is: ${archiveDate.getTime()}"
+		targetDataDef="archiveDateInt"
+		valueExpression="${archiveDate.getTime()}"
+		nextStep="validate source file exists" />
+		
+	-->
+	
+	<!-- Check sourceFile exists -->
+	<noopStep name="validate source file exists"
+		executionLabelExpression="check if ${sourceFile.name} exists">
+		<transition condition="${sourceFile.exists()}">
+			<targetStepName>validate in shows category</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>check truncated flag</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<!-- Is truncated? -->
+	<noopStep name="check truncated flag"
+		executionLabelExpression="is ${assetToArchive.name} already truncated?: ${assetToArchive.originalContent.truncatedFlag.toString()} ">
+		<transition condition="${assetToArchive.originalContent.truncatedFlag == false}">
+			<targetStepName>validate in shows category</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>already archived</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<!-- Ensure asset is older than two years 
+	<noopStep name="validate older than two years"
+		executionLabelExpression="Is ${archiveDate.getTime()} greater than or equal to ${dateCreated} ... ?">
+		<transition condition="${archiveDateInt >= dateCreated}">
+			<targetStepName>validate in shows category</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>asset not two years old</targetStepName>
+		</transition> 
+	</noopStep>
+	-->
+	
+	<!-- Ensure asset doesn't have category "Shows" -->
+	<noopStep name="validate in shows category"
+		executionLabelExpression="Does ${assetToArchive.name} have a category of Shows?">
+		<transition condition="${assetCategories.contains('Shows')}">
+			<targetStepName>check product element types</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>asset not in shows category</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<!-- Ensure asset's productionElementType isn't null -->
+	<noopStep name="check product element types"
+		executionLabelExpression="Check if ${assetToArchive.name} productionElementType is null">
+		<transition condition="${assetToArchive.metadata?.productionElementType != null and assetToArchive.metadata?.productionElementType != ''}">
+			<targetStepName>validate product element types</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>check show code</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<!-- asset can't have productionElementTypes defined in local.props -->
+	<groovyStep name="validate product element types"
+		executionLabelExpression="Check that asset does not have productionElementType values defined in local properties."
+		resultDataDef="containsPET">
+		<transition condition="${containsPET == true}">
+			<targetStepName>invalid product element type</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>check show code</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+				return definedPETs.contains( productionElementType )
+			]]>
+		</script>
+	</groovyStep>
+	
+	<!-- Ensure asset's showCodes isn't null -->
+	<noopStep name="check show code"
+		executionLabelExpression="Check if ${assetToArchive.name} has metadata in showCodes" >
+		<transition condition="${assetToArchive.metadata?.showCodes != null or assetToArchive.metadata?.showCodes != ''}">
+			<targetStepName>validate show codes</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>validate asset has proxy content</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<!-- asset can't have showCodes defined in local.props -->
+	<groovyStep name="validate show codes"
+		executionLabelExpression="Check that asset does not have showCodes values defined in local properties."
+		resultDataDef="containsShowCodes">
+		<transition condition="${containsShowCodes == true}">
+			<targetStepName>invalid show code</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>validate asset has proxy content</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+				import groovy.*;
+				import java.util.*;
+				
+				for (final String s : definedShowCodes) {
+					if (showCodes.contains(s)) {
+					return true;
+					}
+				}
+				return false;
+			]]>
+		</script>
+	</groovyStep>
+	
+	<!-- Validate asset has a Proxy -->
+	<noopStep name="validate asset has proxy content"
+		executionLabelExpression="check is proxy content exists on ${assetToArchive.namt}">
+		<transition condition="${proxyContent != null}">
+			<targetStepName>validate asset has proxy file</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>save proxy to asset</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<noopStep name="validate asset has proxy file"
+		executionLabelExpression="checking proxy file ${#proxyContent(assetToArchive).file.name} exists">
+		<transition condition="${!#proxyContent(assetToArchive).file.exists()}">
+			<targetStepName>output proxy file</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>set proxy file</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<!-- Show proxy stuffs in the UI -->
+	<noopStep name="output proxy file"
+		executionLabelExpression="proxyFile: ${proxyFile.name}"
+		nextStep="output proxy file path" />
+	
+	<noopStep name="output proxy file path"
+		executionLabelExpression="proxyFilePath: ${proxyFilePath}"
+		nextStep="save proxy to asset" />
+	
+	<!-- Proxy not found, create one from source -->
+	<saveAssetStep name="save proxy to asset"
+		executionLabelExpression="saving proxy ${sourceFile.absolutePath}"
+		contentExpression="${sourceFile}"
+		assetExpression="${assetToArchive}"
+		contentUseExpression="Proxy"
+		versionAssetExpression="${false}"
+		nextStep="reindex asset" />
+	
+	<!-- reindex for good measuer -->
+	<raiseWorkflowEventStep name="reindex asset"
+		eventTypeExpression="ensureIndexed"
+		executionLabelExpression="Ensure Asset Indexed"
+		nextStep="set proxy file" >
+		<property name="indexTargetRef">${assetToArchive}</property>
+	</raiseWorkflowEventStep>
+	
+	<!-- Store the proxy file -->
+	<setContextData name="set proxy file"
+		targetDataDef="proxyFile"
+		valueExpression="${proxyContent.file.absolutePath}"
+		executionLabelExpression="proxy file is: ${proxyContent.file.absolutePath}"
+		nextStep="set original source file path" />
+	
+	<!-- Store the old source file for deletion later -->
+	<setContextData name="set original source file path"
+		executionLabelExpression="original source file path: ${sourceFile.absolutePath}"
+		targetDataDef="sourceFilePath"
+		valueExpression="${sourceFile.absolutePath}"
+		nextStep="set original source file name" />
+	
+	<!-- And the old source file's name -->
+	<setContextData name="set original source file name"
+		executionLabelExpression="original source file name: ${sourceFile.name}"
+		targetDataDef="sourceFileName"
+		valueExpression="${sourceFile.name}"
+		nextStep="update source path" />
+	
+	<!-- Update sourcePath -->
+	<saveAssetStep name="update source path"
+		executionLabelExpression="saving proxy ${sourceFile.absolutePath}"
+		contentExpression="${proxyContent.file.absolutePath}"
+		assetNameExpression="${sourceFileName}"
+		assetExpression="${assetToArchive}"
+		contentUseExpression="|SOURCE|MEZZANINE|PROXY|"
+		versionAssetExpression="${true}"
+		resultDataDef="assetVersion"
+		nextStep="save new source content" />
+	
+	<!-- Make the new Source|Mezz|Proxy the "originalContent" -->
+	<saveDataObjectStep name="save new source content"
+		executionLabelExpression="saving new source content"
+		dataObjectExpression="${assetVersion.contents[0]}" 
+		nextStep="save restore key">
+		<property name="originalContentFlag">1</property>
+	</saveDataObjectStep>
+	
+	<!-- Create restoreKey -->
+	<saveDataObjectStep name="save restore key"
+		executionLabelExpression="Update restoreKey of asset ${assetToArchive.name}"
+		dataObjectExpression="${assetVersion.masterAsset.mezzanine}">
+		<transition condition="${true}">
+			<targetStepName>delete source file</targetStepName>
+		</transition>
+		<property name="restoreKey">${sourceFilePath}</property>
+	</saveDataObjectStep> 
+	
+	<!-- Nuke the files because it's the actual reason we did all this hideousness -->
+	<deleteFileStep name="delete source file"
+		sourceFilesExpression="${oldSourceFile}" 
+		executionLabelExpression="Deleting original source file"
+		nextStep="delete source file 2"></deleteFileStep>
+	
+	<!-- Let's not forget the re-used proxyfile as the new source. get outta here! -->
+	<deleteFileStep name="delete source file 2"
+		sourceFilesExpression="${sourceFile}" 
+		executionLabelExpression="Deleting new source file"
+		nextStep="mark truncated"></deleteFileStep>
+	
+	<!-- Marke Truncated Flag true -->
+	<saveDataObjectStep name="mark truncated"
+		dataObjectExpression="${ assetVersion.masterAsset.originalContent }"
+		nextStep="reindex asset 2">		
+		<property name="truncatedFlag">true</property>
+	</saveDataObjectStep>
+	
+	<!-- Double the goodness -->
+	<raiseWorkflowEventStep name="reindex asset 2"
+		eventTypeExpression="ensureIndexed"
+		executionLabelExpression="Ensure Asset Indexed"
+		nextStep="end" >
+		<property name="indexTargetRef">${assetVersion.masterAsset}</property>
+	</raiseWorkflowEventStep>
+	
+	<!-- fail - not old enough -->
+	<failWorkflowStep name="asset not two years old"
+		reasonExpression="asset not two years old" />
+	
+	<!-- fail - category:shows -->
+	<failWorkflowStep name="asset not in shows category"
+		reasonExpression="asset not in shows category" />
+	
+	<!-- fail - productionElementType -->
+	<failWorkflowStep name="invalid product element type"
+		reasonExpression="invalid product element type" />
+	
+	<!-- fail - showCode -->
+	<failWorkflowStep name="invalid show code"
+		reasonExpression="invalid show code" />
+	
+	<!-- Already archived -->
+	<noopStep name="already archived" nextStep="end" />
+	
+	<!-- End successful -->
+	<noopStep name="end" />
+	
+	<!-- Data Defs -->
+	<contextDataDef name="assetToArchive"		dataType="Data Object"		defaultDataExpression="${subject}"/>
+	<contextDataDef name="dateCreate"			dataType="String"			defaultDataExpression="${assetToArchive.metadata.dateCreated?.getTime()}" />
+	<contextDataDef name="assetCategories" 		dataType="String"			defaultDataExpression="${assetToArchive.metadata.categoryNames?.toString()}" />
+	<contextDataDef name="productionElementType" dataType="String"			defaultDataExpression="${ #picklistLabel( 'productionElementType', assetToArchive.metadata?.productionElementType?.toString() ) }" />
+	<contextDataDef name="definedPETs" 			dataType="String"			defaultDataExpression="${#splitString(#sysconfig('workflows.nonMasterArchive.productionElementTypes'), ',', true, false)}" 	multiple="true" />
+	<contextDataDef name="containsPET" 			dataType="Boolean" />
+	<contextDataDef name="showCodes"			dataType="String"			defaultDataExpression="${assetToArchive.metadata?.showCodes?.toString()}" />
+	<contextDataDef name="definedShowCodes"		dataType="String"			defaultDataExpression="${#splitString(#sysconfig('workflows.nonMasterArchive.showCodeTypes'), ',', true, false)}" 		multiple="true" />
+	<contextDataDef name="containsShowCodes" 	dataType="Boolean" />
+	<contextDataDef name="currentTime" 			dataType="Date" /> 
+	<contextDataDef name="archiveDate" 			dataType="Date" />
+	<contextDataDef name="archiveDateInt" 		dataType="Integer" />
+	<contextDataDef name="sourceFile" 			dataType="File" 			defaultDataExpression="${assetToArchive.originalContent.file}"/>
+	<contextDataDef name="sourceFilePath"		dataType="String" />
+	<contextDataDef name="oldSourceFile" 		dataType="File"				defaultDataExpression="${sourceFilePath}"></contextDataDef>
+	<contextDataDef name="sourceFileName" 		dataType="String" />
+	<contextDataDef name="proxyContent" 		dataType="Data Object"		defaultDataExpression="${#proxyContent(assetToArchive)}" />
+	<contextDataDef name="proxyFile" 			dataType="File" />
+	<contextDataDef name="assetVersion" 		dataType="Data Object" />
+	
+</workflow>

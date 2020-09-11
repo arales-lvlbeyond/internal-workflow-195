@@ -1,0 +1,76 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:production="http://levelsbeyond.com/schema/workflow/production"
+          xsi:schemaLocation="
+    	http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+        http://levelsbeyond.com/schema/workflow/production http://www.levelsbeyond.com/schema/production/nimbus-projects-workflow-1.5.xsd"
+          id="_restoreNleProjectHighRes"
+          name="Restore a rough-cut project with high res media"
+          executionLabelExpression="Restore high res media in project ${projectFile?.absolutePath}"
+          description="Restores an NLE project with high-resolution media"
+          subjectDOClassName=""
+          deadlineExpression=""
+          showInUserInterface="false"
+          resultDataDef="resultFile"
+          sdkVersion="4.2">
+
+	<initialStepName>import rough-cut project</initialStepName>
+
+	<production:importFinalCutProject
+		name="import rough-cut project"
+		projectExpression="${project}"
+		projectFileExpression="${projectFile}"
+		ingestExternalMediaExpression="false"
+		pctComplete="20"
+		resultDataDef="project"
+		>
+		<transition condition="=true">
+			<targetStepName>restore high res media</targetStepName>
+		</transition>
+	</production:importFinalCutProject>
+
+	<production:restoreProjectMedia name="restore high res media"
+	                                projectExpression="${project}"
+	                                contentUseExpression="mezzanine"
+	                                restoredMediaPathExpression="${restoredMediaPath}"
+	                                pctComplete="85"
+	                                resultDataDef="restoredProjectText">
+		<transition condition="=true">
+			<targetStepName>write project file</targetStepName>
+		</transition>
+	</production:restoreProjectMedia>
+
+	<copyFileStep name="write project file"
+	              sourceFileExpression="${restoredProjectText}"
+	              targetDirectoryExpression="${targetDirectory}"
+	              targetFilenameExpression="${targetFilename}"
+	              pctComplete="95"
+	              resultDataDef="resultFile">
+	</copyFileStep>
+
+	<contextDataDef dataType="File" name="projectFile" required="true"></contextDataDef>
+	<contextDataDef dataType="Data Object" name="project"/>
+	<contextDataDef name="nleType" dataType="String" defaultDataExpression="FCP_7"></contextDataDef>
+	<contextDataDef name="restoredProjectText" dataType="String"/>
+	<contextDataDef name="restoredMediaPath" dataType="File" defaultDataExpression="${#sysconfig('filesystem.root.restoredMedia')}/${project.name}"/>
+	<contextDataDef name="targetDirectory" dataType="Directory" defaultDataExpression="=#sysconfig('filesystem.root.projects')"/>
+	<contextDataDef name="targetFilename" dataType="String" defaultDataExpression="${projectFile.name}_restored.xml"/>
+	<contextDataDef name="resultFile" dataType="File"/>
+</workflow>

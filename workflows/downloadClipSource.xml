@@ -1,0 +1,231 @@
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://www.levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://www.levelsbeyond.com/schema/latest http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="downloadClipSource"
+	name="Download Clip Source"
+	executionLabelExpression="Create ${workflowAction}: ${subject.name}"
+	description=""
+	subjectDOClassName="VideoClip"
+	resultDataDef="clipFile"
+	deadlineExpression=""
+	showInUserInterface="true"
+	sdkVersion="5.21"
+	group="Download"
+	hasDownload="true"
+	>
+	
+	<initialStepName>check if workflow is running</initialStepName>
+	
+	
+	<queryStep name="check if workflow is running"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="currentExecutions"
+		executionLabelExpression="Is a workflow running on this file already? ${currentExecutions.size() != 0}"
+		pctComplete="5"
+		>
+		<transition condition="${currentExecutions.size() == 0}">
+			<targetStepName>set context data</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>workflow is running</targetStepName>
+		</transition>
+		
+		<criteria>
+			<![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="workflowVersion.workflow.key" op="eq">
+                            <test value="${ #this.workflow.workflowVersion.workflow.key }" />
+                        </condition>
+                        <condition property="uuid" op="noteq">
+                            <test value="${ #this.workflow.uuid }" />
+                        </condition>
+                        <condition property="executionLabel" op="like">
+							<test value="%${T(org.apache.commons.lang.StringEscapeUtils).escapeXml(subject.name)}%" />
+						</condition>
+                        <condition property="status" op="in">
+                            <tests>
+                                <test value="CREATED" />
+                                <test value="QUEUED" />
+                                <test value="EXECUTING" />
+                            </tests>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<setContextData name="set context data"
+		executionLabelExpression="Categories: ${categoryNames.toString()}"
+		devStep="true"
+		nextStep="make directory">
+		
+		<set targetDataDef="clipFile">${exportPath.absolutePath}/${clipFilename}</set>
+		
+	</setContextData>
+
+
+	<runCommandStep name="make directory"
+		devStep="true"
+		executablePathExpression="/bin/mkdir"
+		continueOnException="true"
+		nextStep="create temporary clip file">
+		
+		<arg>-p</arg>
+		<arg>-m</arg>
+		<arg>777</arg>
+		<arg>${exportPath.absolutePath}</arg>
+		<arg>${tempExportPath.absolutePath}</arg>
+		
+	</runCommandStep>
+	
+	
+	<convertVideoStep name="create temporary clip file"
+		executionLabelExpression="Creating video file from Clip: ${subject.name}"
+		mediaConversionTemplateExpression="${clipTemplate}"
+		sourceFileExpression="${sourceFile}"
+		trimStartExpression="${exportTrimStart}"
+		trimEndExpression="${exportTrimEnd}"
+		pctCompleteExpression="50"
+		outputDirectoryExpression="${tempExportPath}"
+		outputFilenameExpression="${clipFilenameTemp}"
+		resultDataDef="clipFileTemp"
+		inputArgsExpression="-timecode ${startTc}"
+		priorityExpression="100"
+		nextStep="create download"
+		>
+		<!-- <conversionParam name="timecode">${startTc}</conversionParam> -->
+		</convertVideoStep>
+		
+	
+	<runCommandStep name="create clip file with timecode"
+		executablePathExpression="${ffmpeg}"
+		executionLabelExpression="Creating video file with timecode start: ${startTc}"
+		nextStep="delete temporary clip">
+		
+		<arg>-i</arg>
+		<arg>${clipFileTemp.absolutePath}</arg>
+		<arg>-timecode</arg>
+		<arg>${startTc}</arg>
+		<arg>-y</arg>
+		<arg>${clipFile.absolutePath}</arg>
+		
+	</runCommandStep>
+	
+	
+	<deleteFileStep name="delete temporary clip"
+		sourceFilesExpression="${clipFileTemp}" 
+		continueOnException="true"
+		nextStep="create download"/>
+	
+	
+	<setWorkflowDownloadStep name="create download"
+		sourceFileExpression="${clipFileTemp}" 
+		executionLabelExpression="Creating download link"
+		nextStep="wait"
+		pctCompleteExpression="80"
+	/>
+
+
+	<delayStep name="wait"
+		devStep="true"
+		executionLabelExpression="Waiting ${downloadWaitSeconds} for filesystem to update"
+		delaySecondsExpression="${downloadWaitSeconds}"
+		nextStep="success notification"/>
+	
+
+	<createSuccessNotificationStep name="success notification"
+		notificationTypeExpression="${workflowAction} ready in Status tab: ${subject.name}" 
+		notificationBodyExpression="${workflowAction} ready in Status tab: ${subject.name}"
+		nextStep="log download"
+		pctCompleteExpression="90"
+	/>
+	
+	
+	<groovyStep name="log download"
+		continueOnException="true"
+		devStep="true"
+		resultDataDef="logMessage" 
+		nextStep="end">
+		
+		<script>
+			<![CDATA[
+			import org.slf4j.Logger;
+			import org.slf4j.LoggerFactory;
+			
+			public static String getHumanReadableFileSize(long v) {
+			    if (v < 1024) return v + " B";
+			    int z = (63 - Long.numberOfLeadingZeros(v)) / 10;
+			    return String.format("%.1f %sB", (double)v / (1L << (z*10)), " KMGTPE".charAt(z));
+			}
+			
+			Logger log = LoggerFactory.getLogger(logAppClass);
+			
+			def fileSizeHr = getHumanReadableFileSize(subjectSize);
+			
+			def msg = "User: ${startedByUserName} | Action: ${workflowAction} | ID: ${subjectId.toString()} | Name: ${subjectName} | Size: ${fileSizeHr}";
+			
+			log.info(msg)
+			
+			return msg;
+			]]>
+		</script>
+		
+	</groovyStep>
+
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"	
+		pctComplete="100"
+		devStep="true"/>
+	
+	
+	<!-- fail -->
+	<noopStep name="workflow is running"
+		executionLabelExpression="Workflow already executing on the file"
+		pctCompleteExpression="100"
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+
+	<contextDataDef name="startedByUserName" 		dataType="String"		defaultDataExpression="${#this.startedBy.userName}"/>
+	<contextDataDef name="subjectName" 				dataType="String"		defaultDataExpression="${subject.name}"/>
+	<contextDataDef name="subjectId" 				dataType="Integer"		defaultDataExpression="${subject.id}"/>
+	<contextDataDef name="subjectSize" 				dataType="Integer"		defaultDataExpression="${clipFile.length()}"/>
+	<contextDataDef name="workflowAction" 			dataType="String"		defaultDataExpression="Clip Download"/>
+	<contextDataDef name="logAppClass" 				dataType="String"		defaultDataExpression="com.blizzard.download"/>
+	<contextDataDef name="logMessage" 				dataType="String"/>
+	
+	<contextDataDef name="currentExecutions" 	    dataType="Data Object" 	multiple="true"/>
+
+	<contextDataDef name="assetMaster"              dataType="Data Object"  defaultDataExpression="${subject.assetMaster}"/>
+	<contextDataDef name="sourceFile"               dataType="File"         defaultDataExpression="${assetMaster.originalContent.file}"/>
+	
+	<contextDataDef name="frameRate" 				dataType="String"		defaultDataExpression="${assetMaster.originalContent.frameRate}"/>
+	<contextDataDef name="dropFrame"	 			dataType="Boolean"		defaultDataExpression="${assetMaster.originalContent.timecodeFormat == 'DROP_FRAME' ? true : false}"/>	
+	<contextDataDef name="exportTrimStart"          dataType="Double"       defaultDataExpression="${subject.assetClipStartOffset}"/>
+	<contextDataDef name="exportTrimEnd"            dataType="Double"       defaultDataExpression="${subject.assetClipEndOffset}"/>
+	<contextDataDef name="startTc" 					dataType="String"		defaultDataExpression="${#timecode(exportTrimStart, 0.0, frameRate, dropFrame)}"/>
+	
+	<contextDataDef name="tempExportPath"           dataType="Directory"    defaultDataExpression="temp/sources"/>
+	<contextDataDef name="exportPath"               dataType="Directory"    defaultDataExpression="${#sysconfig('filesystem.root.download')}/${#formatDate('yyyy/MM/dd/HH/', #newDate())}"/>
+	
+	<contextDataDef name="priority"                 dataType="Integer"      defaultDataExpression="100"/>
+	
+	<contextDataDef name="clipTemplate"             dataType="String"       defaultDataExpression="FFmpeg Mezz"/>
+	<contextDataDef name="clipFilename"             dataType="String"       defaultDataExpression="${subject.name.replaceAll(&quot;[^0-9A-Za-z\-_]&quot;, '_')}.${#extension(sourceFile)}"/>
+	<contextDataDef name="clipFilenameTemp" 		dataType="String"		defaultDataExpression="${subject.name.replaceAll(&quot;[^0-9A-Za-z\-_]&quot;, '_')}_preTc.${#extension(sourceFile)}"/>
+	<contextDataDef name="clipFile" 				dataType="File"/>
+	<contextDataDef name="clipFileTemp" 			dataType="File"/>
+	
+	<contextDataDef name="ffmpeg" 					dataType="String"		defaultDataExpression="${#sysconfig('ffmpeg.path')}"/>
+
+	<contextDataDef name="downloadWaitSeconds" 		dataType="Integer"		defaultDataExpression="10"/>
+	
+	
+</workflow>

@@ -1,0 +1,100 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.5.xsd"
+    id="migrateCollectionsFromWazee"
+    name="PicklistTest"
+    executionLabelExpression="picklistTest"
+    description=""
+    subjectDOClassName=""
+    showInUserInterface="true"
+    deadlineExpression=""
+    sdkVersion="">
+
+
+    <initialStepName>picklist</initialStepName>
+
+    <groovyStep name="picklist"
+        resultDataDef="jsonMetadata"
+        nextStep="end">
+        <script>
+            <![CDATA[
+            import com.levelsbeyond.api.workflow.PicklistItemDTOV3
+            import com.levelsbeyond.persistence.domain.metadata.field.MetadataField
+            import com.levelsbeyond.service.inventory.MetadataService
+            import com.levelsbeyond.service.metadata.field.MetadataFieldService
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.levelsbeyond.workflow.sdk.function.GetPicklistValueFunction
+            import com.levelsbeyond.workflow.sdk.function.GetPicklistLabelFunction
+            import com.levelsbeyond.workflow.sdk.function.PicklistItemExistsFunction
+            import groovy.json.JsonSlurper
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+            import java.lang.*
+            import com.routeto1.data.validation.IValidator
+            import com.routeto1.data.validation.PicklistValidator
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.routeto1.data.meta.DataObjectProperty
+            import com.routeto1.metadata.Metadata
+            import com.routeto1.metadata.MetadataPicklist
+            import com.routeto1.metadata.MetadataPicklistDAO
+            import com.routeto1.services.data.DataObjectMetaService
+
+            String createPicklistItemIfMissing(propertyName, value) {
+                Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+
+                try {
+                    DataObjectProperty metaProp = Metadata.DATA_OBJECT_CLASS.getProperty(propertyName)
+                    if (metaProp == null) {
+                        log.warn("property ${propertyName} listed in the mapping file as a picklist, but does not exist in reachengine.")
+                        return value
+                    }
+
+                    IValidator validator = metaProp.getPicklistValidator()
+                    if (validator == null) {
+                        log.debug("property ${propertyName} is not a picklist.")
+                        return value
+                    }
+
+                    def picklistValue = GetPicklistValueFunction.evaluate(propertyName, value)
+                    def picklistLabel = GetPicklistLabelFunction.evaluate(propertyName, value)
+
+                    if (PicklistItemExistsFunction.picklistItemExists(propertyName, picklistLabel)) {
+                        log.debug("${value} exists in the picklist (${propertyName})")
+                        return picklistValue
+                    } else {
+                        PicklistValidator picklist = (PicklistValidator) validator
+                        DataObjectMetaService dms = ApplicationContextHolder.getApplicationContext().getBean(DataObjectMetaService.class)
+                        String uuid = UUID.randomUUID().toString()
+
+                        if (picklist.isLookup()) {
+                            dms.addOrUpdateLookupItem(picklist.getName(), uuid, value)
+                        } else {
+                            MetadataPicklistDAO picklistDAO = ApplicationContextHolder.getApplicationContext().getBean(MetadataPicklistDAO.class)
+                            MetadataPicklist metadataPicklist = picklistDAO.find().byId(picklist.getName())
+                            dms.addOrUpdatePicklistItem(metadataPicklist, uuid, value)
+                        }
+
+                        log.info("Added value (${uuid}) to the picklist (${propertyName})")
+                        return uuid
+                    }
+                }
+                catch (Exception e) {
+                    log.warn("could not evaluate if value (${value}) exists in the picklist (${propertyName}) and/or could not add the value into the picklist... Exception: ${e}")
+                    return value
+
+
+                }
+            }
+            ]]>
+        </script>
+    </groovyStep>
+
+
+    <noopStep name="end"/>
+
+
+    <contextDataDef name="propertyName" dataType="String" defaultDataExpression="testMultiList"/>
+    <contextDataDef name="label" dataType="String"/>
+    <contextDataDef name="jsonMetadata" dataType="JSON" defaultDataExpression="{}"/>
+    <contextDataDef name="value" dataType="String" defaultDataExpression="shoot"/>
+</workflow>

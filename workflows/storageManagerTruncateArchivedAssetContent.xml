@@ -1,0 +1,52 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="storageManagerTruncateArchivedAssetContent"
+    name="Truncate Asset Archived to Storage Content"
+    executionLabelExpression="Truncate Asset Content Archived To Storage Manager"
+    description=""
+    subjectDOClassName="AssetContent"
+    resultDataDef=""
+    deadlineExpression=""
+    showInUserInterface="false"
+    sdkVersion="5.21">
+
+    <initialStepName>truncate asset content</initialStepName>
+    
+    <deleteFileStep name="remove file from primary storage"
+                    sourceFilesExpression="${assetContent.file}"
+                    executionLabelExpression="removing ${assetContent.file.absolutePath}"
+                    nextStep="truncate asset content" />
+    
+    <!-- update the AssetContent to read as truncated/archived -->
+    <saveDataObjectStep name="truncate asset content"
+                        targetDataObjectClass="AssetContent"
+                        dataObjectExpression="${assetContent}"
+                        executionLabelExpression="Mark asset content ${assetContent.file.name} AssetContent ID ${assetContent.id} as archived"
+                        nextStep="set asset as archived"
+     >
+        <transition condition="${assetContent.contentUses.toString().toLowerCase().contains('source')}">
+            <targetStepName>set asset as archived</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <property name="truncatedFlag">true</property>
+    </saveDataObjectStep>
+    
+    
+    <saveDataObjectStep name="set asset as archived"
+                        dataObjectExpression="${assetContent.asset}"
+                        executionLabelExpression="Mark asset ${assetContent.masterAsset.name} as archived"
+                        pctComplete="90"
+                        nextStep="end">
+        <property name="status">ARCHIVED</property>
+    </saveDataObjectStep>
+    
+    <noopStep name="end" />
+    
+    <!-- .................................................. Context Data Defs .................................................. -->
+    <contextDataDef name="assetContent"       dataType="Data Object" defaultDataExpression="${subject}"/>
+    
+</workflow>

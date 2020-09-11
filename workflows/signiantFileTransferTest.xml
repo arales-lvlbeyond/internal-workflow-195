@@ -1,0 +1,135 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns="http://levelsbeyond.com/schema/workflow"
+xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+xmlns:signiant="http://levelsbeyond.com/schema/workflow/signiant"
+xsi:schemaLocation="
+    http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+    http://levelsbeyond.com/schema/workflow/signiant http://www.levelsbeyond.com/schema/signiant/workflow-plugin-signiant.xsd"
+id="signiantFileTransferTest"
+name="Signiant File Transfer Test"
+executionLabelExpression="Signiant File Transfer | Transferring ${subject.name} to ${targetSigniantAgent}"
+subjectDOClassName="AssetMaster"
+showInUserInterface="true"
+sdkVersion="">
+
+<initialStepName>check if workflow is running</initialStepName>
+
+<queryStep name="check if workflow is running"
+    targetDataObjectClass="WorkflowExecution"
+    resultDataDef="currentExecutions"
+    executionLabelExpression="Is a workflow running on this asset already? ${currentExecutions.size() != 0}">
+    <transition condition="${currentExecutions.size() == 0}">
+        <targetStepName>set file to transfer</targetStepName>
+    </transition>
+    <transition condition="true">
+        <targetStepName>workflow is running</targetStepName>
+    </transition>
+    <criteria>
+        <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="workflowVersion.workflow.key" op="eq">
+                            <test value="${ #this.workflow.workflowVersion.workflow.key }" />
+                        </condition>
+                        <condition property="uuid" op="noteq">
+                            <test value="${ #this.workflow.uuid }" />
+                        </condition>
+                        <condition property="executionLabel" op="like">
+                            <test value="%${T(org.apache.commons.lang.StringEscapeUtils).escapeXml(subject.name)}%" />
+                        </condition>
+                         <condition property="executionLabel" op="eq">
+                            <test value="${targetSigniantAgent}" />
+                        </condition>
+                        <condition property="status" op="in">
+                            <tests>
+                                <test value="CREATED" />
+                                <test value="QUEUED" />
+                                <test value="EXECUTING" />
+                            </tests>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+    </criteria>
+</queryStep>
+
+<setContextData name="set file to transfer"
+    valueExpression="${assetMaster.mezzanine.file}"
+    targetDataDef="sourceFile"
+    nextStep="update metadata"/>
+
+<saveDataObjectStep name="update metadata"
+    executionLabelExpression="Updating metadata to reflect transfer status"
+    dataObjectExpression="${assetMaster.metadata}"
+    nextStep="transfer file">
+    <property name="signiantFileTransfer">${#picklistValue('signiantFileTransfer','inProgress')}</property>
+</saveDataObjectStep>
+
+
+<noopStep name="transfer file"
+    executionLabelExpression="transferring ${sourceFile.name} to ${targetSigniantAgent}">
+    <transition condition="bloop">
+        <targetStepName>save failure metadata</targetStepName>
+    </transition>
+    <transition condition="true">
+        <targetStepName>save success metadata</targetStepName>
+    </transition>
+</noopStep>
+
+
+<saveDataObjectStep name="save success metadata"
+    executionLabelExpression="${sourceFile.name} was transferred to ${targetSigniantAgent} successfully"
+    dataObjectExpression="${assetMaster.metadata}"
+    nextStep="end">
+    <property name="signiantFileTransfer">${#picklistValue('signiantFileTransfer','complete')}</property>
+</saveDataObjectStep>
+
+<saveDataObjectStep name="save failure metadata"
+    executionLabelExpression="update fail metadata"
+    dataObjectExpression="${assetMaster.metadata}"
+    nextStep="transfer fail">
+    <property name="signiantFileTransfer">${#picklistValue('signiantFileTransfer','failed')}</property>
+</saveDataObjectStep>
+
+<!-- ................................................... End Steps .................................................... -->
+<createFailureNotificationStep name="transfer fail"
+    executionLabelExpression="${assetMaster.name} Signiant Transfer Failure"
+    notificationTypeExpression="failure"
+    notificationBodyExpression="${assetMaster.name} with the Id of ${assetMaster.id} did not successfully transfer to ${targetSigniantAgent}."
+    nextStep="signiant failed"/>
+
+
+<failWorkflowStep name="signiant failed"
+    reasonExpression="${assetMaster.name} failed to transfer."
+    executionLabelExpression="Signiant transfer failed."/>
+
+
+<failWorkflowStep name="workflow is running"
+    reasonExpression="Workflow is already running"
+    executionLabelExpression="Workflow is already running"/>
+
+<!-- success -->
+<noopStep name="end"/>
+
+<!-- ................................................... Data Defs .................................................... -->
+<!-- ............ INPUT ............. -->
+<contextDataDef name="assetMaster"          dataType="Data Object"    defaultDataExpression="${subject}" />
+<contextDataDef name="sourceDir"            dataType="String"         userInput="true" label="1. Source Location">
+    <picklist>
+        <picklistItem label="New York"      value="1"/>
+        <picklistItem label="Los Angeles"   value="2"/>
+        <picklistItem label="Washington DC" value="3"/>
+    </picklist>
+</contextDataDef>
+<contextDataDef name="destinationDir"       dataType="String"          userInput="true" label="2. Destination Location">
+    <picklist>
+        <picklistItem label="New York"      value="4"/>
+        <picklistItem label="Los Angeles"   value="5"/>
+        <picklistItem label="Washington DC" value="6"/>
+    </picklist>
+</contextDataDef>
+<contextDataDef name="sourceFile"           dataType="String" />
+<contextDataDef name="currentExecutions"    dataType="Data Object"    multiple="true" />
+<contextDataDef name="sourceSigniantAgent"  dataType="String"         defaultDataExpression="${sourceDir != null ? sourceDir : #sysconfig('signiant.sourceAgent')}"/>
+<contextDataDef name="targetSigniantAgent"  dataType="String"         defaultDataExpression="${destinationDir != null ? destinationDir : #sysconfig('signiant.targetAgent')}"/>
+</workflow>

@@ -1,0 +1,80 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+		http://levelsbeyond.com/schema/latest
+		https://s3-us-west-2.amazonaws.com/schema.levelsbeyond.com/2.3.16.17962/studio.xsd
+	"
+	id="regenerateTimelineThumbnail"
+	name="Regenerate Timeline Thumbnail"
+	executionLabelExpression="Regenerate Timeline Thumbnail"
+	subjectDOClassName="Timeline"
+	showInUserInterface="true"
+	sdkVersion="">
+
+	<initialStepName>set thumbnail</initialStepName>
+	
+	<submitHttpStep name="set thumbnail"
+		executionLabelExpression="Setting Timeline Thumbnail to ${assetMaster.name}"
+		requestMethodExpression="PUT"
+		urlExpression="${requestUrl}"
+		responsePayloadDataDef="jsonResponse"
+		responseCodeDataDef="responseCode"
+	>
+		<transition condition="${responseCode.toString().startsWith('2')}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>error setting thumbnail</targetStepName>
+		</transition>
+		<requestPayloadItem name="body">
+			{
+				"id" : ${timeline.id},
+				"chosenThumbnailAssetId" : ${assetMaster.id}
+			}
+		</requestPayloadItem>
+		<requestHeader name="auth_user">system</requestHeader>
+		<requestHeader name="auth_password">password</requestHeader>
+	</submitHttpStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- failure -->
+	<failWorkflowStep name="error setting thumbnail"
+		executionLabelExpression="Something went wrong when setting the thumbnail for timeline ${timeline.name}. Check the jsonResponse data def in context data to try and troubleshoot the issue."
+		reasonExpression="Something went wrong when setting the thumbnail for timeline ${timeline.name}. Check the jsonResponse data def in context data to try and troubleshoot the issue."
+	/>
+	
+	<!-- success -->
+	<noopStep name="end" />
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="timeline"                 dataType="Data Object"  defaultDataExpression="${subject}" />
+
+    <contextDataDef name="assetMaster"               dataType="Data Object" />
+	
+	<!-- reach api data defs -->
+	<contextDataDef name="jsonResponse"             dataType="JSON"         defaultDataExpression="{}" />
+    <contextDataDef name="responseCode"             dataType="Integer" />
+	<contextDataDef name="requestUrl"               dataType="String"       defaultDataExpression="${reachUrl}/reachengine/api/inventory/timelines/${timeline.id}/thumbnail/${assetMaster.id}" />
+	
+	<!-- Reach Info -->
+	<contextDataDef name="reachUrl"                 dataType="String"       defaultDataExpression="${#sysconfig('workflows.regenerateTimelineProxies.reachurl')}" />
+	<contextDataDef name="apiKey"                   dataType="String" />
+</workflow>

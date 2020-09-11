@@ -1,0 +1,113 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:production="http://levelsbeyond.com/schema/workflow/production"
+    xsi:schemaLocation="
+    	http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+    	http://levelsbeyond.com/schema/workflow/production http://levelsbeyond.com/schema/production/nimbus-projects-workflow-1.2.xsd
+        "
+           
+ id="_archiveSourceContents"
+ name="Find Source Contents to Archive"
+ executionLabelExpression="Archive Sources that are not backed up"
+ description="Finds source content that have not yet been backed up to archive and performs an archive workflow on them."
+ subjectDOClassName=""
+ showInUserInterface="false"
+ deadlineExpression="">
+ 
+    <initialStepName>Check for source archive enabled</initialStepName>
+        
+    <noopStep name="Check for source archive enabled">
+        <transition condition="${ sourceArchiveEnabled }">
+            <targetStepName>Find Source Content to Archive</targetStepName>
+        </transition>    
+        <transition condition="${ true }">
+            <targetStepName>Source Archive is Disabled</targetStepName>
+        </transition>
+    </noopStep>
+    
+    <queryStep name="Find Source Content to Archive"
+        executionLabelExpression="Find source content to archive"
+        targetDataObjectClass="AssetContent"
+        pctComplete="10"
+        resultDataDef="contentsToArchive" >
+        
+        <transition condition="${ contentsToArchive != null and contentsToArchive.size() &gt; maxBatch }">
+            <targetStepName>Limit Contents to Archive</targetStepName>
+        </transition>
+        <transition condition="${ contentsToArchive != null and contentsToArchive.size() &gt; 0 }">
+            <targetStepName>Call Archive Subflow</targetStepName>
+        </transition>
+        <transition condition="${ true }">
+            <targetStepName>End</targetStepName>
+        </transition>
+        
+        <criteria>
+            <![CDATA[
+            <criteria>
+                <and>
+                    <condition property="contentUses" op="like">
+                        <test value="%SOURCE%"/>      
+                    </condition>
+                    <condition property="contentUses" op="notlike">
+                        <test value="%MEZZANINE%"/>      
+                    </condition>
+                    <condition property="restoreKey" op="isnull"/>
+                    <condition property="truncatedFlag" op="eq">
+                        <test value="false"/>
+                    </condition>
+                </and>  
+            </criteria>            
+            ]]>            
+        </criteria>
+    </queryStep>
+    
+    <!-- Query step currently does not support limits so sublist the results here instead.  Once
+         this functionality is implemented (CORE-86) fix this to use limits instead -->
+    <setContextData name="Limit Contents to Archive"
+        targetDataDef="contentsToArchive" valueExpression="${ contentsToArchive.subList(0, maxBatch) }"         
+        >
+        <transition condition="${ true }">
+            <targetStepName>Call Archive Subflow</targetStepName>
+        </transition>        
+    </setContextData>
+    
+    <executeSubflowStep name="Call Archive Subflow"
+        executionLabelExpression="Call Archive Subflow on ${ contentsToArchive.size() } Source Contents"
+        targetWorkflowId="${ archiveWorkflowId }"
+        subjectChangePath="${ contentsToArchive }"
+        pctComplete="99"
+    >
+        <transition condition="${ true }">
+            <targetStepName>End</targetStepName>
+        </transition>
+    </executeSubflowStep>
+
+    <noopStep name="Source Archive is Disabled"/>
+    
+	<testStep name="End" outputExpression="${contentsToArchive != null ? contentsToArchive.size() : 0} assets archived."  />
+
+    <!-- INPUT DEFS -->
+    <contextDataDef name="archiveWorkflowId" dataType="String" required="true" defaultDataExpression="${ #sysconfig('archive.source.workflow') }"/>
+    <contextDataDef name="maxBatch" dataType="Integer" defaultDataExpression="${ #sysconfig('archive.source.maxBatchSize') }"/>
+    <contextDataDef name="sourceArchiveEnabled" dataType="Boolean" defaultDataExpression="${ #sysconfig('archive.source.enabled') }"/>    
+    
+    <!-- PROCESSING DEFS -->
+    <contextDataDef name="contentsToArchive" dataType="Data Object" multiple="true"></contextDataDef>
+ </workflow>

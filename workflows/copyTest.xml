@@ -1,0 +1,50 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns="http://levelsbeyond.com/schema/workflow"
+xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-2.0.xsd"
+id="copyTest"
+name="Copy File Step Test"
+executionLabelExpression=""
+description=""
+subjectDOClassName="AssetMaster"
+subjectQualifierExpression=""
+showInUserInterface="true"
+deadlineExpression=""
+sdkVersion="">
+
+
+<initialStepName>setArchivePath</initialStepName>
+
+
+<setContextData
+    name="setArchivePath"
+    targetDataDef="archivePath"
+    valueExpression="${dirPath}">
+    <transition condition="${true}">
+        <targetStepName>copy content file</targetStepName>
+    </transition>
+</setContextData>
+    
+
+<copyFileStep
+    name="copy content file"
+    executionLabelExpression="Copy content file ${sourceFile.absolutePath} to (${archivePath.absolutePath})"
+    sourceFileExpression="${sourceFile}"
+    targetDirectoryExpression="${dirPath}"
+    targetFilenameExpression="${fileName}"
+    pctComplete="50"
+    createTargetDirectoryFlag="true"
+    resultDataDef="archiveFile"
+    nextStep="end"/>
+
+
+<noopStep name="yay" nextStep="end"/>
+<noopStep name="end"/>
+
+<contextDataDef name="assetMaster" dataType="Data Object" defaultDataExpression="${subject}"/>
+<contextDataDef name="sourceFile"			dataType="File" 	defaultDataExpression="${assetMaster.mezzanine.file}" />
+<contextDataDef name="dirPath" dataType="String" defaultDataExpression="/reachengine/media/archive/"/>
+<contextDataDef name="archivePath" dataType="Directory"/>
+<contextDataDef dataType="File" name="archiveFile"/>
+<contextDataDef name="fileName" dataType="String" defaultDataExpression="${(#baseFilename(sourceFile))}"/>
+
+</workflow>

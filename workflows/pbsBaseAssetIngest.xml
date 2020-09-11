@@ -1,0 +1,119 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="pbsBaseAssetIngest"
+	name="PBS Base Asset Ingest"
+	executionLabelExpression="PBS Base Asset Ingest | File: ${fileToIngest.absolutePath}"
+	description=""
+	subjectDOClassName=""
+	resultDataDef="assetMaster"
+	deadlineExpression=""
+	showInUserInterface="false"
+	sdkVersion="5.21"
+	>
+	
+	<initialStepName>check for duplicate asset</initialStepName>
+	
+	
+	<!-- .............................................. Initial Check Steps ............................................... -->
+	<queryStep name="check for duplicate asset"
+		executionLabelExpression="Checking for asset with name: ${assetName}"
+		targetDataObjectClass="AssetVersion"
+		resultDataDef="assetVersion"
+		pctComplete="15"
+		>
+		<transition condition="${assetVersion != null AND !#sourceContent(assetVersion).file?.exists(}">
+			<targetStepName>ingest asset</targetStepName>
+		</transition>
+		<transition condition="${assetVersion == null}">
+			<targetStepName>ingest asset</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>duplicate asset found</targetStepName>
+		</transition>
+		<criteria>
+		<![CDATA[
+			<criteria>
+				<and>
+					<condition property="name" op="eq">
+						<test value="${T(org.apache.commons.lang.StringEscapeUtils).escapeXml(assetName)}"/>
+					</condition>
+				</and>
+			</criteria>
+		]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<!-- .................................................. Asset Steps ................................................... -->
+	<saveAssetStep name="ingest asset"
+		assetExpression="${assetVersion}"
+		assetNameExpression="${assetName}"
+		contentExpression="${fileToIngest}"
+		contentUseExpression="|SOURCE|MEZZANINE|"
+		versionAssetExpression="false"
+		resultDataDef="assetVersion"
+		executionLabelExpression="Ingesting ${fileToIngest.absolutePath}"
+		searchableFlagExpression="true"
+		pctComplete="95"
+		nextStep="get asset master"
+		/>
+	
+	
+	<setContextData name="get asset master"
+		targetDataDef="assetMaster"
+		valueExpression="${assetVersion.masterAsset}"
+		executionLabelExpression="Getting the AssetMaster for Asset Version (ID = ${assetVersion.id})"
+		devStep="true"
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"	pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="duplicate asset found"
+		reasonExpression="duplicate asset found"
+		executionLabelExpression="Asset Name ( ${assetName} ) already exists with a source."
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input Variables .......... -->
+	<contextDataDef name="fileToIngest" 		    dataType="File"/>
+	<contextDataDef name="assetName"                dataType="String"           defaultDataExpression="${fileToIngest.name}"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="assetVersion" 		    dataType="Data Object"/>
+	<contextDataDef name="assetMaster" 			    dataType="Data Object"/>
+	
+	<!-- NOT USED (here for default calling capability) -->
+	<contextDataDef name="sourceAsMezz"             dataType="Boolean"/>
+	<contextDataDef name="checkForDuplicate"        dataType="Boolean"/>
+	<contextDataDef name="overwriteExisting"        dataType="Boolean"/>
+	<contextDataDef name="versionDuplicate"         dataType="Boolean"/>
+	<contextDataDef name="versionAsset"             dataType="Boolean"/>
+	
+</workflow>

@@ -1,0 +1,207 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="exportCollectionMetadata"
+    name="Export Collection Metadata"
+    executionLabelExpression="Export Collection Metadata | Collection: ${subject.name}"
+    subjectDOClassName="AssetCollection"
+    showInUserInterface="true"
+    sdkVersion="5.4">
+    
+	<initialStepName>combine objects from collection</initialStepName>
+	
+	
+	<!-- ............................................. Get Parent Objects .............................................. -->
+	<groovyStep name="combine objects from collection"
+		executionLabelExpression="Getting items from collection ${subject.name} | Found ${allCollectionAssets.size()}" 
+		resultDataDef="allCollectionAssets">
+		<transition condition="${allCollectionAssets != null AND allCollectionAssets.size() &gt; 0}">
+			<targetStepName>extract metadata</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>no assets in collection</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+				allCollectionAssets = new ArrayList()
+				
+				if(timelines != null && timelines.size() > 0)
+				{
+					allCollectionAssets.addAll(timelines)
+				}
+				if(assets != null && assets.size() > 0)
+				{
+					allCollectionAssets.addAll(assets)
+				}
+				if(clips != null && clips.size() > 0)
+				{
+					allCollectionAssets.addAll(clips)
+				}
+				
+				return allCollectionAssets
+				
+			]]>
+		</script>
+	</groovyStep>
+	
+	
+	<!-- ............................................. Extract Metadata Step .............................................. -->
+	<groovyStep name="extract metadata"
+		resultDataDef="csvContents"
+		executionLabelExpression="extract metadata from ${allCollectionAssets.size()} assets"
+		pctComplete="60">
+		<transition condition="${csvFile.exists()}">
+			<targetStepName>ingest metadata csv</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>cannot ingest</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+			// .............................. Start Up ..............................
+			// .......... Imports ..........
+			import groovy.json.*
+			import org.apache.commons.lang.StringUtils
+			import com.google.common.collect.Lists
+			import com.fasterxml.jackson.databind.node.*
+			import java.lang.Class
+			import groovy.json.JsonBuilder
+			import com.routeto1.data.IDataObjectDAO
+			import com.routeto1.asset.filesystem.*
+			import com.routeto1.metadata.Metadata
+			import com.routeto1.asset.AssetCollection
+			import com.routeto1.data.query.Criteria
+			import com.routeto1.data.query.CriterionFactory
+			import com.routeto1.data.query.DataObjectQuery
+			import com.routeto1.spring.ApplicationContextHolder
+			import com.routeto1.services.security.UserService
+			import com.routeto1.asset.AssetCategory
+			import com.levelsbeyond.workflow.sdk.function.GetPicklistLabelsFunction
+			import com.levelsbeyond.service.inventory.MetadataService
+			import com.levelsbeyond.service.metadata.field.MetadataFieldService
+			import com.levelsbeyond.api.metadata.MetadataSetDTO
+			import com.levelsbeyond.nimbus.common.data.Clip
+			import com.levelsbeyond.nimbus.common.data.Timeline
+			
+			// ......... Variables .........
+			MetadataService metadataService = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class)
+			MetadataFieldService metadataFieldService = ApplicationContextHolder.getApplicationContext().getBean(MetadataFieldService.class)
+			def metadataProperties = metadataFieldService.getPermittedFields(false)
+			def csvFile = new File(csvFile.absolutePath)
+			
+			// ............................ Prepare Headers ............................
+			csvFile << "re-assetId,re-assetType,re-assetName,re-assetCategories,re-assetCollections"
+			
+			for (property in metadataProperties) {
+				csvFile << "," + property.name
+			}
+			
+			csvFile << "\n"
+			
+			// ............................. Each Asset .............................
+			for (collectionAsset in allCollectionAssets) {
+				
+				// ..................... Non Metadata Info .....................
+				String csvRow = ''
+				
+				String assetRef = collectionAsset.toString()
+				assetRef = assetRef.substring( 1, assetRef.size() -1)
+				def assetType = assetRef.substring(0, assetRef.indexOf('.') )
+				
+				def assetName
+				def assetClass = collectionAsset.getClass().toString()
+				assetClass = assetClass.substring(assetClass.lastIndexOf('.') + 1)
+				if (assetClass.contains('AssetMaster'))
+					assetName = collectionAsset.getName().toString()
+				else
+					assetName = collectionAsset.name.toString()
+				
+				
+				def assetId = assetRef.substring(assetRef.lastIndexOf('.') + 1 )
+				def assetCategories = collectionAsset.getMetadata().getCategoryNames().join('|')
+				
+				def collectionMemberships = collectionAsset.collectionMemberships
+				def assetCollectionIds = ""
+				for(membership in collectionMemberships) {
+					assetCollectionIds += membership.collection.id + '|'
+				}
+				
+				assetCollectionIds = assetCollectionIds.substring(0, assetCollectionIds.length() - 1)
+				
+				csvRow += assetId + ","
+				csvRow += assetType + ","
+				csvRow += '"' + assetName + '",'
+				csvRow += '"' + assetCategories + '",'
+				csvRow += assetCollectionIds
+				
+				// ..................... Extract Metadata ......................
+				for (property in metadataProperties) {
+					String propertyName = property.name
+					def propertyValue = metadataService.getStoredMetadataValue(propertyName, collectionAsset.getMetadata())
+					
+					String propertyValueString
+					if (propertyValue != null) {
+						propertyValueString = GetPicklistLabelsFunction.evaluate(propertyName, propertyValue, " | ")
+						if(propertyValueString.contains(',')) {
+							propertyValueString = '"' + propertyValueString + '"'
+						}
+					} else {
+						propertyValueString = ""
+					}
+					
+					csvRow += "," + propertyValueString
+				}
+				// ................... End Extract Metadata ....................
+				
+				csvFile << csvRow
+				csvFile << "\n"
+				
+			}
+			// ........................... End Each Asset ...........................
+			
+			
+			return csvFile.text
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<executeSubflowStep name="ingest metadata csv"
+		executionLabelExpression="Sending the exported csv file ${csvExportLocation + '/' + csvFileName} to be ingested"
+		targetWorkflowId="_anyAssetIngest"
+		subjectChangePath="${csvFile.absolutePath}"
+		subflowTargetDataDef="fileToIngest"
+		nextStep="end"/>
+	
+    
+    <!-- ........................................... Ending Steps .......................................... -->
+    <failWorkflowStep name="cannot ingest" 
+    	executionLabelExpression="Exported file, ${csvFile.absolutePath}, could not be located for ingest"
+    	reasonExpression="Exported file, ${csvFile.absolutePath}, could not be located for ingest"/>
+	
+	
+	<noopStep name="no assets in collection"
+		executionLabelExpression="There were no assets in the collection ${subject.name} to get metadata from"
+		nextStep="end"/>
+	
+	
+	<noopStep name="end"/>
+    
+	
+    <!-- ........................................ Context Data Defs ........................................ -->
+    <!-- Processing Data Defs -->
+	<contextDataDef name="allCollectionAssets"	dataType="Data Object"		multiple="true"/>
+	<contextDataDef name="csvContents" 			dataType="String"/>
+	
+	<!-- Default Data Defs -->
+	<contextDataDef name="collection" 			dataType="Data Object"		defaultDataExpression="${subject}"/>
+	<contextDataDef name="timelines" 			dataType="Data Object"		multiple="true"		defaultDataExpression="${subject.timelineItems.![timeline]}"/>
+	<contextDataDef name="assets" 				dataType="Data Object"		multiple="true"		defaultDataExpression="${subject.assetItems.![asset]}"/>
+	<contextDataDef name="clips" 				dataType="Data Object"		multiple="true"		defaultDataExpression="${subject.clipItems.![clip]}"/>
+	
+	<contextDataDef name="csvFileName" 			dataType="String"			defaultDataExpression="MetadataExport_${#formatDate('ddMMyyyy_HH:mm', #newDate())}.csv"/>
+	<contextDataDef name="csvExportLocation" 	dataType="String"			defaultDataExpression="/reachengine/media/temp"/>
+	<contextDataDef name="csvFile" 				dataType="File"				defaultDataExpression="${csvExportLocation + '/' + csvFileName}"/>
+	
+</workflow>

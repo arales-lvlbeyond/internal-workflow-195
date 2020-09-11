@@ -1,0 +1,171 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="addAssetToUfcTimeline"
+    name="Add Asset To UFC Timeline"
+    executionLabelExpression="Add Asset To UFC Timeline | Asset: ${asset.name} | Timeline: ${timeline != null? timeline.name : timelineName}"
+    subjectDOClassName="AssetMaster"
+    showInUserInterface="true"
+    sdkVersion="">
+    
+    
+    <initialStepName>check if asset can be added</initialStepName>
+    
+    
+    <noopStep name="check if asset can be added"
+        pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+        executionLabelExpression="Is the asset already associated with a timeline? ${assetAlreadyOnTimeline}"
+        devStep="true">
+        
+        <transition condition="${!assetAlreadyOnTimeline}">
+            <targetStepName>check if timeline was given</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>asset already on a timeline</targetStepName>
+        </transition>
+    </noopStep>
+    
+    
+    <!-- ................................................. Get Timeline ................................................... -->
+    <noopStep name="check if timeline was given"
+        pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+        executionLabelExpression="Was timeline given in? ${timeline != null}"
+        devStep="true">
+        
+        <transition condition="${timeline != null}">
+            <targetStepName>check if track exists</targetStepName>
+        </transition>
+        <transition condition="${timelineName != null}">
+            <targetStepName>get timeline</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>no timeline found</targetStepName>
+        </transition>
+    </noopStep>
+    
+    
+    <queryStep name="get timeline"
+        pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+        executionLabelExpression="Searching for timeline with name: ${timelineName}"
+        targetDataObjectClass="Timeline"
+        resultDataDef="timeline">
+        
+        <transition condition="${timeline != null}">
+            <targetStepName>check if track exists</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>no timeline found</targetStepName>
+        </transition>
+        
+        <criteria>
+            <![CDATA[
+			<criteria>
+			  <and>
+				  <condition property="name" op="eq"><test value="${timelineName}"/></condition>
+			  </and>
+			</criteria>
+		    ]]>
+        </criteria>
+    </queryStep>
+    
+    
+    <!-- ................................................. Save To Track .................................................. -->
+    <setContextData name="check if track exists"
+        pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+        executionLabelExpression="Checking for track with name: ${timelineTrackName}"
+        targetDataDef="timelineTrack"
+        valueExpression="${timelineTrackName != null ? timeline.tracks.^[name.equals(#root.timelineTrackName)] : null}">
+        
+        <!--<transition condition="${timelineTrack == null}">-->
+            <!--<targetStepName>track does not exist</targetStepName>-->
+        <!--</transition>-->
+        <transition condition="${assetType.equals('video') AND startOffset == 0}">
+            <targetStepName>calculate video offset</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>add asset to track</targetStepName>
+        </transition>
+    </setContextData>
+    
+    
+    <executeSubflowStep name="calculate video offset"
+        targetWorkflowId="computeTimelineOffset"
+        resultDataDef="startOffset"
+        nextStep="add asset to track">
+        
+        <subflowContextDataMapping parentDataDef="timelineStartTime" subflowDataDef="displayStartDateTime"/>
+        <subflowContextDataMapping parentDataDef="videoStartTimecode" subflowDataDef="startTimecodeString"/>
+        <subflowContextDataMapping parentDataDef="videoFramerate" subflowDataDef="framerate"/>
+    </executeSubflowStep>
+    
+    
+    <nimbus:addAssetToTimelineStep name="add asset to track"
+        pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+        executionLabelExpression="Add asset to track at offset: ${startOffset}"
+        targetTimelineExpression="${timeline}"
+        targetAssetExpression="${asset}"
+        startOffsetExpression="${startOffset}"
+        nextStep="end"/>
+    
+    
+    <!-- ................................................... End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end"/>
+    
+    
+    <!-- fail -->
+    <failWorkflowStep name="asset already on a timeline"
+        executionLabelExpression="The asset (${asset.name}) is already associated with a timeline and cannot be added to another timeline"
+        reasonExpression="The asset (${asset.name}) is already associated with a timeline and cannot be added to another timeline"/>
+    
+    
+    <failWorkflowStep name="no timeline found"
+        executionLabelExpression="Timeline ${timelineName != null ? 'was not found with the name: ' + timelineName : ' or timeline name was not given'}"
+        reasonExpression="Timeline ${timelineName != null ? 'was not found with the name: ' + timelineName : ' or timeline name was not given'}"/>
+    
+    
+    <failWorkflowStep name="track does not exist"
+        executionLabelExpression="Could not find the calculated/specified track on the timeline."
+        reasonExpression="Could not find the calculated/specified track on the timeline."/>
+    
+    
+    <!-- ................................................... Data Defs .................................................... -->
+    <!-- ............ INPUT ............. -->
+    <!-- required user input when kicked off via UI -->
+    <contextDataDef name="timeline" dataType="Data Object"
+        userInput="true" required="true" displayIndex="1" label="Timeline">
+        <picklist>
+            <dataObjectSearch dataObjectClass="Timeline">
+                <searchPath>name</searchPath>
+            </dataObjectSearch>
+        </picklist>
+    </contextDataDef>
+    <!--<contextDataDef name="timelineTrackPicklistId" dataType="String"-->
+        <!--userInput="true" required="true" displayIndex="2" label="Camera Angle">-->
+        <!--<picklist>-->
+            <!--<metadataProperty>cameraAngle</metadataProperty>-->
+        <!--</picklist>-->
+    <!--</contextDataDef>-->
+    <!-- possible input via workflows -->
+    <contextDataDef name="timelineName" dataType="String"/>
+    <!--<contextDataDef name="timelineTrackName" dataType="String"-->
+        <!--defaultDataExpression="${#picklistLabel('cameraAngle', timelineTrackPicklistId)}"/>-->
+    <contextDataDef name="startOffset" dataType="Double" defaultDataExpression="0"/>
+    
+    <!-- ......... PROCESSING ........... -->
+    <contextDataDef name="asset" dataType="Data Object" defaultDataExpression="${subject}"/>
+    <contextDataDef name="sourceContent" dataType="Data Object" defaultDataExpression="${#sourceContent(asset)}"/>
+    <contextDataDef name="sourceFileName" dataType="String" defaultDataExpression="${sourceContent?.file?.name}"/>
+    <contextDataDef name="assetType" dataType="String" defaultDataExpression="${asset.assetType.toLowerCase()}"/>
+    <contextDataDef name="videoStartTimecode" dataType="String"
+        defaultDataExpression="${sourceContent?.startTimecode}"/>
+    <contextDataDef name="videoFramerate" dataType="Double" defaultDataExpression="${sourceContent?.frameRate ?: 0.0}"/>
+    <contextDataDef name="wfExe" dataType="Data Object" defaultDataExpression="${#this}"/>
+    <contextDataDef name="timelineStartTime" dataType="Date/Time"
+        defaultDataExpression="${timeline.displayStartDateTime}"/>
+    <contextDataDef name="timelineTrack" dataType="Data Object"/>
+    <contextDataDef name="assetAlreadyOnTimeline" dataType="Boolean"
+        defaultDataExpression="${asset.timelineAssets?.size() &gt; 0}"/>
+
+</workflow>

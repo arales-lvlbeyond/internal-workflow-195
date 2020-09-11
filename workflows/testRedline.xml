@@ -1,0 +1,90 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="testRedline"
+	name="Test Redline"
+	executionLabelExpression="Test Redline"
+	subjectDOClassName=""
+	showInUserInterface="true"
+	sdkVersion=""
+>
+	
+	<initialStepName>run redline</initialStepName>
+	
+	
+	<runCommandStep name="run redline"
+		executablePathExpression="/reachengine/utilities/REDline/REDline"
+		stdoutDataDef="outputCsvText"
+		stderrDataDef="error"
+		continueOnException="true"
+		>
+		<transition condition="${outputCsvText != null}">
+			<targetStepName>get total frames</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>fail</targetStepName>
+		</transition>
+		
+		<arg>-i</arg>
+		<arg>/reachengine/media/mezzanines/2019/05/14/23/J502_C086_01255A_001.R3D</arg>
+		<arg>--printMeta</arg>
+		<arg>3</arg>
+		<arg>--useMeta</arg>
+		<arg>--logFile</arg>
+		<arg>/reachengine/utilities/REDline/logs/REDline.log</arg>
+	</runCommandStep>
+	
+	
+	<groovyStep name="get total frames"
+		resultDataDef="totalFrames"
+		continueOnException="true"
+		>
+		<transition condition="${totalFrames != null}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>fail</targetStepName>
+		</transition>
+		
+		<script>
+        <![CDATA[
+			import com.csvreader.CsvReader
+			
+			CsvReader csvData = new CsvReader(new StringReader(outputCsvText))
+			csvData.readHeaders()
+			csvData.readRecord()
+			
+			return csvData.get('Total Frames')
+		]]>
+        </script>
+	</groovyStep>
+	
+		
+	<noopStep name="end"/>
+	
+	
+	<failWorkflowStep name="fail" reasonExpression="fail"/>
+	
+
+	<contextDataDef name="outputCsvText" dataType="String"/>
+	<contextDataDef name="error" dataType="String"/>
+	<contextDataDef name="totalFrames" dataType="Integer"/>
+	<contextDataDef name="outputDir" dataType="Directory" defaultDataExpression="/mnt/TylerMedia/REDline_Output/${#uuid().toString()}"/>
+</workflow>

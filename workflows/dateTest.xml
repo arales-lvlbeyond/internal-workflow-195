@@ -1,0 +1,56 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns="http://levelsbeyond.com/schema/workflow"
+xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+id="dateTest"
+name="dateTest"
+executionLabelExpression=""
+description=""
+subjectDOClassName=""
+resultDataDef=""
+deadlineExpression=""
+showInUserInterface="true"
+sdkVersion="5.21">
+
+<initialStepName>format date</initialStepName>
+
+<setContextData name="format date"
+    targetDataDef="formattedDate"
+    valueExpression="${#formatDate('YYYY-MM-dd', newDate)}"
+    nextStep="create file path"/>
+
+<setContextData name="create file path"
+    targetDataDef="filePath"
+    valueExpression="${#sysconfig('filesystem.root.sources')}/${formattedDate}/${#filename(fileToIngest.toString())}"
+    nextStep="move file to custom repo"/>
+
+<runCommandStep name="move file to custom repo"
+    executablePathExpression="bin/mv"
+    continueOnException="true"
+    stdoutDataDef="error"
+    nextStep="check file">
+    <arg>${fileToIngest.absolutePath}</arg>
+    <arg>${filePath}</arg>
+</runCommandStep>
+
+<noopStep name="check file">
+    <transition condition="${#fileExists(filePath)}">
+        <targetStepName>end</targetStepName>
+    </transition>
+    <transition condition="true">
+        <targetStepName>fail</targetStepName>
+    </transition>
+</noopStep>
+
+<noopStep name="end"/>
+
+    <noopStep name="fail"/>
+
+<contextDataDef name="newDate" dataType="Date" defaultDataExpression="${#newDate()}"/>
+<contextDataDef name="formattedDate" dataType="String"/>
+<contextDataDef name="filePath" dataType="String"/>
+<contextDataDef name="fileToIngest" dataType="File" userInput="true" required="true"/>
+<contextDataDef name="error" dataType="String"/>
+</workflow>
+
+

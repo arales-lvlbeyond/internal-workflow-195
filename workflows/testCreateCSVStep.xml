@@ -1,0 +1,104 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+		http://levelsbeyond.com/schema/latest
+		https://s3-us-west-2.amazonaws.com/schema.levelsbeyond.com/2.3.16.17962/studio.xsd
+	"
+	id="testCreateCSVStep"
+	name="Test Create CSV Step"
+	executionLabelExpression="Test Create CSV Step | "
+	subjectDOClassName=""
+	showInUserInterface="false"
+	sdkVersion="">
+
+	<initialStepName>query for assets</initialStepName>
+	
+	<executeSubflowStep name="query for assets"
+		targetWorkflowId="getAssetsByRQL"
+		executionLabelExpression="Found ${assetMasters.size()} assets"
+		resultDataDef="assetMasters"
+		pctCompleteExpression="10"
+		nextStep="generate csv">
+
+        <subflowContextDataMapping parentDataDef="rqlString" subflowDataDef="rqlString"/>
+    </executeSubflowStep>
+	
+	<!-- Create the csv to report which assets archived successfully -->
+	<createCsvStep name="generate csv"
+		targetDataObjectClass="AssetMaster"
+		targetDirectoryExpression="${outputDir}"
+		targetFilenameExpression="ArchiveReport_${fileDate}.csv"
+		executionLabelExpression="Generating CSV report in ${outputDir}"
+		sourceDataExpression="${assetMasters}"
+		resultDataDef="csvResult"
+		nextStep="email csv">
+
+        <select name="Name">name</select>
+        <select name="Archive Successful?">${(currentVersion.mezzanineContent?.truncatedFlag == true AND currentVersion.mezzanineContent?.restoreKey != null AND !currentVersion.mezzanineContent?.restoreKey.equals(''))? 'true' : 'false'}</select>
+        <select name="Truncated Flag">${currentVersion.mezzanineContent?.truncatedFlag}</select>
+        <select name="Restore Key">${currentVersion.mezzanineContent?.restoreKey}</select>
+    </createCsvStep>
+	
+	
+	<!-- ........................................... Deliver Csv .......................................... -->
+	<!-- Email csv report to AXS TV employees -->
+	<emailStep name="email csv"
+		emailAddressesExpression="${reportEmail}"
+		subjectExpression="${reportType} Archive Report ${fileDate}"
+		attachmentsExpression="${outputDir.absolutePath}/csvtest.csv"
+		continueOnException="true"
+		nextStep="end">
+        <body>
+            <![CDATA[
+                Hello,
+                This as an automated email from Reach Engine.
+                The archive report that was generated on ${fileDate} is attached.
+            ]]>
+        </body>
+    </emailStep>
+	
+	<noopStep name="none found" />
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end" />
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- User Input -->
+	<!-- Asset Masters from archive workflow -->
+	<contextDataDef name="assetMasters" dataType="Data Object" multiple="true" />
+	
+	<!-- Processing Variables -->
+	<!-- Directory csv is originally saved to -->
+	<contextDataDef name="outputDir" dataType="Directory" defaultDataExpression="/reachengine/temp" />
+	<!-- Result data def from generating csv. Not used -->
+	<contextDataDef name="csvResult" dataType="File" />
+	<!-- Generated date used for the file name -->
+	<contextDataDef name="fileDate" dataType="String" />
+	
+	<!-- Default -->
+	<!-- email address to send report to -->
+	<contextDataDef name="reportEmail" dataType="String" />
+	
+	<!-- will get overwritten when called from weekly archive -->
+	<contextDataDef name="reportType" dataType="String" defaultDataExpression="Daily"/>
+	
+	<contextDataDef name="rqlString" dataType="String" />
+  
+    
+</workflow>

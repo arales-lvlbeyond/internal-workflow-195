@@ -1,0 +1,291 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="
+    http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.0.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-1.6.xsd
+    "
+    id="batchMetaUpdater"
+    name="Admin Batch Meta Updater"
+    executionLabelExpression="Admin Batch Meta Updater"
+    description=""
+    
+    deadlineExpression=""
+    subjectDOClassName=""
+    showInUserInterface="true"
+    subjectQualifierExpression=""
+    sdkVersion="4.9"
+    adminOnly="true"
+    
+    >
+    
+    <initialStepName>start</initialStepName>
+    
+    <noopStep 
+        name="start"
+        >
+        <transition condition="true">
+            <targetStepName>Clean up Clip rosters</targetStepName>
+        </transition>
+  
+    </noopStep>
+    
+    <groovyStep
+        name="Clean up Clip rosters"
+        resultDataDef="imagesAdded" 
+        >
+        
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+        
+        <script>
+            <![CDATA[
+import groovy.*;
+import groovy.json.*;
+
+import groovy.json.JsonBuilder
+import com.routeto1.asset.filesystem.VideoClip;
+import com.routeto1.data.impl.DynamicDataObjectDAO
+import com.routeto1.metadata.Metadata;
+import com.levelsbeyond.service.inventory.MetadataService;
+import com.routeto1.data.query.Criteria;
+import com.routeto1.data.query.CriterionFactory;
+import com.routeto1.data.query.DataObjectQuery;
+import com.routeto1.asset.filesystem.storage.ContentStorageManager;
+import com.routeto1.spring.ApplicationContextHolder;
+import com.routeto1.services.security.UserService;
+import org.apache.commons.lang.StringUtils;
+import com.google.common.collect.Lists;
+import com.routeto1.asset.AssetCategory;
+import com.levelsbeyond.security.AuthenticatedUser
+import com.routeto1.services.security.UserSecurityService
+import com.levelsbeyond.security.service.SecurityService
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
+import com.routeto1.data.IDataObjectDAO
+
+def metadataService = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class);
+DynamicDataObjectDAO dataObjectDAO = ApplicationContextHolder.getApplicationContext().getBean(DynamicDataObjectDAO.class);
+
+ def fetchLimit = 50;
+ def fetchIndex = 0;
+ def moreResults = true;
+ def prop, value, valueObj, metadataSet, parentMetadataSet, parentGameID;
+ //find asset
+
+while(moreResults){
+ //println "index: ${fetchIndex}";
+ DataObjectQuery query = new DataObjectQuery(VideoClip.DATA_OBJECT_CLASS)
+ 
+ query.setCriteria(new Criteria().add(CriterionFactory.in( "metadata.categories.name", "DALET")))		
+ query.setFetchLimit( (int) fetchLimit)
+ query.setFetchOffset( (int) fetchIndex)		
+ 
+ resultAssets = dataObjectDAO.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, query).getDataObjects();
+ 
+ if (resultAssets.size() == 0) { 
+   //println "no more assets"
+   moreResults = false;
+ } else {
+   //println "size: ${resultAssets.size()}";
+   
+  def counter = 0;
+  def size = resultAssets.size();
+  for( counter = 0; counter < size; counter ++ ) {
+   resultAsset = resultAssets[counter];
+   //println resultAsset;
+   //println "asset: ${resultAsset.name}"
+   //println "parent: ${resultAsset.assetMaster.name}";
+   //println "catagory: ${resultAsset.metadata.categories.name}";
+  
+   // get the metadata
+   metadataSet = resultAsset.getMetadata();
+   parentMetadataSet = resultAsset.assetMaster.getMetadata();
+   
+   if(parentMetadataSet != null){
+    parentGameID = metadataService.getStoredMetadataValue("gameID", parentMetadataSet);
+    //println "parentID: ${parentGameID}";
+   } else {
+    parentGameID = null;
+   }
+   
+   if(metadataSet != null){
+   
+   	 metadataService.storeMetadataValue("homeTeamRoster", metadataSet, null);
+   	 metadataService.storeMetadataValue("awayTeamRoster", metadataSet, null);
+   	 
+     value = metadataService.getStoredMetadataValue("player1Name", metadataSet);
+     metadataService.storeMetadataValue("player1", metadataSet, value);
+
+     value = metadataService.getStoredMetadataValue("player2Name", metadataSet);
+     metadataService.storeMetadataValue("player2", metadataSet, value);
+
+     value = metadataService.getStoredMetadataValue("player1Team", metadataSet);
+     metadataService.storeMetadataValue("team1", metadataSet, value);
+     
+     value = metadataService.getStoredMetadataValue("player2Team", metadataSet);
+     metadataService.storeMetadataValue("team2", metadataSet, value);
+    
+     // fixed messed up game IDs
+     if(parentGameID != null){
+      value = metadataService.getStoredMetadataValue("gameID", metadataSet);
+      if( value == '1917020010' || value == 1917020010 ){
+       metadataService.storeMetadataValue("gameID", metadataSet, parentGameID);
+       //println "writing new game ID: ${parentGameID}";
+      }      
+     }
+      
+       def newCats = [];
+       resultAsset.metadata.categories.name.eachWithIndex { category,index ->
+            //println "${index}, ${category}";
+            switch(category){
+                case 'DALET':
+                    def q = new DataObjectQuery(AssetCategory.DATA_OBJECT_CLASS);
+                    def crit = CriterionFactory.and();
+                    crit.add(CriterionFactory.equals(AssetCategory.NAME_PROPERTY, category));
+                    q.setCriteria(crit);
+                    def results = dataObjectDAO.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, q).getDataObjects();
+                    if (results.size() != 1) {throw new Exception ("err");}
+                    metadataService.removeCategoryId(metadataSet, results.get(0).id);
+                    break;
+                case 'NHL Video':
+                    def q = new DataObjectQuery(AssetCategory.DATA_OBJECT_CLASS);
+                    def crit = CriterionFactory.and();
+                    crit.add(CriterionFactory.equals(AssetCategory.NAME_PROPERTY, category));
+                    q.setCriteria(crit);
+                    def results = dataObjectDAO.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, q).getDataObjects();
+                    if (results.size() != 1) {throw new Exception ("err");}
+                    metadataService.removeCategoryId(metadataSet, results.get(0).id);
+                    break;
+                case 'NHL':
+                    def q = new DataObjectQuery(AssetCategory.DATA_OBJECT_CLASS);
+                    def crit = CriterionFactory.and();
+                    crit.add(CriterionFactory.equals(AssetCategory.NAME_PROPERTY, category));
+                    q.setCriteria(crit);
+                    def results = dataObjectDAO.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, q).getDataObjects();
+                    if (results.size() != 1) {throw new Exception ("err");}
+                    metadataService.removeCategoryId(metadataSet, results.get(0).id);
+                    break;
+                case 'FAC':
+                    metadataService.storeMetadataValue("eventType", metadataSet, "faceoff");
+                    def q = new DataObjectQuery(AssetCategory.DATA_OBJECT_CLASS);
+                    def crit = CriterionFactory.and();
+                    crit.add(CriterionFactory.equals(AssetCategory.NAME_PROPERTY, category));
+                    q.setCriteria(crit);
+                    def results = dataObjectDAO.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, q).getDataObjects();
+                    if (results.size() != 1) {throw new Exception ("err");}
+                    metadataService.removeCategoryId(metadataSet, results.get(0).id);                    
+                    break;
+                case 'HIT':
+                    metadataService.storeMetadataValue("eventType", metadataSet, "hit");
+                    def q = new DataObjectQuery(AssetCategory.DATA_OBJECT_CLASS);
+                    def crit = CriterionFactory.and();
+                    crit.add(CriterionFactory.equals(AssetCategory.NAME_PROPERTY, category));
+                    q.setCriteria(crit);
+                    def results = dataObjectDAO.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, q).getDataObjects();
+                    if (results.size() != 1) {throw new Exception ("err");}
+                    metadataService.removeCategoryId(metadataSet, results.get(0).id);                    
+                    break;
+                case 'PENL':
+                    metadataService.storeMetadataValue("eventType", metadataSet, "penalty");
+                    def q = new DataObjectQuery(AssetCategory.DATA_OBJECT_CLASS);
+                    def crit = CriterionFactory.and();
+                    crit.add(CriterionFactory.equals(AssetCategory.NAME_PROPERTY, category));
+                    q.setCriteria(crit);
+                    def results = dataObjectDAO.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, q).getDataObjects();
+                    if (results.size() != 1) {throw new Exception ("err");}
+                    metadataService.removeCategoryId(metadataSet, results.get(0).id);                    
+                    break;
+                case 'ONGOAL':
+                    metadataService.storeMetadataValue("eventType", metadataSet, "shot");
+                    def q = new DataObjectQuery(AssetCategory.DATA_OBJECT_CLASS);
+                    def crit = CriterionFactory.and();
+                    crit.add(CriterionFactory.equals(AssetCategory.NAME_PROPERTY, category));
+                    q.setCriteria(crit);
+                    def results = dataObjectDAO.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, q).getDataObjects();
+                    if (results.size() != 1) {throw new Exception ("err");}
+                    metadataService.removeCategoryId(metadataSet, results.get(0).id);                    
+                    break;
+                case 'GOAL':
+                    metadataService.storeMetadataValue("eventType", metadataSet, "goal");
+                    def q = new DataObjectQuery(AssetCategory.DATA_OBJECT_CLASS);
+                    def crit = CriterionFactory.and();
+                    crit.add(CriterionFactory.equals(AssetCategory.NAME_PROPERTY, category));
+                    q.setCriteria(crit);
+                    def results = dataObjectDAO.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, q).getDataObjects();
+                    if (results.size() != 1) {throw new Exception ("err");}
+                    metadataService.removeCategoryId(metadataSet, results.get(0).id);                    
+                    break;
+                case 'BLOCKED':
+                    metadataService.storeMetadataValue("eventType", metadataSet, "blockedShot");
+                    def q = new DataObjectQuery(AssetCategory.DATA_OBJECT_CLASS);
+                    def crit = CriterionFactory.and();
+                    crit.add(CriterionFactory.equals(AssetCategory.NAME_PROPERTY, category));
+                    q.setCriteria(crit);
+                    def results = dataObjectDAO.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, q).getDataObjects();
+                    if (results.size() != 1) {throw new Exception ("err");}
+                    metadataService.removeCategoryId(metadataSet, results.get(0).id);                    
+                    break;
+                case 'MISSED':
+                    metadataService.storeMetadataValue("eventType", metadataSet, "missedShot");
+                    def q = new DataObjectQuery(AssetCategory.DATA_OBJECT_CLASS);
+                    def crit = CriterionFactory.and();
+                    crit.add(CriterionFactory.equals(AssetCategory.NAME_PROPERTY, category));
+                    q.setCriteria(crit);
+                    def results = dataObjectDAO.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, q).getDataObjects();
+                    if (results.size() != 1) {throw new Exception ("err");}
+                    metadataService.removeCategoryId(metadataSet, results.get(0).id);                    
+                    break;
+                default:
+                    //println("leaving: " + category);
+            }
+       }
+     
+     resultAsset.assetClipEndOffset = resultAsset.assetClipEndOffset + 5.0;
+     
+     def videoAssetContent = resultAsset.getVideoAssetContent(resultAsset.assetMaster)
+     
+     if(videoAssetContent != null){
+	     if(videoAssetContent.duration < resultAsset.assetClipEndOffset){
+	        resultAsset.assetClipEndOffset = videoAssetContent.duration;
+	     }
+	 }
+     
+     if ( !resultAsset.metadata.categories.name.contains( 'HITS DATA' ) )
+     {
+     	//println "adding: HITS DATA"
+     	def q = new DataObjectQuery( AssetCategory.DATA_OBJECT_CLASS );
+     	def crit = CriterionFactory.and();
+     	crit.add( CriterionFactory.equals( AssetCategory.NAME_PROPERTY, "HITS DATA" ) );
+     	q.setCriteria( crit );
+     	def results = dataObjectDAO.findByQuery( UserService.DOUBLE_SECRET_SYSTEM_USER, q ).getDataObjects();
+     	metadataService.addCategoryId(metadataSet, results.get(0).id);
+     }
+     
+     resultAsset.setMetadata(metadataSet);
+     //println "writing. ${metadataSet}";
+    
+     metadataSet = null;
+     parentMetadataSet = null;
+     
+     // slow down execution
+     sleep(5); // 5ms
+   } else {
+    //println "metadataSet is null, wtf??";
+   }
+  } //end for
+ } // end else
+ // fetchIndex = fetchIndex + fetchLimit;
+ resultAssets = null;
+ //moreResults = false;
+}
+return null;
+            ]]>
+        </script>
+        
+    </groovyStep>     
+    
+    <noopStep name="end"/>
+
+</workflow>

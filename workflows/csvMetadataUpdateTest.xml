@@ -1,0 +1,60 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          id="csvMetadataUpdateTest"
+          name="CSV Metadata Update Test"
+          executionLabelExpression="CSV Metadata Update Test"
+          subjectDOClassName=""
+          showInUserInterface="true"
+          resultDataDef=""
+          sdkVersion=""
+>
+
+    <initialStepName>create test assets</initialStepName>
+
+    <executeSubflowStep name="create test assets"
+                        targetWorkflowId="createTestAssets"
+                        resultDataDef="allAssets"
+                        pctComplete="10"
+                        nextStep="run test">
+        <subflowContextDataMapping parentDataDef="totalAssetCount" subflowDataDef="totalTestAssets"/>
+        <subflowContextDataMapping subflowDataDef="assetNamePrefix" parentDataDef="assetNamePrefix"/>
+    </executeSubflowStep>
+
+    <executeSubflowStep name="run test"
+                        targetWorkflowId="processCSVMetadataChanges"
+                        pctComplete="10"
+                        nextStep="clean up test assets">
+        <subflowContextDataMapping subflowDataDef="csvFile" parentDataDef="csvFile"/>
+    </executeSubflowStep>
+
+    <executeSubflowStep name="clean up test assets"
+                        targetWorkflowId="deleteTestAsset"
+                        pctComplete="10"
+                        subjectChangePath="${allAssets.size() &gt; deleteBatchSize ? allAssets.subList(0, deleteBatchSize) : allAssets.subList(0, allAssets.size())}">
+        <transition condition="${allAssets.size() &gt; deleteBatchSize}">
+            <targetStepName>reduce array</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </executeSubflowStep>
+
+    <setContextData name="reduce array"
+                    targetDataDef="allAssets"
+                    pctComplete="90"
+		            valueExpression="${allAssets.subList(deleteBatchSize, allAssets.size())}"
+                    nextStep="clean up test assets"/>
+
+    <noopStep name="end"/>
+
+    <!--  Input  -->
+    <contextDataDef name="csvFile" Label="CSV File:" dataType="File" userInput="true"/>
+    <contextDataDef name="totalAssetCount" label="Number of Test Assets:" dataType="Integer" userInput="true" defaultDataExpression="1000"/>
+
+    <contextDataDef name="allAssets" dataType="Data Object" multiple="true"/>
+    <contextDataDef name="deleteBatchSize"  dataType="Integer" defaultDataExpression="500"/>
+    <contextDataDef name="assetNamePrefix" dataType="String" defaultDataExpression="metadataTestAsset"/>
+
+</workflow>

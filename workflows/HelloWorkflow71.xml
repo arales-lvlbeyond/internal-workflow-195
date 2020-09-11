@@ -1,0 +1,41 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.x"
+	id="HelloWorkflow71"
+	name="Hello Workflow71"
+	description="A workflow that says 'Hello'"
+	subjectDOClassName=""
+	deadlineExpression=""
+	sdkVersion="">
+	<!-- says that first step is going to be Hello_Workflow -->
+	<initialStepName>Hello_Workflow</initialStepName>
+	<testStep name="Hello_Workflow" outputExpression="Why, Hello Workflow.">
+		<!-- first step, not sre what output exp is doing right here -->
+		<transition condition="${sendEmail}">
+			<targetStepName>Email_Hello</targetStepName>
+			<!-- if send email is true, go to step Email_Hello -->
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>Say_Goodbye</targetStepName>
+			<!-- Else if, go to step Say_Goodbye -->
+		</transition>
+	</testStep>
+	<emailStep name="Email_Hello"
+		emailAddressesExpression="eapodaca@levelsbeyond.com"
+		subjectExpression="I'm just writing to say..">
+		<body><![CDATA[
+          HELLO! Hi ${#newDate()}
+]]> </body>
+	</emailStep>
+	<!-- not sure how emailStep works.... subject expression is the -->
+	<testStep name="Say_Goodbye"
+		outputExpression="I Didn't send an email because you told me not to. Goodbye.">
+	</testStep>
+	<!-- pretty sure this Say_Goodbye does nothing ? -->
+	<!--DATA DEFS -->
+	<contextDataDef dataType="Boolean"
+		name="sendEmail"
+		required="true">
+	</contextDataDef>
+	<!-- I think this defines user input ? -->
+</workflow>

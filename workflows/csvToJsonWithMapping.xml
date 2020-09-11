@@ -1,0 +1,558 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2017 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.5.xsd"
+	id="csvToJsonWithMapping"
+	name="CSV to JSON With Mapping"
+	executionLabelExpression="CSV to JSON With Mapping | csv to parse = ${csvFile.name}"
+	description="
+    	This workflow will take a given csv file and format, and translate it into an array of jsons.
+	    	headers = keys
+	    	matching row values = values
+    	key names can be changed using a given keyMappingJsonFile (optional)
+    	values can be changed or validated (picklists) using a given valueMappingJsonFile (optional)
+    	
+    	the workflow returns the array of jsons.
+    "
+	subjectDOClassName=""
+	showInUserInterface="true"
+	deadlineExpression=""
+	sdkVersion=""
+	resultDataDef="csvJsonArray"
+>
+	
+	<initialStepName>get key mapping</initialStepName>
+	
+	
+	
+	<!-- ..................................................... Setup Steps ..................................................... -->
+	<groovyStep name="get key mapping"
+		resultDataDef="keyValMappingJson"
+		executionLabelExpression="${keyValMappingJsonFile != null? 'extracting key mapping from ' + keyValMappingJsonFile.absolutePath : 'no mapping file given'}"
+		pctComplete="5"
+		nextStep="parse and map csv"
+	>
+		<script>
+			<![CDATA[
+				import groovy.json.*;
+				
+				if(keyValMappingJsonFile != null)
+					return new JsonSlurper().parseText(new File(keyValMappingFilePath).text)
+				else
+					return null
+			]]>
+		</script>
+	</groovyStep>
+	
+	
+	<!-- .................................................... Parse and Map .................................................... -->
+	<groovyStep name="parse and map csv"
+		resultDataDef="csvJsonArray"
+		executionLabelExpression="parse and map ${csvFilePath}"
+		pctComplete="98"
+		nextStep="display json"
+	>
+		<script>
+			<![CDATA[
+        		import groovy.json.*
+        		import java.text.SimpleDateFormat
+        		import org.apache.commons.csv.CSVParser
+        		import org.apache.commons.csv.CSVRecord
+        		import org.apache.commons.csv.CSVFormat
+        		import org.slf4j.Logger
+                import org.slf4j.LoggerFactory
+        		import com.routeto1.data.validation.IValidator
+        		import com.routeto1.data.validation.PicklistValidator
+        		import com.routeto1.spring.ApplicationContextHolder
+        		import com.routeto1.data.meta.DataObjectProperty
+        		import com.routeto1.metadata.Metadata
+				import com.routeto1.metadata.MetadataPicklist
+				import com.routeto1.metadata.MetadataPicklistDAO
+				import com.routeto1.services.data.DataObjectMetaService
+				import com.levelsbeyond.service.inventory.MetadataService
+				import com.levelsbeyond.workflow.sdk.function.PicklistItemExistsFunction
+        		import com.levelsbeyond.workflow.sdk.function.GetPicklistLabelFunction
+        		import com.levelsbeyond.workflow.sdk.function.GetPicklistValueFunction
+
+        		
+        		
+        		// ----------------------------- Functions -----------------------------
+        		/*
+        			Pre Conditions:
+						supplied a file path to a valid CSV file
+						supplied a valid CSV format to comform parsing logic to
+							supported formats: DEFAULT | EXCEL | MYSQL | RFC4180 | TDF
+					Post Conditions:
+						a CSVParser object is returned with all of the records from the given csv file
+        		*/
+        		CSVParser parseFormat(filePath, format){
+        			if(format == "EXCEL")
+        				return CSVParser.parse(new File(filePath).text, CSVFormat.EXCEL.withHeader())
+        			else if(format == "MYSQL")
+        				return CSVParser.parse(new File(csvFilePath).text, CSVFormat.MYSQL.withHeader())
+        			else if(format == "RFC4180")
+        				return CSVParser.parse(new File(csvFilePath).text, CSVFormat.RFC4180.withHeader())
+        			else if(format == "TDF")
+        				return CSVParser.parse(new File(csvFilePath).text, CSVFormat.TDF.withHeader())
+        			else
+        				return CSVParser.parse(new File(csvFilePath).text, CSVFormat.DEFAULT.withHeader())
+        		}
+        		
+        		/*
+        			Pre Conditions:
+						supplied a csv header
+						supplied a JSON for key mapping from the workflow execution
+							key mapping JSON may have the csv header as a key
+							if a match is found, a new value to use as the "key" may be provided
+					Post Conditions:
+						the existing csvHeader is returned if no match is found
+						or a new value is returned if a match is found
+        		*/
+        		String mapKey(csvKey){
+        			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+        		
+        			try{
+        				if(keyMappingJson == null)
+        					return csvKey
+        				
+        				def keyJson = keyMappingJson.get(csvKey)
+        				
+        				if(keyJson == null){
+        					log.debug("${csvKey} not found in the key mapping JSON.")
+        					return csvKey
+        				}
+        				
+        				if(keyJson.get("reKey") == null){
+        					log.warn("mapping key ${csvKey} found, but matching reachengine field is not provided.")
+        					return csvKey
+        				}
+        				else
+        					return keyJson.get("reKey").asText()
+        			}
+        			catch(Exception e){
+        				log.warn("There was an exception thrown mapping ${csvKey}... Exception: ${e}")
+        				return csvKey
+        			}
+        		}
+        		
+        		/*
+        			Pre Conditions:
+						supplied a csv row/column value
+						supplied the matching csv column header
+						supplied the matching RE property for the header
+						supplied a JSON for key mapping from the workflow execution
+							key mapping JSON may have the csv header as a key
+							if a match is found, a new value to use as the "key" may be provided
+							if a match is found, the RE property's type may be provided
+							if a match is found, and the property type is a calendar, a dateFormat should be provided
+							if a match is found, and the property type is a picklist, the option to create missing items can be provided
+						supplied a JSON for value mapping from the workflow execution
+							value mapping JSON may have the csv value as a key
+							if a match is found, a new value to use as the "value" may be provided
+					Post Conditions:
+						A new value is potentially returned based on if
+							there is a match in the value mapping JSON
+							the RE property is a calendar
+							the RE property is a picklist
+						The same value may be returned if
+							there is an exception thrown
+							the option to add missing picklist options is not given
+							there is no match in the value mapping JSON
+        		*/
+        		String mapValue(csvKey, propertyName, csvValue){
+        			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+        		
+        			try{
+        				if(csvValue == null || csvValue == ""){
+        					return ""
+        				}
+        				
+        				def newValue
+        				if(valueMappingJson != null){
+	        				def valueJson = valueMappingJson?.get(csvValue)
+	        				
+	        				if(valueJson == null){
+	        					log.debug("${csvValue} not found in the value mapping JSON.")
+	        					newValue = csvValue
+	        				}
+	        				else{
+	        					if(valueJson.get("reValue") == null){
+	        						log.warn("${csvValue} found in the value mapping JSON, but no reValue was found.")
+	        						newValue = csvValue
+	        					}
+	        					else
+	        						newValue = valueJson.get("reValue").asText()
+	        				}
+        				}
+        				else
+        					newValue = csvValue
+        				
+        				if(newValue == null){
+        					log.warn("extracted a null value from the value mapping file for ${csvValue}")
+        					return csvValue
+        				}
+        				
+        				if(keyMappingJson != null){
+	        				def keyJson = keyMappingJson?.get(csvKey)
+	        				if(keyJson != null){
+	        					if(keyJson.get("reFieldType") != null){
+		        					def fieldType = keyJson.get("reFieldType").asText()
+		        				
+		        					if(fieldType == "picklist"){
+				        				if(keyJson.get("picklistCreateIfMissing") != null){
+				        					if(keyJson.get("picklistCreateIfMissing").asBoolean())
+				        						return createPicklistItemIfMissing(propertyName, newValue)
+				        				}
+				        				else
+				        					return newValue
+				        			}
+				        			else if(fieldType == "calendar")
+				        				return convertDate(csvKey, newValue)
+				        			else if(fieldType == "checkbox")
+				        				return newValue
+				        			else if(fieldType == "text")
+				        				return newValue
+				        			else
+				        				log.warn("${csvKey} was not given a valid reFieldType in the mapping file. Cannot map value: ${newValue}.")
+				        		}
+				        		else
+				        			log.warn("${csvKey} found in the key mapping JSON, but no reFieldType found. Cannot map value: ${newValue}.")
+	        				}
+	        				else
+	        					log.debug("${csvKey} not found in the key mapping JSON. Cannot map value: ${newValue}.")
+        				}
+        				
+        				return newValue
+        			}
+        			catch(Exception e){
+        				log.warn("There was an exception thrown mapping ${csvValue}... Exception: ${e}")
+        				return csvValue
+        			}
+        		}
+        		
+        		/*
+        			Pre Conditions:
+						supplied a property name
+						supplied a picklist label
+						supplied a JSON for key mapping from the workflow execution
+							key mapping JSON may have the csv header as a key
+							if a match is found, and the property type is a picklist, the option to create missing items can be provided
+					Post Conditions:
+						An existing picklist value that matches the given label is returned
+						A new picklist value created for the given label is returned if the option to create missing items was set to true
+						The given label is returned if there was an exception thrown or if an existing item does not exist and the option to create missing items was not provided of false
+        		*/
+        		String createPicklistItemIfMissing(propertyName, value){
+        			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+        			
+        			try{
+	        			def metaProp = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class).getMetadataPropertyByName(propertyName).get()
+	        			
+	        			if (metaProp == null){
+	        				log.warn("property ${propertyName} listed in the mapping file as a picklist, but does not exist in reachengine.")
+	        				return value
+	        			}
+	        			
+	        			IValidator validator = metaProp.getPicklistValidator()
+	        			if (validator == null){
+	        				log.debug("property ${propertyName} is not a picklist.")
+	        				return value
+	        			}
+	        		
+	        			def picklistValue = GetPicklistValueFunction.evaluate(propertyName, value)
+	        			def picklistLabel = GetPicklistLabelFunction.evaluate(propertyName, value)
+	        		
+	        			if(PicklistItemExistsFunction.picklistItemExists(propertyName, picklistLabel)){
+	        				log.debug("${value} exists in the picklist (${propertyName})")
+	        				return picklistValue
+	        			}
+	        			else{
+	        				PicklistValidator picklist = (PicklistValidator) validator
+							DataObjectMetaService dms = ApplicationContextHolder.getApplicationContext().getBean(DataObjectMetaService.class)
+							String uuid = UUID.randomUUID().toString()
+					
+							if (picklist.isLookup()) {
+								dms.addOrUpdateLookupItem(picklist.getName(), uuid, value)
+							}
+							else {
+								MetadataPicklistDAO picklistDAO = ApplicationContextHolder.getApplicationContext().getBean(MetadataPicklistDAO.class)
+								MetadataPicklist metadataPicklist = picklistDAO.find().byId(picklist.getName())
+								dms.addOrUpdatePicklistItem(metadataPicklist, uuid, value)
+							}
+							
+							log.info("Added value (${uuid}) to the picklist (${propertyName})")
+							return uuid
+	        			}
+	        		}
+        			catch(Exception e){
+        				log.warn("could not evaluate if value (${value}) exists in the picklist (${propertyName}) and/or could not add the value into the picklist... Exception: ${e}")
+        				return value
+        			}
+        		}
+        		
+        		
+        		/*
+        			Pre Conditions:
+						supplied a csv header
+						supplied a string in a valid simpleDateFormat
+						supplied a JSON for key mapping from the workflow execution
+							key mapping JSON may have the csv header as a key
+							if a match is found, and the property type is a calendar, a dateFormat should be provided
+					Post Conditions:
+						A new string is returned in the date format the RE natively uses
+						The same string is returned if there was no dateFormat provided or if an exception was thrown
+        		*/
+        		String convertDate(csvKey, value){
+        			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+        			
+        			try{
+        				if(keyMappingJson.get(csvKey).get("dateFormat") != null){
+	        				def format = keyMappingJson.get(csvKey).get("dateFormat").asText()
+	        				def inputFormat = new SimpleDateFormat(format)
+	        				def reFormat = new SimpleDateFormat("EEE MMM dd HH:mm:ss z yyyy")
+	        				
+	        				return reFormat.format(inputFormat.parse(value))
+        				}
+        				else{
+        					log.debug("no format given for the date to map from.")
+        					return value
+        				}
+        			}
+        			catch(Exception e){
+        				log.warn("There was an exception mapping the date ${value}. Double check the format given in the mapping file... Exception: ${e}")
+        				return value
+        			}
+        		}
+        		
+        		
+        		
+        		// ----------------------------- Execution -----------------------------
+        		CSVParser parser = parseFormat(csvFilePath, csvFormat)
+        		
+        		def jsonArray = new ArrayList()
+				
+				for (CSVRecord csvRecord : parser) {
+					def rowJson = new JsonSlurper().parseText("{}")
+				
+					csvRecord.toMap().each{ key, value ->
+						def newKey = mapKey(key)
+						rowJson.put(newKey, mapValue(key, newKey, value))
+					}
+					
+					jsonArray.add(rowJson)
+				}
+				
+        		return jsonArray;
+        		
+        	]]>
+		</script>
+	</groovyStep>
+	
+	
+	<testStep name="display json"
+		outputExpression="JSON converted from ${csvFilePath} >>> ${csvJsonArray.toString()}"
+		executionLabelExpression="JSON in the RE log"
+		pctComplete="99"
+		nextStep="query for running subflows"
+	/>
+	
+	<!--queue loop-->
+	<queryStep
+		name="query for running subflows"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="executingSubflows"
+		executionLabelExpression="checking for workflows (with id = ${subflowId} that are not in a finished state"
+		devStep="true">
+		<transition condition="${executingSubflows == null or executingSubflows.size() &lt; queueLimit}">
+			<targetStepName>set metadata</targetStepName>
+		</transition>
+		<transition condition="${ true }">
+			<targetStepName>queue full</targetStepName>
+		</transition>
+		
+		<criteria>
+			<![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="workflowVersion.workflow.key" op="eq">
+                            <test value="${subflowId}"/>
+                        </condition>
+                        <condition property="status" op="in">
+                            <tests>
+                                <test value="CREATED" />
+                                <test value="QUEUED" />
+                                <test value="EXECUTING" />
+                            </tests>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<delayStep
+		name="queue full"
+		delaySecondsExpression="${queryPollInterval}"
+		executionLabelExpression="${executingSubflows.size()}/${queueLimit} running subflows (id = ${subflowId}). Waiting ${queryPollInterval} seconds. ${csvJsonArray.size()} remaining items."
+		nextStep="query for running subflows"
+		devStep="true"/>
+	
+	<!--end queue loop-->
+	
+	<groovyStep
+		name="set metadata"
+		resultDataDef="metadataToIngest"
+		executionLabelExpression="setting metadata"
+	>
+		<transition condition="${metadataToIngest.fileName.toString().length() &gt; 0}">
+			<targetStepName>ingest file</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>no result</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+			import java.util.Arrays
+			import groovy.json.JsonSlurper
+			
+			JsonSlurper slurper = new JsonSlurper()
+			
+			def metadata
+            for (json in csvJsonArray)
+            {
+           
+                Map parsedJson = slurper.parseText(json.toString())
+                if (parsedJson.get("fileName") == fileName)
+                {
+                    metadata = parsedJson
+                    break
+                }
+            }
+            
+            return metadata
+		
+		]]>
+		</script>
+	</groovyStep>
+
+	
+	<executeSubflowStep name="ingest file"
+		targetWorkflowId="${subflowId}"
+		executionLabelExpression="Ingesting ${metadataToIngest.fileName} with matched metadata"
+		subjectChangePath="${fileToIngest}"
+		subflowTargetDataDef="fileToIngest"
+	>
+	
+		<transition condition="${counter &lt; (filesToIngest.size() - 1)}">
+			<targetStepName>increment counter</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		
+		<subflowContextDataMapping parentDataDef="metadataToIngest" subflowDataDef="jsonMetadata" />
+	</executeSubflowStep>
+	
+	
+	<setContextData name="increment counter"
+		executionLabelExpression="Incrementing counter"
+		valueExpression="${counter + 1}"
+		targetDataDef="counter"
+		nextStep="set next file"
+		/>
+	
+	<setContextData name="set next file"
+		executionLabelExpression="setting next file for ingest"
+		valueExpression="${filesToIngest.get(counter.intValue())}"
+		targetDataDef="fileToIngest"
+		nextStep="parse filename"
+		/>
+	
+	<setContextData name="parse filename"
+		executionLabelExpression="parsing filename for file ${fileToIngest}"
+		valueExpression="${#filename(fileToIngest)}"
+		targetDataDef="fileName"
+		nextStep="query for running subflows"
+		/>
+		
+		
+	
+	<noopStep name="no result"
+		executionLabelExpression="No matching file for ${metadataToIngest.fileName}"
+		nextStep="end" />
+	
+	<!-- ................................................... Success Or Fail ................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- .................................................. Context Data Defs .................................................. -->
+	<!-- Inputs -->
+	<contextDataDef name="csvFile"                  dataType="File"         userInput="true"    required="true">
+		<description>
+			Required: the csv file to parse for metadata
+		</description>
+	</contextDataDef>
+	<contextDataDef name="csvFormat" 			    dataType="String"		defaultDataExpression="DEFAULT" />
+	
+	<contextDataDef name="keyValMappingJsonFile" 	dataType="File"			userInput="true">
+		<description>
+			JSON file with key-value references.
+		</description>
+	</contextDataDef>
+	
+	<contextDataDef name="folderToIngest"           dataType="Directory"    userInput="true" />
+	
+	<!-- Result -->
+	<!--<contextDataDef name="csvJsonArray"  		    dataType="JSON"         multiple="true"     defaultDataExpression="${#convertCsvToJson(#absPath(csvFile))}" />-->
+	
+	<contextDataDef name="csvJsonArray"  		    dataType="JSON"         multiple="true">
+		<description>
+			Array of jsons, where each row of the csv is a json.
+			headers = keys
+			matching row values = values
+			key names can be changed using the keyMappingJsonFile
+			values can be changed or validated (picklists) using the valueMappingJsonFile
+		</description>
+	</contextDataDef>
+	
+	<!-- Processing -->
+	<contextDataDef name="csvFilePath" 			    dataType="String"			defaultDataExpression="${csvFile.absolutePath}"/>
+	<contextDataDef name="keyValMappingFilePath" 	dataType="String"			defaultDataExpression="${keyValMappingJsonFile.absolutePath}"/>
+	<contextDataDef name="keyValMappingJson" 		dataType="JSON"/>
+	
+	<contextDataDef name="counter"                  dataType="Integer"          defaultDataExpression="0" />
+	<contextDataDef name="filesToIngest" dataType="File" multiple="true" defaultDataExpression="${#walkDir(folderToIngest, null)}" />
+	<contextDataDef name="fileToIngest" dataType="File"             defaultDataExpression="${filesToIngest.get(counter.intValue())}" />
+	<contextDataDef name="fileName" dataType="String"             defaultDataExpression="${#filename(fileToIngest)}" />
+	<contextDataDef name="metadataToIngest" dataType="JSON" />
+	<contextDataDef dataType="JSON" name="metadataToIngest" />
+	
+	<contextDataDef name="subflowId"      	    dataType="String" 		defaultDataExpression="_anyAssetIngest"/>
+	<contextDataDef name="executingSubflows" 	dataType="Data Object" 	multiple="true"/>
+	
+	<contextDataDef name="queueLimit" dataType="Integer" defaultDataExpression="${#sysconfig('workflows.test.queueLimit') ?: 11}"/>
+	<contextDataDef name="batchSize" dataType="Integer" defaultDataExpression="${#sysconfig('workflows.test.batchSize') ?: 10}"/>
+	<contextDataDef name="queryPollInterval" dataType="Integer" defaultDataExpression="${#sysconfig('workflows.test.queryPollInterval') ?: 60}"/>
+	<!--<contextDataDef name="test" dataType="String" defaultDataExpression="${csvJsonArray.get(counter.intValue()).get('fileName').toString()}" />-->
+	<!--<contextDataDef name="test2" dataType="String"  />-->
+
+</workflow>

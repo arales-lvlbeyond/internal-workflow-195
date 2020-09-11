@@ -1,0 +1,1004 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 to the last updated date of this file Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow.xsd"
+          id="testCopyFileStep"
+          name="Regression Test: Copy File Step"
+          executionLabelExpression="Regression Test: Copy File Step"
+          subjectDOClassName="AssetMaster"
+          showInUserInterface="true"
+          resultDataDef=""
+          sdkVersion=""
+>
+
+    <initialStepName>case A</initialStepName>
+
+    <!--CASE A: Copy a valid file, to a separate directory , do not specify a new name. Specify target and source with string paths.
+        CONFIRM that the new file exists in the specified directory with the original filename-->
+    <copyFileStep name="case A"
+                  sourceFileExpression="${sourceFilePath}"
+                  targetDirectoryExpression="${newTargetDirectoryPath}"
+                  resultDataDef="resultA">
+        <transition condition="${resultA.exists() AND #filename(resultA).equals(#filename(sourceFilePath))}">
+            <targetStepName>cleanup A</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case A</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case A</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case A"
+                executionLabelExpression="Case A Failed: ${resultA} does not exist, or the filename is not equal to the source file. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases">
+        <script>
+            <![CDATA[
+                errantCases.add('case A');
+                return errantCases;
+            ]]>
+        </script>
+
+        <transition condition="${resultA.exists()}">
+            <targetStepName>cleanup A</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case B</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <deleteFileStep name="cleanup A"
+                    sourceFilesExpression="${resultA}"
+                    nextStep="case B"/>
+
+    <!--CASE B: Copy a valid file to the same directory with a new name. Specify target and source with virtual file.
+        CONFIRM that target and source files exist in the same directory-->
+    <copyFileStep name="case B"
+                  sourceFileExpression="${virtualSourceFile}"
+                  targetDirectoryExpression="${#filepath(virtualSourceFile)}"
+                  targetFilenameExpression="${newFilenameWithExt}"
+                  resultDataDef="resultB">
+        <transition condition="${resultB.exists() AND #filename(resultB).equals(newFilenameWithExt)}">
+            <targetStepName>cleanup B</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case B</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case B</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case B"
+                executionLabelExpression="Case B Failed: ${resultB} does not exist, or the filename is not equal to the name specified in targetFilenameExpression. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases">
+        <script>
+            <![CDATA[
+                errantCases.add('case B');
+                return errantCases;
+            ]]>
+        </script>
+
+        <transition condition="${resultB.exists()}">
+            <targetStepName>cleanup B</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case C</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <deleteFileStep name="cleanup B"
+                    sourceFilesExpression="${resultB}"
+                    nextStep="case C"/>
+
+    <!--CASE C: Copy a valid file to the same directory, do not specify a new name. Specify target and source with IFileWrapper.
+        CONFIRM that the target and source are the same file, and the source has not been updated-->
+    <copyFileStep name="case C"
+                  sourceFileExpression="${virtualSourceFile}"
+                  targetDirectoryExpression="${#filepath(virtualSourceFile)}"
+                  targetFilenameExpression="${newFilenameWithExt}"
+                  resultDataDef="resultC">
+        <transition condition="${resultC.exists() AND #filename(resultC).equals(newFilenameWithExt)}">
+            <targetStepName>cleanup C</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case C</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case C</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case C"
+                executionLabelExpression="Case B Failed: ${resultC} does not exist, or the filename is not equal to the name specified in targetFilenameExpression. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases">
+        <script>
+            <![CDATA[
+                errantCases.add('case C');
+                return errantCases;
+            ]]>
+        </script>
+
+        <transition condition="${resultC.exists()}">
+            <targetStepName>cleanup C</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case D prep</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <deleteFileStep name="cleanup C"
+                    sourceFilesExpression="${resultC}"
+                    nextStep="case D prep"/>
+
+    <!--CASE D: Copy a valid file to a different location where it already exists, skipIfTargetExists=true
+        CONFIRM Existing file is unchanged-->
+    <setContextData name="case D prep"
+                    targetDataDef="existingTargetFileLastModified"
+                    valueExpression="${existingVirtualTargetFile.toFile().lastModified()}"
+                    nextStep="case D"/>
+
+    <copyFileStep name="case D"
+                  sourceFileExpression="${virtualSourceFile}"
+                  targetDirectoryExpression="${#filepath(existingVirtualTargetFile)}"
+                  targetFilenameExpression="${#filename(existingVirtualTargetFile)}"
+                  skipIfTargetExists="true"
+                  overwriteExisting="true"
+                  resultDataDef="resultD">
+        <transition condition="${resultD.exists() AND resultD.lastModified() == existingTargetFileLastModified}">
+            <targetStepName>case E</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case D</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case D</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case D"
+                executionLabelExpression="Case D Failed: The copy operation should be skipped with skipIfTargetExists=true, which should be prioritied above overwriteExisting=true. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases"
+                nextStep="case E">
+        <script>
+            <![CDATA[
+                errantCases.add('case D');
+                return errantCases;
+            ]]>
+        </script>
+    </groovyStep>
+
+    <!--CASE E: Copy a valid file to a different location where it already exists, skipIfTargetExists=false, overwriteExisting=true
+        CONFIRM existing file is overwritten with result file-->
+    <copyFileStep name="case E"
+                  sourceFileExpression="${virtualSourceFile}"
+                  targetDirectoryExpression="${#filepath(existingVirtualTargetFile)}"
+                  targetFilenameExpression="${#filename(existingVirtualTargetFile)}"
+                  overwriteExisting="true"
+                  resultDataDef="resultE">
+        <transition condition="${resultE.exists() AND resultE.lastModified() &gt; existingTargetFileLastModified AND #filename(resultE).equals(#filename(existingVirtualTargetFile))}">
+            <targetStepName>update last modified</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case E</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case E</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case E"
+                executionLabelExpression="Case E Failed: The existing file should be overwritten with the same name. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases"
+                nextStep="update last modified">
+        <script>
+            <![CDATA[
+                errantCases.add('case E');
+                return errantCases;
+            ]]>
+        </script>
+    </groovyStep>
+
+    <setContextData name="update last modified"
+                    targetDataDef="existingTargetFileLastModified"
+                    valueExpression="${existingVirtualTargetFile.toFile().lastModified()}"
+                    nextStep="case F"/>
+
+    <!--CASE F: Copy a valid file to a different location where it already exists, default values of skipIfTargetExists=false, overwriteExisting=false
+        CONFIRM result file exists and has number suffix, existing file is untouched-->
+    <copyFileStep name="case F"
+                  sourceFileExpression="${virtualSourceFile}"
+                  targetDirectoryExpression="${#filepath(existingVirtualTargetFile)}"
+                  targetFilenameExpression="${#filename(existingVirtualTargetFile)}"
+                  resultDataDef="resultF">
+        <transition condition="${resultF.exists() AND existingVirtualTargetFile.toFile().lastModified() == existingTargetFileLastModified AND !#baseFilename(resultF).equals(#baseFilename(existingVirtualTargetFile)) AND #baseFilename(resultF).contains(#baseFilename(existingVirtualTargetFile))}">
+            <targetStepName>cleanup F</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case F</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case F</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case F"
+                executionLabelExpression="Case F Failed: A new file should be created with a unique name. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases">
+        <script>
+            <![CDATA[
+                errantCases.add('case F');
+                return errantCases;
+            ]]>
+        </script>
+
+        <transition condition="${resultF.exists()}">
+            <targetStepName>cleanup F</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case G</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <deleteFileStep name="cleanup F"
+                    sourceFilesExpression="${resultF}"
+                    nextStep="case G"/>
+
+    <!--CASE G: Copy string contents to a file
+        CONFIRM target file exists-->
+    <copyFileStep name="case G"
+                  sourceFileExpression="Some String Contents!"
+                  targetDirectoryExpression="${#filepath(existingVirtualTargetFile)}"
+                  targetFilenameExpression="textContents.txt"
+                  resultDataDef="resultG">
+        <transition condition="${resultG.exists() AND #filename(resultG).equals('textContents.txt')}">
+            <targetStepName>cleanup G</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case G</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case G</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case G"
+                executionLabelExpression="Case G Failed: Text should be copied to a new file. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases">
+        <script>
+            <![CDATA[
+                errantCases.add('case G');
+                return errantCases;
+            ]]>
+        </script>
+
+        <transition condition="${resultG.exists()}">
+            <targetStepName>cleanup G</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case L</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <deleteFileStep name="cleanup G"
+                    sourceFilesExpression="${resultG}"
+                    nextStep="case L"/>
+
+    <!--CASE H: Copy a folder to a target directory that does not exist
+        CONFIRM all source files exist in target directory-->
+    <!--NOTE: The result of this is a bug, the copy operation uses the existing file name, which in this case is just the last directory, and the directory status of the target is lost, resulting in a file creation rather than directory-->
+    <!--<copyFileStep name="case H"-->
+                  <!--sourceFileExpression="${sourceDirectory}"-->
+                  <!--targetDirectoryExpression="${newTargetDirectoryPath}"-->
+                  <!--resultDataDef="resultH">-->
+        <!--<transition condition="${resultH.exists() AND !resultH.isDirectory() AND #filename(resultH).equals(#filename(sourceDirectory))}">-->
+            <!--<targetStepName>cleanup H</targetStepName>-->
+        <!--</transition>-->
+        <!--<transition condition="${true}">-->
+            <!--<targetStepName>errant case H</targetStepName>-->
+        <!--</transition>-->
+        <!--<exception-transition type="WorkflowException">-->
+            <!--<targetStepName>errant case H</targetStepName>-->
+        <!--</exception-transition>-->
+    <!--</copyFileStep>-->
+
+    <!--<groovyStep name="errant case H"-->
+                <!--executionLabelExpression="Case H Failed: Copy of directory with no targetName specified should result in a file, as the directory status is lost. Alternatively check the previous step for any Exceptions."-->
+                <!--resultDataDef="errantCases">-->
+        <!--<script>-->
+            <!--<![CDATA[-->
+                <!--errantCases.add('case H');-->
+                <!--return errantCases;-->
+            <!--]]>-->
+        <!--</script>-->
+
+        <!--<transition condition="${resultH.exists()}">-->
+            <!--<targetStepName>cleanup H</targetStepName>-->
+        <!--</transition>-->
+        <!--<transition condition="${true}">-->
+            <!--<targetStepName>case L</targetStepName>-->
+        <!--</transition>-->
+    <!--</groovyStep>-->
+
+    <!--<deleteFileStep name="cleanup H"-->
+                    <!--sourceFilesExpression="${resultH}"-->
+                    <!--nextStep="case L"/>-->
+
+    <!--CASE I: Copy a folder to a target directory that exists
+        CONFIRM all source files exist in target directory, target directory has number suffix-->
+    <!--<copyFileStep name="case I"-->
+                  <!--sourceFileExpression="${sourceDirectory}"-->
+                  <!--targetDirectoryExpression="${existingTargetDirectoryPath}"-->
+                  <!--targetFilenameExpression="/"-->
+                  <!--resultDataDef="resultI">-->
+        <!--<transition condition="${resultI.exists() AND resultI.isDirectory() AND !#filename(resultI).equals(#filename(existingTargetDirectoryPath)) AND #filename(resultI).contains(#filename(existingTargetDirectoryPath)}">-->
+            <!--<targetStepName>set result files I</targetStepName>-->
+        <!--</transition>-->
+        <!--<transition condition="${true}">-->
+            <!--<targetStepName>errant case I</targetStepName>-->
+        <!--</transition>-->
+        <!--<exception-transition type="WorkflowException">-->
+            <!--<targetStepName>errant case I</targetStepName>-->
+        <!--</exception-transition>-->
+    <!--</copyFileStep>-->
+
+    <!--<setContextData name="set result files I"-->
+                    <!--targetDataDef="targetDirectoryFileNames"-->
+                    <!--valueExpression="${#getFiles(resultI, false, false, null, false).![name]}"-->
+                    <!--nextStep="confirm I contents"/>-->
+
+    <!--<groovyStep name="confirm I contents"-->
+                <!--resultDataDef="successI">-->
+        <!--<script>-->
+            <!--<![CDATA[-->
+                <!--for (def filename : sourceDirectoryFileNames) {-->
+                    <!--if (!targetDirectoryFilesNames.contains(filename)) {-->
+                        <!--return false;-->
+                    <!--}-->
+                <!--}-->
+                <!--return true;-->
+
+            <!--]]>-->
+        <!--</script>-->
+
+        <!--<transition condition="${successI}">-->
+            <!--<targetStepName>cleanup I</targetStepName>-->
+        <!--</transition>-->
+        <!--<transition condition="${true}">-->
+            <!--<targetStepName>errant case I</targetStepName>-->
+        <!--</transition>-->
+    <!--</groovyStep>-->
+
+    <!--<groovyStep name="errant case I"-->
+                <!--executionLabelExpression="Case I Failed: All files from sourceDirectory should be copied to newTargetDirectoryPath. Alternatively check the previous step for any Exceptions."-->
+                <!--resultDataDef="errantCases">-->
+        <!--<script>-->
+            <!--<![CDATA[-->
+                <!--errantCases.add('case I');-->
+                <!--return errantCases;-->
+            <!--]]>-->
+        <!--</script>-->
+
+        <!--<transition condition="${resultI.exists()}">-->
+            <!--<targetStepName>cleanup I</targetStepName>-->
+        <!--</transition>-->
+        <!--<transition condition="${true}">-->
+            <!--<targetStepName>case J</targetStepName>-->
+        <!--</transition>-->
+    <!--</groovyStep>-->
+
+    <!--<deleteFileStep name="cleanup I"-->
+                    <!--sourceFilesExpression="${resultI}"-->
+                    <!--nextStep="case J"/>-->
+
+    <!--&lt;!&ndash;CASE J: Copy a folder to a target directory that exists, skipIfTargetExists=true-->
+        <!--CONFIRM target directory is unchanged&ndash;&gt;-->
+    <!--<copyFileStep name="case J"-->
+                  <!--sourceFileExpression="${sourceDirectory}"-->
+                  <!--targetDirectoryExpression="${existingTargetDirectory}"-->
+                  <!--targetFilenameExpression="/"-->
+                  <!--skipIfTargetExists="true"-->
+                  <!--resultDataDef="resultJ">-->
+        <!--<transition condition="${resultJ.exists() AND resultJ.lastModified() == existingTargetDirectoryLastModified}">-->
+            <!--<targetStepName>case K</targetStepName>-->
+        <!--</transition>-->
+        <!--<transition condition="${true}">-->
+            <!--<targetStepName>errant case J</targetStepName>-->
+        <!--</transition>-->
+        <!--<exception-transition type="WorkflowException">-->
+            <!--<targetStepName>errant case J</targetStepName>-->
+        <!--</exception-transition>-->
+    <!--</copyFileStep>-->
+
+    <!--<groovyStep name="errant case J"-->
+                <!--executionLabelExpression="Case J Failed: Copy should be skipped. Alternatively check the previous step for any Exceptions."-->
+                <!--resultDataDef="errantCases"-->
+                <!--nextStep="case K">-->
+        <!--<script>-->
+            <!--<![CDATA[-->
+                <!--errantCases.add('case J');-->
+                <!--return errantCases;-->
+            <!--]]>-->
+        <!--</script>-->
+
+    <!--</groovyStep>-->
+
+    <!--&lt;!&ndash;CASE K: Copy a folder to a target directory that exists, overwriteExisting=true-->
+        <!--CONFIRM all source files exist in target directory, target directory name is not suffixed&ndash;&gt;-->
+    <!--<copyFileStep name="case K"-->
+                  <!--sourceFileExpression="${sourceDirectory}"-->
+                  <!--targetDirectoryExpression="${existingTargetDirectory}"-->
+                  <!--targetFilenameExpression="/"-->
+                  <!--overwriteExisting="true"-->
+                  <!--resultDataDef="resultK">-->
+        <!--<transition condition="${resultK.exists() AND resultK.lastModified() &gt; existingTargetDirectoryLastModified}">-->
+            <!--<targetStepName>set result files K</targetStepName>-->
+        <!--</transition>-->
+        <!--<transition condition="${true}">-->
+            <!--<targetStepName>errant case K</targetStepName>-->
+        <!--</transition>-->
+        <!--<exception-transition type="WorkflowException">-->
+            <!--<targetStepName>errant case K</targetStepName>-->
+        <!--</exception-transition>-->
+    <!--</copyFileStep>-->
+
+    <!--<setContextData name="set result files K"-->
+                    <!--targetDataDef="targetDirectoryFileNames"-->
+                    <!--valueExpression="${#getFiles(resultK, false, false, null, false).![name]}"-->
+                    <!--nextStep="confirm K contents"/>-->
+
+    <!--<groovyStep name="confirm K contents"-->
+                <!--resultDataDef="successK">-->
+        <!--<script>-->
+            <!--<![CDATA[-->
+                <!--for (def filename : sourceDirectoryFileNames) {-->
+                    <!--if (!targetDirectoryFilesNames.contains(filename)) {-->
+                        <!--return false;-->
+                    <!--}-->
+                <!--}-->
+                <!--return true;-->
+
+            <!--]]>-->
+        <!--</script>-->
+
+        <!--<transition condition="${successK}">-->
+            <!--<targetStepName>cleanup K</targetStepName>-->
+        <!--</transition>-->
+        <!--<transition condition="${true}">-->
+            <!--<targetStepName>errant case K</targetStepName>-->
+        <!--</transition>-->
+    <!--</groovyStep>-->
+
+    <!--<groovyStep name="errant case K"-->
+                <!--executionLabelExpression="Case K Failed: All files from sourceDirectory should be copied to newTargetDirectoryPath. Alternatively check the previous step for any Exceptions."-->
+                <!--resultDataDef="errantCases">-->
+        <!--<script>-->
+            <!--<![CDATA[-->
+                <!--errantCases.add('case K');-->
+                <!--return errantCases;-->
+            <!--]]>-->
+        <!--</script>-->
+
+        <!--<transition condition="${resultK.exists()}">-->
+            <!--<targetStepName>cleanup K</targetStepName>-->
+        <!--</transition>-->
+        <!--<transition condition="${true}">-->
+            <!--<targetStepName>case L</targetStepName>-->
+        <!--</transition>-->
+    <!--</groovyStep>-->
+
+    <!--<deleteFileStep name="cleanup K"-->
+                    <!--sourceFilesExpression="${resultK}"-->
+                    <!--nextStep="case L"/>-->
+
+    <!--CASE L: Copy a folder to a target directory, specify targetFileName
+        CONFIRM all source files exist in target directory, target directory has new name-->
+    <copyFileStep name="case L"
+                  sourceFileExpression="${sourceDirectory}"
+                  targetDirectoryExpression="${existingTargetDirectory}"
+                  resultDataDef="resultL">
+        <transition condition="${resultL.exists() AND resultL.isDirectory())}">
+            <targetStepName>set result files L</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case L</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case L</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <setContextData name="set result files L"
+                    targetDataDef="targetDirectoryFileNames"
+                    valueExpression="${#walkDir(resultL, null).![name]}"
+                    nextStep="confirm L contents"/>
+
+    <groovyStep name="confirm L contents"
+                resultDataDef="successL">
+        <script>
+            <![CDATA[
+                for (def filename : sourceDirectoryFileNames) {
+                    if (!targetDirectoryFilesNames.contains(filename)) {
+                        return false;
+                    }
+                }
+                return true;
+
+            ]]>
+        </script>
+
+        <transition condition="${successL}">
+            <targetStepName>cleanup L</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case L</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <groovyStep name="errant case L"
+                executionLabelExpression="Case L Failed: All files from sourceDirectory should be copied to newTargetDirectoryPath. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases">
+        <script>
+            <![CDATA[
+                errantCases.add('case L');
+                return errantCases;
+            ]]>
+        </script>
+
+        <transition condition="${resultL.exists()}">
+            <targetStepName>cleanup L</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case M</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <deleteFileStep name="cleanup L"
+                    sourceFilesExpression="${resultL}"
+                    nextStep="case M"/>
+
+    <!--CASE M: Copy valid file to new directory with targetFilename specified, no extension included on targetFilename
+        CONFIRM file is successfully copied with new name and original extension-->
+    <copyFileStep name="case M"
+                  sourceFileExpression="${virtualSourceFile}"
+                  targetDirectoryExpression="${#filepath(virtualSourceFile)}"
+                  targetFilenameExpression="${newFilenameNoExt}"
+                  resultDataDef="resultM">
+        <transition condition="${resultM.exists() AND #baseFilename(resultM).equals(newFilenameNoExt) AND #extension(resultM).equals(#extension(virtualSourceFile))}">
+            <targetStepName>cleanup M</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case M</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case M</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case M"
+                executionLabelExpression="Case M Failed: ${resultM} does not exist, or the filename is not equal to the name specified in targetFilenameExpression. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases">
+        <script>
+            <![CDATA[
+                errantCases.add('case M');
+                return errantCases;
+            ]]>
+        </script>
+
+        <transition condition="${resultM.exists()}">
+            <targetStepName>cleanup M</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case N</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <deleteFileStep name="cleanup M"
+                    sourceFilesExpression="${resultM}"
+                    nextStep="case N"/>
+
+    <!--CASE N: Copy valid file, but specify non-string targetFilename
+        CONFIRM failure-->
+    <copyFileStep name="case N"
+                  sourceFileExpression="${virtualSourceFile}"
+                  targetDirectoryExpression="${#filepath(virtualSourceFile)}"
+                  targetFilenameExpression="${invalidTargetFilename}"
+                  resultDataDef="resultN">
+        <transition condition="${resultN.exists()}">
+            <targetStepName>errant case N</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case O</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>case O</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case N"
+                executionLabelExpression="Case N Failed: Copy should fail if targetFilenameExpression does not evaluate to a string"
+                resultDataDef="errantCases"
+                nextStep="case O">
+        <script>
+            <![CDATA[
+                errantCases.add('case N');
+                return errantCases;
+            ]]>
+        </script>
+    </groovyStep>
+
+    <!--CASE O: Copy with null sourceFile
+        CONFIRM failure-->
+    <copyFileStep name="case O"
+                  sourceFileExpression="${null}"
+                  targetDirectoryExpression="${#filepath(virtualSourceFile)}"
+                  resultDataDef="resultO">
+        <transition condition="${resultO.exists()}">
+            <targetStepName>errant case O</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case P</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>case P</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case O"
+                executionLabelExpression="Case O Failed: Copy should fail with null sourceFileExpression"
+                resultDataDef="errantCases"
+                nextStep="case P">
+        <script>
+            <![CDATA[
+                errantCases.add('case O');
+                return errantCases;
+            ]]>
+        </script>
+    </groovyStep>
+
+    <!--CASE P: Copy with path that does not resolve to an existing file
+        CONFIRM failure-->
+    <copyFileStep name="case P"
+                  sourceFileExpression="${bogusSourceFile}"
+                  targetDirectoryExpression="${#filepath(virtualSourceFile)}"
+                  resultDataDef="resultP">
+        <transition condition="${resultP.exists()}">
+            <targetStepName>errant case P</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case Q</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>case Q</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case P"
+                executionLabelExpression="Case P Failed: Copy should fail with non-existent source file"
+                resultDataDef="errantCases"
+                nextStep="case Q">
+        <script>
+            <![CDATA[
+                errantCases.add('case P');
+                return errantCases;
+            ]]>
+        </script>
+    </groovyStep>
+
+    <!--CASE Q: Copy with jdom.Document sourceFile object
+        CONFIRM successful copy-->
+    <copyFileStep name="case Q"
+                  sourceFileExpression="${xmlDocument}"
+                  targetDirectoryExpression="${#filepath(virtualSourceFile)}"
+                  targetFilenameExpression="xml_${#uuid()}.xml"
+                  resultDataDef="resultQ">
+        <transition condition="${resultQ.exists()}">
+            <targetStepName>cleanup Q</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case Q</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case Q</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case Q"
+                executionLabelExpression="Case Q Failed: Copy should succeed with jdom Document. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases">
+        <script>
+            <![CDATA[
+                errantCases.add('case Q');
+                return errantCases;
+            ]]>
+        </script>
+
+        <transition condition="${resultQ.exists()}">
+            <targetStepName>cleanup Q</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case R</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <deleteFileStep name="cleanup Q"
+                    sourceFilesExpression="${resultQ}"
+                    nextStep="case R"/>
+
+    <!--CASE R: Copy with jdom.Element sourceFile object
+        CONFIRM successful copy-->
+    <copyFileStep name="case R"
+                  sourceFileExpression="${anXMLNode}"
+                  targetDirectoryExpression="${#filepath(virtualSourceFile)}"
+                  targetFilenameExpression="xml_${#uuid()}.xml"
+                  resultDataDef="resultR">
+        <transition condition="${resultR.exists()}">
+            <targetStepName>cleanup R</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case R</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case R</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case R"
+                executionLabelExpression="Case R Failed: Copy should succeed with jdom Node. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases">
+        <script>
+            <![CDATA[
+                errantCases.add('case R');
+                return errantCases;
+            ]]>
+        </script>
+
+        <transition condition="${resultR.exists()}">
+            <targetStepName>cleanup R</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case S</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <deleteFileStep name="cleanup R"
+                    sourceFilesExpression="${resultR}"
+                    nextStep="case S"/>
+
+    <!--CASE S: Copy with JSON dataDef specified for sourceFile
+        CONFIRM successful copy-->
+    <copyFileStep name="case S"
+                  sourceFileExpression="${json.toString()}"
+                  targetDirectoryExpression="${#filepath(virtualSourceFile)}"
+                  targetFilenameExpression="json_${#uuid()}.json"
+                  resultDataDef="resultS">
+        <transition condition="${resultS.exists()}">
+            <targetStepName>cleanup S</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case S</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case S</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case S"
+                executionLabelExpression="Case S Failed: Copy should succeed with JSON. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases">
+        <script>
+            <![CDATA[
+                errantCases.add('case S');
+                return errantCases;
+            ]]>
+        </script>
+
+        <transition condition="${resultS.exists()}">
+            <targetStepName>cleanup S</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case T</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <deleteFileStep name="cleanup S"
+                    sourceFilesExpression="${resultS}"
+                    nextStep="case T"/>
+
+    <!--CASE T: Copy with Asset specified for sourceFile
+        CONFIRM successful copy of asset source file-->
+    <copyFileStep name="case T"
+                  sourceFileExpression="${sourceAsset}"
+                  targetDirectoryExpression="${#filepath(virtualSourceFile)}"
+                  targetFilenameExpression="asset_${#uuid()}.jpg"
+                  resultDataDef="resultT">
+        <transition condition="${resultT.exists()}">
+            <targetStepName>cleanup T</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case T</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case T</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case T"
+                executionLabelExpression="Case T Failed: Copy should succeed with Asset specified for source. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases">
+        <script>
+            <![CDATA[
+                errantCases.add('case T');
+                return errantCases;
+            ]]>
+        </script>
+
+        <transition condition="${resultT.exists()}">
+            <targetStepName>cleanup T</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>case U</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <deleteFileStep name="cleanup T"
+                    sourceFilesExpression="${resultT}"
+                    nextStep="case U"/>
+
+    <!--CASE U: Copy with AssetContent specified for sourceFile
+        CONFIRM successful copy of content file-->
+    <copyFileStep name="case U"
+                  sourceFileExpression="${sourceAssetContent}"
+                  targetDirectoryExpression="${#filepath(virtualSourceFile)}"
+                  targetFilenameExpression="assetContent_${#uuid()}.jpg"
+                  resultDataDef="resultU">
+        <transition condition="${resultU.exists()}">
+            <targetStepName>cleanup U</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>errant case U</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>errant case U</targetStepName>
+        </exception-transition>
+    </copyFileStep>
+
+    <groovyStep name="errant case U"
+                executionLabelExpression="Case U Failed: Copy should succeed with Asset content specified for source. Alternatively check the previous step for any Exceptions."
+                resultDataDef="errantCases">
+        <script>
+            <![CDATA[
+                errantCases.add('case U');
+                return errantCases;
+            ]]>
+        </script>
+
+        <transition condition="${resultU.exists()}">
+            <targetStepName>cleanup U</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>check for failures</targetStepName>
+        </transition>
+    </groovyStep>
+
+    <deleteFileStep name="cleanup U"
+                    sourceFilesExpression="${resultU}"
+                    nextStep="check for failures"/>
+
+
+    <noopStep name="check for failures">
+        <transition condition="${errantCases.isEmpty()}">
+            <targetStepName>success</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>tests failed</targetStepName>
+        </transition>
+    </noopStep>
+
+    <noopStep name="success"/>
+
+    <failWorkflowStep name="tests failed"
+                      reasonExpression="Test failures: ${#joinElements(errantCases, ',')}"
+                      executionLabelExpression="Test failures: ${#joinElements(errantCases, ',')}"/>
+
+    <!-- . . . . . . . . . . . . . . .CONTEXT DATA . . . . . . . . . . . . . . . . . . .-->
+
+    <!--INPUT-->
+    <contextDataDef name="virtualSourceFile" dataType="File" userInput="true"/>
+    <contextDataDef name="sourceFilePath" dataType="String" userInput="true"/>
+    <contextDataDef name="fileWrapperSourceFile" dataType="File" defaultDataExpression="${sourceFilePath}"/>
+    <contextDataDef name="bogusSourceFile" dataType="String" defaultDataExpression="/some/bogus/path/file.jpg"/>
+
+    <contextDataDef name="sourceDirectory" dataType="String" userInput="true"/>
+    <contextDataDef name="targetDirectoryFileNames" dataType="String" multiple="true"/>
+
+    <contextDataDef name="newTargetDirectoryPath" dataType="String" userInput="true"/>
+    <contextDataDef name="targetFileWrapper" dataType="File" defaultDataExpression="${newTargetDirectoryPath}"/>
+    <contextDataDef name="existingVirtualTargetFile" dataType="File" userInput="true"/>
+    <contextDataDef name="existingTargetFileLastModified" dataType="Integer" defaultDataExpression="${existingVirtualTargetFile.toFile().lastModified()}"/>
+
+    <contextDataDef name="newFilenameWithExt" dataType="String" defaultDataExpression="${#uuid()}.jpg"/>
+    <contextDataDef name="newFilenameNoExt" dataType="String" defaultDataExpression="${#uuid()}"/>
+    <contextDataDef name="newDirectoryName" dataType="String" defaultDataExpression="${#uuid()}/"/>
+    <contextDataDef name="invalidTargetFilename" dataType="Integer" defaultDataExpression="1"/>
+
+    <contextDataDef name="existingTargetDirectoryPath" dataType="String" userInput="true"/>
+    <contextDataDef name="existingTargetDirectory" dataType="Directory" defaultDataExpression="${existingTargetDirectoryPath}"/>
+    <contextDataDef name="existingTargetDirectoryLastModified" dataType="Integer" defaultDataExpression="${existingTargetDirectory.lastModified()}"/>
+
+    <contextDataDef name="anXMLNode" dataType="XML" defaultDataExpression="&lt;node&gt;value&lt;/node&gt;"/>
+    <contextDataDef name="xmlDocument" dataType="XML">
+        <defaultDataExpression>
+			<![CDATA[
+<note>
+<to>Recipient</to>
+<from>Sender</from>
+<heading>Reminder</heading>
+<body>Don't Forget</body>
+</note>
+            ]]>
+		</defaultDataExpression>
+    </contextDataDef>
+
+    <contextDataDef name="json" 			dataType="JSON">
+		<defaultDataExpression>
+			<![CDATA[
+				{
+					"testNumber":1,
+					"smTextTest":"myString"
+				}
+			]]>
+		</defaultDataExpression>
+	</contextDataDef>
+
+    <contextDataDef name="sourceAsset" dataType="Data Object" defaultDataExpression="${subject}"/>
+    <contextDataDef name="sourceAssetContent" dataType="Data Object" defaultDataExpression="${sourceAsset.originalContent}"/>
+
+    <contextDataDef name="successH" dataType="Boolean"/>
+    <contextDataDef name="successI" dataType="Boolean"/>
+    <contextDataDef name="successK" dataType="Boolean"/>
+    <contextDataDef name="successL" dataType="Boolean"/>
+
+    <contextDataDef name="errantCases" dataType="String" multiple="true" defaultDataExpression="${T(java.util.Collections).emptyList()}"/>
+
+    <contextDataDef name="resultA" dataType="File"/>
+    <contextDataDef name="resultB" dataType="File"/>
+    <contextDataDef name="resultC" dataType="File"/>
+    <contextDataDef name="resultD" dataType="File"/>
+    <contextDataDef name="resultE" dataType="File"/>
+    <contextDataDef name="resultF" dataType="File"/>
+    <contextDataDef name="resultG" dataType="File"/>
+    <contextDataDef name="resultH" dataType="File"/>
+    <contextDataDef name="resultI" dataType="Directory"/>
+    <contextDataDef name="resultJ" dataType="Directory"/>
+    <contextDataDef name="resultK" dataType="Directory"/>
+    <contextDataDef name="resultL" dataType="Directory"/>
+    <contextDataDef name="resultM" dataType="File"/>
+    <contextDataDef name="resultN" dataType="File"/>
+    <contextDataDef name="resultO" dataType="File"/>
+    <contextDataDef name="resultP" dataType="File"/>
+    <contextDataDef name="resultQ" dataType="File"/>
+    <contextDataDef name="resultR" dataType="File"/>
+    <contextDataDef name="resultS" dataType="File"/>
+    <contextDataDef name="resultT" dataType="File"/>
+    <contextDataDef name="resultU" dataType="File"/>
+    
+    <contextDataDef name="sourceDirectoryFileNames" dataType="String" multiple="true" defaultDataExpression="${#walkDir(sourceDirectory, null).![name]}"/>
+
+</workflow>

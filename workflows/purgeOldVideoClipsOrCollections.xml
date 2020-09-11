@@ -1,0 +1,128 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="purgeOldVideoClipsOrCollections"
+	name="Purge Old Video Clips or Collections"
+	executionLabelExpression="Purge Old Video Clips or Collections | ${#newDate()}"
+	description="Purges NFL video clips and collections older than dynamic prop 'purge.videoClips.collections.maxDays'"
+	subjectDOClassName=""
+	group="Run on Cron"
+	devWorkflow="true"
+	adminOnly="true"
+	showInUserInterface="true"
+	sdkVersion=""
+>
+		<initialStepName>find collections to purge</initialStepName>
+		
+		<queryStep name="find collections to purge"
+			targetDataObjectClass="AssetCollection"
+			resultDataDef="collectionsToPurge"
+			executionLabelExpression="Finding collections older than ${#sysconfig('purge.videoClips.collections.maxDays')} days"
+		>
+			<transition condition="${true}">
+				<targetStepName>find clips to purge</targetStepName>
+			</transition>
+			<criteria>
+				<![CDATA[
+				<criteria>
+					<and>
+						<!--<condition property="metadata.contentSource" op="eq"-->
+							<!--<test value="${#picklistValue('contentSource', 'NFL Network')}"/>-->
+						<!--</condition>-->
+						<condition property="dateCreated" op="gt">
+							<test value="${todaysDateMinusMaxDays}"/>
+						</condition>
+					</and>
+				</criteria>
+			]]>
+			</criteria>
+		</queryStep>
+	
+	<queryStep name="find clips to purge"
+		targetDataObjectClass="VideoClip"
+		executionLabelExpression="Finding clips older than ${#sysconfig('purge.videoClips.collections.maxDays')} days"
+		resultDataDef="clipsToPurge"
+	>
+		<transition condition="${collectionsToPurge.size() &gt; 0}">
+			<targetStepName>purge collections</targetStepName>
+		</transition>
+		<transition condition="${clipsToPurge.size() &gt; 0}">
+			<targetStepName>purge clips</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<criteria>
+			<![CDATA[
+				<criteria>
+					<and>
+						<!--<condition property="metadata.contentSource" op="eq">-->
+							<!--<test value="${#picklistValue('contentSource', 'NFL Network')}"/>-->
+						<!--</condition>-->
+						<condition property="dateCreated" op="gt">
+							<test value="${todaysDateMinusMaxDays}"/>
+						</condition>
+					</and>
+				</criteria>
+			]]>
+		</criteria>
+	</queryStep>
+	
+	<noopStep name="purge collections"
+		executionLabelExpression="Purging ${collectionsToPurge.size()} collections"
+		nextStep="purge clips"
+		/>
+	
+	<noopStep name="purge clips"
+		executionLabelExpression="Purging ${clipsToPurge.size()} clips"
+		nextStep="end"
+	/>
+	
+	<executeSubflowStep name="purge collections OG"
+		targetWorkflowId="deleteCollection"
+		subjectChangePath="${collectionsToPurge}"
+		executionLabelExpression="Purging ${collectionsToPurge.size()} collections"
+		continueOnException="true"
+		>
+		<transition condition="${clipsToDelete.size() &gt; 0}">
+			<targetStepName>purge clips</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</executeSubflowStep>
+	
+	<executeSubflowStep name="purge clips OG"
+		targetWorkflowId="deleteVideoClip"
+		subjectChangePath="${clipsToPurge}"
+		executionLabelExpression="Purging ${clipsToPurge.size()} clips"
+		continueOnException="true"
+	>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</executeSubflowStep>
+		
+		<noopStep name="end" />
+		
+		<contextDataDef name="clipsToPurge"        dataType="Data Object" multiple="true" />
+		<contextDataDef name="collectionsToPurge"        dataType="Data Object" multiple="true" />
+		<contextDataDef name="todaysDateMinusMaxDays"   dataType="String"   defaultDataExpression="${#formatDate('YYYY-MM-dd', #addDays(#newDate(), '-' + #sysconfig('purge.videoClips.collections.maxDays')))}" />
+	</workflow>

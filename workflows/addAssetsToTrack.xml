@@ -1,0 +1,61 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="addAssetsToTrack"
+          name="Add Assets to Track"
+          executionLabelExpression="Add Assets to Timeline Track - adding Assets ${#joinElements(assets.![#this.toString()], ', ')} to Track ${subject.name} on Timeline ${timeline.name} spaced apart."
+          description="Subflow to add assets to a track without overlapping them.  Make sure the assets are the same media type as the track or bad things will happen.  This doesn't check for mismatches."
+          showInUserInterface="false"
+          subjectDOClassName="TimelineTrack"
+          subjectQualifierExpression=""
+          sdkVersion="">
+    <initialStepName>add next asset to track</initialStepName>
+
+
+    <nimbus:addAssetToTimelineStep name="add next asset to track"
+                                        targetTimelineExpression="${#root.timeline}"
+                                        targetAssetExpression="${#root.assets[#root.assetIndex]}"
+                                        startOffsetExpression="${#root.nextStartOffset}"
+                                        trackExpression="${#root.track}"
+                                        nextStep="express context data defs"/>
+
+    <groovyStep name="express context data defs"
+                resultDataDef="groovyResult"
+                devStep="true"
+                nextStep="increment index">
+        <script>
+            <![CDATA[
+            return "true"
+            ]]>
+        </script>
+    </groovyStep>
+
+    <!-- I force re-eval of the context to make sure timeline is reloaded with the newly added asset so the offset computation below will include the new asset offset -->
+    <setContextData name="increment index">
+        <transition condition="${assetIndex &lt; assets.size()}">
+            <targetStepName>add next asset to track</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>fin</targetStepName>
+        </transition>
+        <set targetDataDef="nextStartOffset" valueExpression="${T(java.util.Collections).max(timeline.timelineAssets.?[timelineMedia.track.id == #root.track.id].![timelineMedia].![timelineEndOffset]) + gapOffset}" />
+        <set targetDataDef="assetIndex" valueExpression="${assetIndex + 1}"/>
+    </setContextData>
+
+    <noopStep name="fin" />
+
+    <!-- input -->
+    <contextDataDef name="track" dataType="Data Object" defaultDataExpression="${subject}" />
+    <contextDataDef name="timeline" dataType="Data Object" defaultDataExpression="${track.timelines[0]}" />
+    <contextDataDef name="assets" dataType="Data Object" multiple="true"/>
+    <contextDataDef name="startOffset" dataType="Double" defaultDataExpression="0.0" />
+    <contextDataDef name="gapOffset" dataType="Double" defaultDataExpression="120.0"/>
+
+    <!-- processing -->
+    <contextDataDef name="existingTimelineAssets" dataType="Data Object" multiple="true" defaultDataExpression="${timeline.timelineAssets?.?[timelineMedia.track.id == #root.track.id]}" />
+    <!-- start offset here, gap offset for spacing between each newly added asset -->
+    <contextDataDef name="nextStartOffset" dataType="Double" defaultDataExpression="${(existingTimelineAssets != null and existingTimelineAssets.size() > 0 ? T(java.util.Collections).max(existingTimelineAssets.![timelineMedia].![timelineEndOffset]) : timeline.timelineStartOffset) + startOffset }" />
+    <contextDataDef name="assetIndex" dataType="Integer" defaultDataExpression="0" />
+    <contextDataDef dataType="String" name="groovyResult" />
+</workflow>

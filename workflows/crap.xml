@@ -1,0 +1,21 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="crap"
+	name="crap"
+	executionLabelExpression="crap"
+	description=""
+	subjectDOClassName=""
+	deadlineExpression=""
+	showInUserInterface="true"
+	sdkVersion="5.21"
+	>
+
+	<initialStepName>end</initialStepName>
+	
+	
+	<noopStep name="end"/>
+	
+	
+</workflow>

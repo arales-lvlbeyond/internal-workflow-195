@@ -1,0 +1,51 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          id="selectCollectionAsset"
+          name="Test Asset Collection picklist"
+          executionLabelExpression="Testing Asset picklist"
+          subjectDOClassName="AssetCollection"
+          showInUserInterface="true"
+          resultDataDef=""
+          sdkVersion=""
+>
+
+    <initialStepName>print selected asset name</initialStepName>
+
+    <noopStep name="print selected asset name"
+    	executionLabelExpression="Selected: ${asset.name}"/>
+
+    <contextDataDef name="sysValue" dataType="String" defaultDataExpression="${#sysconfig('test.for.testing')}"/>
+
+    <contextDataDef name="asset" dataType="Data Object" userInput="true">
+		<picklist>
+			<dataObjectSearch dataObjectClass="AssetMaster">
+				<searchPath>name</searchPath>
+				<criteria>
+					<and xmlns="http://levelsbeyond.com/schema/criteria">
+						<condition property="collectionMemberships.collection.id" op="eq"><value>${#sysconfig('test.for.testing')}</value></condition>
+					</and>
+				</criteria>
+			</dataObjectSearch>
+		</picklist>
+	</contextDataDef>
+
+</workflow>

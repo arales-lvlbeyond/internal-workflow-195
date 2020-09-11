@@ -1,0 +1,163 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_exportImage"
+	name="Export Image"
+	executionLabelExpression="Export Image | Asset: ${subject.name} | Export Location: ${exportDirectory.name}"
+	subjectDOClassName="ImageAssetMaster"
+	resultDataDef="exportedFile"
+	showInUserInterface="true"
+	sdkVersion=""
+	>
+	
+	<initialStepName>validate requirements</initialStepName>
+	
+	
+	<noopStep name="validate requirements"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		executionLabelExpression="Source File Exists? ${sourceFile != null ? sourceFile.exists() : 'null'} | Export Width: ${exportWidth ?: 'null'} | Export Height: ${exportHeight ?: 'null'}"
+		devStep="true"
+		>
+		<transition condition="${sourceFile == null}">
+			<targetStepName>source content missing</targetStepName>
+		</transition>
+		<transition condition="${!sourceFile.exists()}">
+			<targetStepName>source file does not exist</targetStepName>
+		</transition>
+		<transition condition="${exportWidth == null OR exportHeight == null}">
+			<targetStepName>width or height missing</targetStepName>
+		</transition>
+		<transition condition="${exportWidth &lt;= maxWidth OR exportHeight &lt;= maxHeight}">
+			<targetStepName>convert image</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>width or height above max</targetStepName>
+		</transition>
+	</noopStep>
+	
+
+	<convertImageStep name="convert image"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		executionLabelExpression="converting image: ${sourceFile.absolutePath}"
+		sourceFileExpression="${sourceFile}"
+		resultDataDef="tempFile"
+		imageMagickParamsExpression="-geometry ${exportWidth}x${exportHeight}"
+		priorityExpression="${exportPriority}"
+		continueOnException="true"
+		>
+		<transition condition="${tempFile != null AND tempFile.exists()}">
+			<targetStepName>copy file to export location</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>failed to convert image</targetStepName>
+		</transition>
+	</convertImageStep>
+	
+	
+	<copyFileStep name="copy file to export location"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		executionLabelExpression="copying file to destination: ${exportDirectory.absolutePath}"
+		sourceFileExpression="${tempFile}"
+		targetDirectoryExpression="${exportDirectory}"
+		resultDataDef="exportedFile"
+		priorityExpression="${exportPriority}"
+		continueOnException="true"
+		nextStep="cleanup temp file"
+		/>
+	
+	
+	<deleteFileStep name="cleanup temp file"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		executionLabelExpression="deleting temp file: ${tempFile.absolutePath}"
+		sourceFilesExpression="${tempFile}"
+		continueOnException="true"
+		devStep="true"
+		>
+		<transition condition="${exportedFile != null AND exportedFile.exists()}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>failed to copy image</targetStepName>
+		</transition>
+	</deleteFileStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="source content missing"
+		reasonExpression="Image has no source content"
+		executionLabelExpression="Image has no source content"
+		/>
+	
+	
+	<failWorkflowStep name="source file does not exist"
+		reasonExpression="Image source file does not exist. Restore the image prior to export."
+		executionLabelExpression="Image source file does not exist. Restore the image prior to export."
+		/>
+	
+	
+	<failWorkflowStep name="width or height missing"
+		reasonExpression="No custom width or height given and it could not be automatically extracted from the asset."
+		executionLabelExpression="No custom width or height given and it could not be automatically extracted from the asset."
+		/>
+	
+	
+	<failWorkflowStep name="width or height above max"
+		reasonExpression="Custom width or height given is above the maximum size. Max dimensions are ${maxWidth}w x ${maxHeight}h."
+		executionLabelExpression="Custom width or height given is above the maximum size. Max dimensions are ${maxWidth}w x ${maxHeight}h."
+		/>
+	
+	
+	<failWorkflowStep name="failed to convert image"
+		reasonExpression="Failed to convert image using ImageMagick. Check the previous step for details."
+		executionLabelExpression="Failed to convert image using ImageMagick. Check the previous step for details."
+		/>
+	
+	
+	<failWorkflowStep name="failed to copy image"
+		reasonExpression="Failed to copy converted image to the export location. Check the previous step for details."
+		executionLabelExpression="Failed to copy converted image to the export location. Check the previous step for details."
+		/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<contextDataDef name="exportDirectory"  dataType="Directory"    userInput="true"    required="true" label="Export Location"     displayIndex="1"/>
+	<contextDataDef name="customWidth"      dataType="Integer"      userInput="true"                    label="Width to Export"     displayIndex="2"/>
+	<contextDataDef name="customHeight"     dataType="Integer"      userInput="true"                    label="Height to Export"    displayIndex="3"/>
+	<contextDataDef name="exportPriority"   dataType="Integer"      defaultDataExpression="0"/>
+	
+	<!-- ........... OUTPUT ............. -->
+	<contextDataDef name="exportedFile"     dataType="File"/>
+	
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="tempFile"         dataType="File"/>
+	<contextDataDef name="sourceFile"       dataType="File"         defaultDataExpression="${subject.originalContent?.file}"/>
+	<contextDataDef name="exportHeight"     dataType="Integer"      defaultDataExpression="${customHeight ?: subject?.originalContent?.height}"/>
+	<contextDataDef name="exportWidth"      dataType="Integer"      defaultDataExpression="${customWidth ?: subject?.originalContent?.width}"/>
+	<contextDataDef name="maxWidth"         dataType="Integer"      defaultDataExpression="${#sysconfig('workflows.default.export.image.maxWidth') ?: subject?.originalContent?.width * 5}"/>
+	<contextDataDef name="maxHeight"        dataType="Integer"      defaultDataExpression="${#sysconfig('workflows.default.export.image.maxHeight') ?: subject?.originalContent?.height * 5}"/>
+	<contextDataDef name="wfExe"            dataType="Data Object"  defaultDataExpression="${#this}"/>
+	
+</workflow>

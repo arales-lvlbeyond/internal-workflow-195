@@ -1,0 +1,176 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="createVideoClipFromSidecarTC"
+	name="Create Video Clip From Sidecar TC"
+	executionLabelExpression="Create Video Clip From Sidecar TC | ${videoClip.name}"
+	description="Creates a video clip asset in Reach based on timecode strings parsed as 'name - in - out'"
+	subjectDOClassName=""
+	showInUserInterface="false"
+	sdkVersion=""
+>
+	
+	<initialStepName>prep metadata</initialStepName>
+	
+	<groovyStep name="prep metadata"
+		resultDataDef="jsonMetadata"
+		executionLabelExpression="prepping metadata"
+		nextStep="prep clip json"
+	>
+		<script>
+			<![CDATA[
+			import com.levelsbeyond.workflow.sdk.function.GetPicklistValueFunction
+			
+			def values = jsonMetadata.contentDescriptionSecondary.textValue()
+			def picklistValue = GetPicklistValueFunction.evaluate('contentDescriptionSecondary', 'NETWORK MARKER')
+			
+			if (values?.length() > 0) {
+				values += "|" + picklistValue
+			} else {
+				values = picklistValue
+			}
+			jsonMetadata.put("contentDescriptionSecondary", values)
+			return jsonMetadata
+			]]>
+		</script>
+	</groovyStep>
+	
+	<groovyStep name="prep clip json"
+		resultDataDef="clipJson"
+		executionLabelExpression="prepping clip json"
+		nextStep="create video clip"
+		>
+		<script>
+			<![CDATA[
+			import com.routeto1.asset.video.util.Timecode
+			import com.routeto1.asset.video.util.Timecodes
+			import com.routeto1.asset.video.util.TimecodeFormat
+			import java.text.DecimalFormat
+			
+			try {
+				
+				// parse and convert timecode data into seconds - offset against asset start in case start timecode is above 0.0
+				
+				def assetTimecodeFormat = TimecodeFormat.DROP_FRAME
+//				def assetTimecodeFormat = TimecodeFormat.NON_DROP_FRAME
+				
+				Timecode assetStartTimecode = Timecodes.newTimecodeFromTimecodeString(video.originalContent.startTimecode.toString(), frameRate, assetTimecodeFormat)
+				assetStartOffset = Double.parseDouble((assetStartTimecode.getHours() * 3600) + (assetStartTimecode.getMinutes() * 60) + (assetStartTimecode.getSeconds()) + (new DecimalFormat('.###').format(assetStartTimecode.getFrames() / frameRate)))
+				
+				Timecode assetEndTimecode = Timecodes.newTimecodeFromTimecodeString(video.originalContent.endTimecode.toString(), frameRate, assetTimecodeFormat)
+				assetEndSeconds = Double.parseDouble((assetEndTimecode.getHours() * 3600) + (assetEndTimecode.getMinutes() * 60) + (assetEndTimecode.getSeconds()) + (new DecimalFormat('.###').format(assetEndTimecode.getFrames() / frameRate)))
+				
+				Timecode clipStartTimecode = Timecodes.newTimecodeFromTimecodeString(timecode.startTime.textValue(), frameRate, assetTimecodeFormat)
+				clipStartSeconds = Double.parseDouble((clipStartTimecode.getHours() * 3600) + (clipStartTimecode.getMinutes() * 60) + (clipStartTimecode.getSeconds()) + (new DecimalFormat('.###').format(clipStartTimecode.getFrames() / frameRate)))
+				
+				Timecode clipEndTimecode = Timecodes.newTimecodeFromTimecodeString(timecode.endTime.textValue(), frameRate, assetTimecodeFormat)
+				clipEndSeconds = Double.parseDouble((clipEndTimecode.getHours() * 3600) + (clipEndTimecode.getMinutes() * 60) + (clipEndTimecode.getSeconds()) + (new DecimalFormat('.###').format(clipEndTimecode.getFrames() / frameRate)))
+				
+				clipStartSeconds -= assetStartOffset
+				clipEndSeconds -= assetStartOffset
+				
+				clipJson.put("name", timecode.name)
+				clipJson.put("startTime", clipStartSeconds)
+				clipJson.put("endTime", clipEndSeconds)
+				clipJson.put("startTimecode", clipStartTimecode.toString())
+				clipJson.put("endTimecode", clipEndTimecode.toString())
+				clipJson.put("assetStartSeconds", assetStartOffset)
+				clipJson.put("assetEndSeconds", assetEndSeconds)
+				
+			} catch (Exception e) {
+				clipJson.put("error", e.toString())
+			}
+			
+			return clipJson
+			
+			]]>
+		</script>
+	</groovyStep>
+	
+	<saveDataObjectStep name="create video clip"
+		executionLabelExpression="Creating Clip ${clipJson.name} on Video ${video.name}"
+		targetDataObjectClass="VideoClip"
+		resultDataDef="videoClip"
+		pctComplete="60"
+	>
+		<transition condition="${jsonMetadata != null}">
+			<targetStepName>save custom metadata</targetStepName>
+		</transition>
+		<!--<transition condition="${categoryNames != null}">-->
+			<!--<targetStepName>save categories</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${collectionNames != null}">-->
+			<!--<targetStepName>add clip to collections</targetStepName>-->
+		<!--</transition>-->
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		
+		<property name="assetMaster">${video}</property>
+		<property name="name">${clipJson.name}</property>
+		<property name="assetClipStartOffset">${clipJson.startTime}</property>
+		<property name="assetClipEndOffset">${clipJson.endTime}</property>
+		<!--<property name="startTimecode">${clipJson.startTimecode}</property>-->
+		<!--<property name="endTimecode">${clipJson.endTimecode}</property>-->
+	</saveDataObjectStep>
+	
+	<saveDataObjectStep name="save custom metadata"
+		dataObjectExpression="${videoClip.metadata}"
+		jsonValuesDataDef="jsonMetadata"
+		executionLabelExpression="see contextData tab for info on &quot;jsonMetadata&quot;"
+		pctComplete="80"
+	>
+		<!--<transition condition="${categoryNames != null}">-->
+			<!--<targetStepName>save categories</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${collectionNames != null}">-->
+			<!--<targetStepName>add clip to collections</targetStepName>-->
+		<!--</transition>-->
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</saveDataObjectStep>
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	
+	<contextDataDef name="video"        dataType="Data Object" required="true" />
+	<contextDataDef name="videoClip"    dataType="Data Object"  />
+	<contextDataDef name="timecode"     dataType="JSON"   />
+	<contextDataDef name="jsonMetadata" dataType="JSON" required="true" />
+	
+	<!-- ......... PROCESSING ........... -->
+	
+	<contextDataDef name="clipJson" dataType="JSON" defaultDataExpression="{}"  />
+	<!--<contextDataDef name="clipStartTime" dataType="String"  />-->
+	<!--<contextDataDef name="clipEndTime" dataType="String"    />-->
+	<!--<contextDataDef name="timecodeFormat" dataType="String"     defaultDataExpression="${video.originalContent.timecodeFormat}" />-->
+	<contextDataDef name="frameRate" dataType="Double"     defaultDataExpression="${video.originalContent.frameRate}" />
+	<contextDataDef name="videoEndTime" dataType="String"     defaultDataExpression="${video.originalContent.endTimecode}" />
+	<!--<contextDataDef name="startTime"    dataType="Double" defaultDataExpression="${clipJson.get('startTime').asInt()/video.frameRate}"/>-->
+	<!--<contextDataDef name="endTime"      dataType="Double" defaultDataExpression="${(clipJson.get('endTime').asInt()+ jsonMetadata.get('duration').asInt())/timeline.frameRate}"/>-->
+
+
+</workflow>

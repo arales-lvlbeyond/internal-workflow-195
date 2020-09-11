@@ -1,0 +1,104 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="extractCollectionAssetsMetadata"
+	name="Extract Collection Assets Metadata"
+	executionLabelExpression="Extract Collection Assets Metadata | Collection: ${subject.name} "
+	subjectDOClassName="AssetCollection"
+	showInUserInterface="true"
+	resultDataDef="allAssetsMetadata"
+	sdkVersion=""
+	>
+	
+	<initialStepName>check for collection items</initialStepName>
+	
+	
+	<noopStep name="check for collection items"
+		executionLabelExpression="${subject.items.size()} collection assets to extract metadata from"
+		>
+		<transition condition="${subject.items.size() &gt; 0}">
+			<targetStepName>combine all asset types</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<groovyStep name="combine all asset types"
+		resultDataDef="collectionAssets"
+		devStep="true"
+		nextStep="get collection assets metadata"
+		>
+		<script>
+		<![CDATA[
+			def allAssets = new ArrayList()
+			
+			if(assetMasters.size() > 0) {
+				allAssets.addAll(assetMasters)
+			}
+			if(timelines.size() > 0) {
+				allAssets.addAll(timelines)
+			}
+			if(clips.size() > 0) {
+				allAssets.addAll(clips)
+			}
+			if(videoClips.size() > 0) {
+				allAssets.addAll(videoClips)
+			}
+			if(markers.size() > 0) {
+				allAssets.addAll(markers)
+			}
+			if(projects.size() > 0) {
+				allAssets.addAll(projects)
+			}
+			
+			return allAssets
+			]]>
+		</script>
+	</groovyStep>
+	
+	
+	<executeSubflowStep name="get collection assets metadata"
+		targetWorkflowId="extractAssetMetadata"
+		subjectChangePath="${collectionAssets}"
+		subflowTargetDataDef="asset"
+		subflowExecutionLimitExpression="25"
+		resultDataDef="allAssetsMetadata"
+		/>
+	
+	
+	<noopStep name="end" pctComplete="100"/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- processing -->
+	<contextDataDef name="collection"           dataType="Data Object"  multiple="true" defaultDataExpression="${subject}"/>
+	<contextDataDef name="assetMasters"         dataType="Data Object"  multiple="true" defaultDataExpression="${subject.assetItems.![asset]}"/>
+	<contextDataDef name="timelines"            dataType="Data Object"  multiple="true" defaultDataExpression="${subject.timelineItems.![timeline]}"/>
+	<contextDataDef name="clips"                dataType="Data Object"  multiple="true" defaultDataExpression="${subject.clipItems.![clips]}"/>
+	<contextDataDef name="videoClips"           dataType="Data Object"  multiple="true" defaultDataExpression="${subject.items.?[videoClip != null].![videoClip]}"/>
+	<contextDataDef name="markers"              dataType="Data Object"  multiple="true" defaultDataExpression="${subject.items.?[marker != null].![marker]}"/>
+	<contextDataDef name="projects"             dataType="Data Object"  multiple="true" defaultDataExpression="${subject.projectItems.![project]}"/>
+	<contextDataDef name="collectionAssets"     dataType="Data Object"  multiple="true"/>
+	<contextDataDef name="allAssetsMetadata"    dataType="JSON"         multiple="true"/>
+
+
+</workflow>

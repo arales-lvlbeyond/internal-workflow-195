@@ -1,0 +1,136 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+		http://levelsbeyond.com/schema/latest
+		https://s3-us-west-2.amazonaws.com/schema.levelsbeyond.com/2.3.16.17962/studio.xsd
+	"
+	id="createNewCollection"
+	name="Create New Collection"
+	executionLabelExpression="Create New Collection | ${originalCollectionName}"
+	subjectDOClassName=""
+	showInUserInterface="false"
+	resultDataDef="collection"
+	sdkVersion="">
+
+	<initialStepName>set original collection name</initialStepName>
+	
+	<setContextData name="set original collection name"
+		targetDataDef="originalCollectionName"
+		valueExpression="${collectionName}"
+		nextStep="check for existing collection"
+		devStep="true"
+	/>
+	
+	<!-- is there a collection that already exists with the same name? -->
+	<queryStep name="check for existing collection"
+		targetDataObjectClass="AssetCollection"
+		resultDataDef="collection"
+		executionLabelExpression="Does a collection with the name ${collectionName} already exist? | ${collection != null or !collection.equals('')}"
+	>
+		<transition condition="${collection != null or !collection.equals('')}">
+			<targetStepName>collection found</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>create collection</targetStepName>
+		</transition>
+		<criteria>
+			<![CDATA[
+				<criteria>
+                    <and>
+                        <condition property="name" op="eq">
+                            <test value="${ T(org.apache.commons.lang.StringEscapeUtils).escapeXml(collectionName) }"/>
+                        </condition>
+                    </and>
+				</criteria>
+			]]>
+		</criteria>
+	</queryStep>
+	
+	<noopStep name="collection found"
+		executionLabelExpression="A collection was found with the name ${collectionName}."
+	>
+		<transition condition="${createDuplicate}">
+			<targetStepName>extract copy number from name</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>collection already exists</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<groovyStep name="extract copy number from name"
+		executionLabelExpression="Making a duplicate collection with copy number appended to the name. Extracting collection copy number: ${copyNumber}"
+		resultDataDef="copyNumber"
+		nextStep="set new collection name"
+	>
+		<script>
+			<![CDATA[
+			splitName = []
+			splitName = collection.name.split('_')
+			
+			copyNum = splitName[splitName.size()-1]
+			// check if last element in splitName is a valid number
+			if (copyNum.isNumber())
+			{
+				return copyNum.toInteger() + 1
+			}
+			
+			// Only one duplicate exists. Returns -1 to signify to add '_1' to new collection name.
+			return -1
+			]]>
+		</script>
+	</groovyStep>
+	
+	<setContextData name="set new collection name"
+		targetDataDef="collectionName"
+		valueExpression="${copyNumber &gt; 0 ? collectionName.substring(0, collectionName.length() - copyNumber.toString().length() - 1) + '_' + copyNumber : collectionName + '_1'}"
+		nextStep="check for existing collection"
+	/>
+	
+	<saveDataObjectStep name="create collection"
+		targetDataObjectClass="AssetCollection"
+		resultDataDef="collection"
+		executionLabelExpression="Creating collection with the name ${collectionName}"
+		nextStep="end"
+	>
+		<property name="name">${collectionName}</property>
+	</saveDataObjectStep>
+	
+	
+	<!-- ........................................... Ending Steps .......................................... -->
+	<!-- success -->
+	<noopStep name="end" />
+	
+	<!-- Fail -->
+	<failWorkflowStep name="collection already exists"
+		executionLabelExpression="A custom collection of the following name already exists: ${collectionName}"
+		reasonExpression="A custom collection of the following name already exists: ${collectionName}"
+	/>
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<!-- Name of the collection to look for -->
+	<contextDataDef name="collectionName" 	                dataType="String" />
+	<contextDataDef name="createDuplicate"                  dataType="Boolean" />
+	
+	<!-- .......... Processing .......... -->
+	<contextDataDef name="collection" 		                dataType="Data Object" />
+	<contextDataDef name="originalCollectionName"           dataType="String"       defaultDataExpression="${collectionName}" />
+	<contextDataDef name="copyNumber"                       dataType="Integer" />
+ 
+</workflow>

@@ -1,0 +1,53 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="        
+	http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-2.0.xsd
+	http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-1.2.xsd        
+	"
+	
+	id="blackPearlArchiveAssetMaster"
+	name="Archive Asset To Black Pearl"
+	executionLabelExpression="Archive Asset To Black Pearl | ${archiveOrBackup} AssetMaster | ${subject.name}"
+	description="
+	"
+	subjectDOClassName="AssetMaster"
+	subjectQualifierExpression=""
+	adminOnly="false"
+	showInUserInterface="true"
+	sdkVersion=""
+>
+	
+	<initialStepName>archive content</initialStepName>
+	
+	<!-- archive the source/mezz content -->
+	<executeSubflowStep name="archive content"
+		targetWorkflowId="blackPearlArchiveAssetContent"
+		subjectChangePath="${contentToArchive}"
+		executionLabelExpression="archive option >>> ${archiveOrBackup}"
+		pctComplete="95"
+	>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		
+		<subflowContextDataMapping parentDataDef="archiveOrBackup"  subflowDataDef="archiveOrBackup"/>
+	</executeSubflowStep>
+	
+	
+	<!-- Success -->
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<!-- .................................................. Context Data Defs .................................................. -->
+	<!-- Source/Mezzanine AssetContent -->
+	<contextDataDef name="contentToArchive" dataType="Data Object"  defaultDataExpression="${ #mezzanineContent(subject) }"/>
+	<!-- user input - archive (truncate) content? or backup content? -->
+	<contextDataDef name="archiveOrBackup"  dataType="String"       label="1: Archive or backup?"  userInput="true"    required="true">
+		<picklist>
+			<picklistItem label="Archive"                           value="archive"/>
+			<picklistItem label="Backup"                            value="backup"/>
+		</picklist>
+	</contextDataDef>
+
+</workflow>

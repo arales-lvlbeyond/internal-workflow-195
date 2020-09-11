@@ -1,0 +1,123 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="checkAssetToTimeline"
+	name="check asset to timeline"
+	executionLabelExpression=" Running ${asset.name} "
+	subjectDOClassName=""
+	showInUserInterface="false"
+	sdkVersion=""
+>
+	
+	<initialStepName>query timelines</initialStepName>
+	
+	<!-- Query timelines -->
+	<queryStep name="query timelines"
+		executionLabelExpression="Querying timelines: ${ timelines?.size() ?: 'pending' }"
+		targetDataObjectClass="Timeline"
+		resultDataDef="singleTimeline"
+		nextStep="check for metadata content" >
+		<criteria>
+			<![CDATA[
+				<criteria>
+					<and>
+						<condition property="name" op="eq"><test value="${baseFile}"/></condition>
+					</and>
+				</criteria>
+			]]>
+		</criteria>
+	</queryStep>
+	
+	<noopStep name="check for metadata content"
+		executionLabelExpression="Checking Assets for Metadata"
+	>
+		<transition condition="${baseFile.equals(singleTimeline.name)}">
+			<targetStepName>query for timeline metadata</targetStepName>
+		</transition>
+		<transition condition="${asset.size() == 0}">
+			<targetStepName>No Assets Found</targetStepName>
+		</transition>
+		<transition condition="${singleTimeline.size() == 0}">
+			<targetStepName>No Timelines found</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<submitHttpStep
+		name="query for timeline metadata"
+		urlExpression="${#sysconfig('reachengine.url')}/reachengine/api/metadata/${singleTimeline.metadata.id}"
+		requestMethodExpression="GET"
+		responsePayloadDataDef="jsonMetadata"
+		responseCodeDataDef="responseCode"
+		continueOnException="true">
+		<transition condition="${jsonMetadata.size() > 0 and responseCode == 200}">
+			<targetStepName>save timeline metadata</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>no metadata found</targetStepName>
+		</transition>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+		<requestHeader name="apiKey">${#sysconfig('workflow.api.key')}</requestHeader>
+		<requestHeader name="api-version">2.0</requestHeader>
+	</submitHttpStep>
+	
+	<saveDataObjectStep name="save timeline metadata"
+		dataObjectExpression="${asset.metadata}"
+		jsonValuesDataDef="jsonMetadata"
+		nextStep="add collections to asset">
+	</saveDataObjectStep>
+	
+	<!-- Add given collections to the asset -->
+	<executeSubflowStep
+		name="add collections to asset"
+		targetWorkflowId="_addCategoryOrCollectionToAsset"
+		subjectChangePath="${collections}"
+		subflowTargetDataDef="collection"
+		nextStep="end"
+	>
+		<subflowContextDataMapping parentDataDef="asset" subflowDataDef="asset"/>
+	</executeSubflowStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	<failWorkflowStep name="No Assets Found"
+		reasonExpression="No matching assets were found" />
+	
+	<failWorkflowStep name="No Timelines found"
+		reasonExpression="No matching Timelines were found" />
+	
+	<failWorkflowStep name="no metadata found"
+		reasonExpression="no metadata was found" />
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="asset" 				dataType="Data Object"      />
+	<contextDataDef name="singleTimeline" 		dataType="Data Object" 	    />
+	<contextDataDef name="baseFile"             dataType="String"           defaultDataExpression="${#baseFilename(asset.name)}" />
+	<contextDataDef name="jsonMetadata"         dataType="JSON"             />
+	<contextDataDef name="responseCode"         dataType="Integer"          />
+	<contextDataDef name="collections"          dataType="Data Object"      multiple="true"     defaultDataExpression="${singleTimeline.collectionMemberships?.![collection]}" />
+	
+</workflow>

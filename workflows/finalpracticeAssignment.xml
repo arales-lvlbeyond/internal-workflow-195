@@ -1,0 +1,81 @@
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="finalpracticeAssignment"
+	name="final assessment"
+	executionLabelExpression="Practice 10 Assignment: refactor 9"
+	description="
+    	Create Workflow
+    		Take practice 9 and modify it to find multiple assets with findMe set to true
+    		Replace the saveDataObjectStep and reindex with calling practice 8 as a subflow to set findMe to false on each of the found assets
+    "
+	subjectDOClassName=""
+	resultDataDef=""
+	deadlineExpression=""
+	showInUserInterface="true"
+	sdkVersion=""
+>
+	
+	
+	<initialStepName>get assets</initialStepName>
+	
+	
+	<!-- find an AssetMaster object with the 'findMe' metadata field set to true -->
+	<queryStep name="get assets"
+		targetDataObjectClass="AssetMaster"
+		resultDataDef="allFoundAssets"
+		pctComplete="33"
+		executionLabelExpression="finding all assets where 'findMe' is set to true"
+	>
+		<transition condition="${allFoundAssets.size() > 0}">
+			<targetStepName>set findMe to false</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>no asset found</targetStepName>
+		</transition>
+		
+		<criteria>
+			<![CDATA[
+			<and>
+				<condition property="metadata.findMe" op="eq">
+						<test value="true" />
+					</condition>
+				</and>
+			]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<executeSubflowStep name="set findMe to false"
+		targetWorkflowId="assetmastertest"
+		subjectChangePath="${allFoundAssets}"
+		executionLabelExpression="Setting findMe on ${foundAsset.name} to false"
+		pctComplete="99"
+		nextStep="end"
+	>
+		<subflowContextDataMapping parentDataDef="findMeFalse" subflowDataDef="newValue" />
+	</executeSubflowStep>
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- no asset found in the query -->
+	<noopStep name="no asset found"
+		executionLabelExpression="no asset found in the query"
+		nextStep="end"
+	/>
+	
+	
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ..... inputs ..... -->
+	
+	<!-- ... Calculated ... -->
+	<!-- AssetMaster returned from the query -->
+	<contextDataDef name="allFoundAssets"   dataType="Data Object"  multiple="true" />
+	<contextDataDef name="findMeFalse" dataType="Boolean"   defaultDataExpression="false" />
+
+</workflow>

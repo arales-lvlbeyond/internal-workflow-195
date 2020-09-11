@@ -1,0 +1,62 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="testSomethingRandom"
+	name="Test Something Random"
+	executionLabelExpression="Test Something Random"
+	description="Used to test random use cases"
+	showInUserInterface="true"
+	subjectDOClassName="AssetMaster"
+	sdkVersion=""
+	>
+
+    <initialStepName>query categories by id</initialStepName>
+
+
+	<queryStep name="query categories by id"
+		targetDataObjectClass="AssetCategory"
+		resultDataDef="categoriesByQuery"
+		nextStep="eval data defs"
+		>
+		<criteria>
+		<![CDATA[
+            <criteria>
+				<or>
+					<condition property="id" op="in">
+                        <tests>
+                            <test value="${categoryIds[0]}" />
+                            <test value="${categoryIds[1]}" />
+                            <test value="${categoryIds[2]}" />
+                        </tests>
+                    </condition>
+				</or>
+			</criteria>
+        ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<groovyStep name="eval data defs"
+		resultDataDef="dataEvaluated"
+		nextStep="end"
+		>
+		<script>
+		<![CDATA[
+			return true
+		]]>
+		</script>
+	</groovyStep>
+
+	
+	<noopStep name="end"/>
+	
+
+    <!-- Context Data Defs -->
+    <contextDataDef name="categoriesByMetadata" dataType="Data Object" multiple="true"  defaultDataExpression="${subject.metadata.categories}"/>
+	<contextDataDef name="categoryNames"        dataType="String"      multiple="true"  defaultDataExpression="${categoriesByMetadata.![name]}"/>
+	<contextDataDef name="categoryIds"          dataType="String"      multiple="true"  defaultDataExpression="${categoriesByMetadata.![id]}"/>
+	<contextDataDef name="categoriesByRef"      dataType="String"      multiple="true"  defaultDataExpression="${categoryIds.!['[AssetCategory.' + #this + ']']}"/>
+	<contextDataDef name="categoriesByQuery"    dataType="String"      multiple="true"/>
+	<contextDataDef name="dataEvaluated"        dataType="Boolean"                      defaultDataExpression="false"/>
+</workflow>

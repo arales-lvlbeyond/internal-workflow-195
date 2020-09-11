@@ -1,0 +1,546 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"    
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    
+    id="queryForAssets"
+    name="Query For Assets"
+    executionLabelExpression="Query For Assets"
+    description=""
+    subjectDOClassName=""
+    showInUserInterface="false"
+    resultDataDef="allAssets"
+    deadlineExpression=""
+    adminOnly="true"
+    sdkVersion=""
+    >
+    
+    
+    
+    <initialStepName>check for assets to report on</initialStepName>
+    
+    
+
+    <!-- ............................................ Initial Check Steps ............................................... -->
+    <!-- first query filter -->
+    <noopStep name="check for assets to report on"
+        executionLabelExpression="${assetTypesString}
+            | All Assets? > ${assetTypesString.contains('all')}
+            | Video? > ${assetTypesString.contains('video')}
+            | Images? > ${assetTypesString.contains('image')}
+            | Audio? > ${assetTypesString.contains('audio')}
+            | Docs? > ${assetTypesString.contains('document')}
+            | Collections? > ${assetTypesString.contains('collection')}
+            | Projects? > ${assetTypesString.contains('project')}
+            | Other? > ${assetTypesString.contains('other')}"
+        >
+        <transition condition="${assetTypesString.contains('all')}">
+            <targetStepName>query for videos</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('video')}">
+            <targetStepName>query for videos</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('image')}">
+            <targetStepName>query for images</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('audio')}">
+            <targetStepName>query for audio</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('document')}">
+            <targetStepName>query for documents</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('collection')}">
+            <targetStepName>query for collections</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('project')}">
+            <targetStepName>query for projects</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('other')}">
+            <targetStepName>query for others</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>no asset types selected</targetStepName>
+        </transition>
+    </noopStep>
+    
+    
+    
+    
+    
+
+    <!-- ................................................ Query Steps ................................................... -->
+    <!-- Get Videos -->
+    <queryStep name="query for videos"
+        executionLabelExpression="query for videos between dates ${#formatDate('yyyy-MM-dd', queryStartDate)} and ${#formatDate('yyyy-MM-dd', queryEndDate)}"
+        targetDataObjectClass="VideoAssetMaster"
+        resultDataDef="videoAssets" 
+        pctComplete="30"
+        >
+        <transition condition="${assetTypesString.contains('all')}">
+            <targetStepName>query for images</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('image')}">
+            <targetStepName>query for images</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('audio')}">
+            <targetStepName>query for audio</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('document')}">
+            <targetStepName>query for documents</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('collection')}">
+            <targetStepName>query for collections</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('project')}">
+            <targetStepName>query for projects</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('other')}">
+            <targetStepName>query for others</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>combine all queries</targetStepName>
+        </transition>
+        
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <or>
+                            <condition property="dateCreated" op="gt">
+                                <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                            </condition>
+                            <condition property="dateCreated" op="eq">
+                                <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                            </condition>
+                        </or>
+                        <or>
+                            <condition property="dateCreated" op="lt">
+                                <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                            </condition>
+                            <condition property="dateCreated" op="eq">
+                                <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                            </condition>
+                        </or>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+    
+    
+    
+    <!-- Get Images -->
+    <queryStep name="query for images"
+        executionLabelExpression="query for images between dates ${#formatDate('yyyy-MM-dd', queryStartDate)} and ${#formatDate('yyyy-MM-dd', queryEndDate)}"
+        targetDataObjectClass="ImageAssetMaster" 
+        resultDataDef="imageAssets" 
+        pctComplete="40"
+        >
+        <transition condition="${assetTypesString.contains('all')}">
+            <targetStepName>query for audio</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('audio')}">
+            <targetStepName>query for audio</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('document')}">
+            <targetStepName>query for documents</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('collection')}">
+            <targetStepName>query for collections</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('project')}">
+            <targetStepName>query for projects</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('other')}">
+            <targetStepName>query for others</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>combine all queries</targetStepName>
+        </transition>
+        
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <or>
+                            <condition property="dateCreated" op="gt">
+                                <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                            </condition>
+                            <condition property="dateCreated" op="eq">
+                                <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                            </condition>
+                        </or>
+                        <or>
+                            <condition property="dateCreated" op="lt">
+                                <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                            </condition>
+                            <condition property="dateCreated" op="eq">
+                                <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                            </condition>
+                        </or>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+    
+    
+    
+    <!-- Get Audio -->
+    <queryStep name="query for audio"
+        executionLabelExpression="query for audio between dates ${#formatDate('yyyy-MM-dd', queryStartDate)} and ${#formatDate('yyyy-MM-dd', queryEndDate)}"
+        targetDataObjectClass="audioAssetMaster" 
+        resultDataDef="audioAssets" 
+        pctComplete="50"
+        >
+        <transition condition="${assetTypesString.contains('all')}">
+            <targetStepName>query for documents</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('document')}">
+            <targetStepName>query for documents</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('collection')}">
+            <targetStepName>query for collections</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('project')}">
+            <targetStepName>query for projects</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('other')}">
+            <targetStepName>query for others</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>combine all queries</targetStepName>
+        </transition>
+        
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <or>
+                            <condition property="dateCreated" op="gt">
+                                <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                            </condition>
+                            <condition property="dateCreated" op="eq">
+                                <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                            </condition>
+                        </or>
+                        <or>
+                            <condition property="dateCreated" op="lt">
+                                <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                            </condition>
+                            <condition property="dateCreated" op="eq">
+                                <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                            </condition>
+                        </or>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+    
+    
+    
+    <!-- Get Documents -->
+    <queryStep name="query for documents"
+        executionLabelExpression="query for documents between dates ${#formatDate('yyyy-MM-dd', queryStartDate)} and ${#formatDate('yyyy-MM-dd', queryEndDate)}"
+        targetDataObjectClass="documentAssetMaster" 
+        resultDataDef="documentAssets" 
+        pctComplete="60"
+        >
+        <transition condition="${assetTypesString.contains('all')}">
+            <targetStepName>query for collections</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('collection')}">
+            <targetStepName>query for collections</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('project')}">
+            <targetStepName>query for projects</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('other')}">
+            <targetStepName>query for others</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>combine all queries</targetStepName>
+        </transition>
+        
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <or>
+                            <condition property="dateCreated" op="gt">
+                                <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                            </condition>
+                            <condition property="dateCreated" op="eq">
+                                <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                            </condition>
+                        </or>
+                        <or>
+                            <condition property="dateCreated" op="lt">
+                                <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                            </condition>
+                            <condition property="dateCreated" op="eq">
+                                <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                            </condition>
+                        </or>
+                        
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+    
+    
+    
+    <!-- Get Collections -->
+    <queryStep name="query for collections"
+        executionLabelExpression="query for collections between dates ${#formatDate('yyyy-MM-dd', queryStartDate)} and ${#formatDate('yyyy-MM-dd', queryEndDate)}"
+        targetDataObjectClass="AssetCollection" 
+        resultDataDef="collectionAssets" 
+        pctComplete="70"
+        >
+        <transition condition="${assetTypesString.contains('all')}">
+            <targetStepName>query for projects</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('project')}">
+            <targetStepName>query for projects</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('other')}">
+            <targetStepName>query for others</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>combine all queries</targetStepName>
+        </transition>
+        
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <or>
+                            <condition property="dateCreated" op="gt">
+                                <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                            </condition>
+                            <condition property="dateCreated" op="eq">
+                                <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                            </condition>
+                        </or>
+                        <or>
+                            <condition property="dateCreated" op="lt">
+                                <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                            </condition>
+                            <condition property="dateCreated" op="eq">
+                                <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                            </condition>
+                        </or>
+                        
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+    
+    
+    
+    <!-- Get Projects -->
+    <queryStep name="query for projects"
+        executionLabelExpression="query for projects between dates ${#formatDate('yyyy-MM-dd', queryStartDate)} and ${#formatDate('yyyy-MM-dd', queryEndDate)}"
+        targetDataObjectClass="Project" 
+        resultDataDef="projectAssets" 
+        pctComplete="80"
+        >
+        <transition condition="${assetTypesString.contains('all')}">
+            <targetStepName>query for others</targetStepName>
+        </transition>
+        <transition condition="${assetTypesString.contains('other')}">
+            <targetStepName>query for others</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>combine all queries</targetStepName>
+        </transition>
+        
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <or>
+                            <condition property="dateCreated" op="gt">
+                                <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                            </condition>
+                            <condition property="dateCreated" op="eq">
+                                <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                            </condition>
+                        </or>
+                        <or>
+                            <condition property="dateCreated" op="lt">
+                                <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                            </condition>
+                            <condition property="dateCreated" op="eq">
+                                <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                            </condition>
+                        </or>
+                        
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+    
+    
+    
+    <!-- Get Other Assets -->
+    <queryStep name="query for others"
+        executionLabelExpression="query for others between dates ${#formatDate('yyyy-MM-dd', queryStartDate)} and ${#formatDate('yyyy-MM-dd', queryEndDate)}"
+        targetDataObjectClass="AssetMaster" 
+        resultDataDef="otherAssets" 
+        pctComplete="90"
+        >
+        <transition condition="true">
+            <targetStepName>combine all queries</targetStepName>
+        </transition>
+        
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="dateCreated" op="gte">
+                            <test value="${#formatDate('yyyy-MM-dd', queryStartDate)}"/>
+                        </condition>
+                        <condition property="dateCreated" op="lte">
+                            <test value="${#formatDate('yyyy-MM-dd', queryEndDate)}"/>
+                        </condition>
+                        <condition property="assetType" op="eq">
+                            <test value="Other"/>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+    
+    
+    
+    <!-- Combine All queries into a single array -->
+    <groovyStep name="combine all queries"
+        resultDataDef="allAssets"
+        executionLabelExpression="combine all queries into a single array of dataObjects"
+        pctComplete="99"
+        nextStep="end"
+        >
+        <script>
+            <![CDATA[
+                 
+                 // combined array variable
+                 itemsArray = new ArrayList();
+			     
+			     // videos
+			     if (videoAssets != null)
+			     {
+			         for(i = 0; i < videoAssets.size(); i++)
+				        {itemsArray.add(videoAssets[i]);}
+			     }
+			     // images
+			     if (imageAssets != null)
+			     {
+			         for(i = 0; i < imageAssets.size(); i++)
+				        {itemsArray.add(imageAssets[i]);}
+			     }
+			     // audio
+			     if (audioAssets != null)
+			     {
+			         for(i = 0; i < audioAssets.size(); i++)
+				        {itemsArray.add(audioAssets[i]);}
+			     }
+			     // documents
+			     if (documentAssets != null)
+			     {
+			         for(i = 0; i < documentAssets.size(); i++)
+				        {itemsArray.add(documentAssets[i]);}
+			     }
+			     // collections
+			     if (collectionAssets != null)
+			     {
+			         for(i = 0; i < collectionAssets.size(); i++)
+				        {itemsArray.add(collectionAssets[i]);}
+			     }
+			     // projects
+			     if (projectAssets != null)
+			     {
+			         for(i = 0; i < projectAssets.size(); i++)
+				        {itemsArray.add(projectAssets[i]);}
+			     }
+			     // others
+			     if (otherAssets != null)
+			     {
+			         for(i = 0; i < otherAssets.size(); i++)
+				        {itemsArray.add(otherAssets[i]);}
+			     }
+			
+			     // combined array
+			     return itemsArray;
+            ]]>
+        </script>
+    </groovyStep>
+    
+    
+    
+    
+    
+    
+    <!-- ................................................. End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end"
+        executionLabelExpression="returning array of ${allAssets.size()} Assets"
+        pctComplete="100"
+        />
+    
+    
+    
+    <!-- no asset types to query for -->
+    <failWorkflowStep name="no asset types selected"
+        reasonExpression="workflow requires an asset type to be selected"
+        executionLabelExpression="workflow requires an asset type to be selected"
+        />
+    
+    
+    
+    
+    
+    
+    <!-- .............................................. Context Data Def ................................................ -->
+    <!-- .................. Query Paramaters ................... -->
+    <!-- ..........Passed In .......... -->
+    <!-- types of assets to report on. Passed in. -->
+    <contextDataDef name="assetTypes" 	        dataType="String"		multiple="true"/>
+    <!-- Starting date used by the query. -->
+    <contextDataDef name="queryStartDate"       dataType="Date"/>
+    <!-- Ending date used by the query.-->
+    <contextDataDef name="queryEndDate"         dataType="Date"/>
+
+    <!-- ........ Calculated .......... -->
+    <!-- converted array to single string -->
+    <contextDataDef name="assetTypesString"     dataType="String"       defaultDataExpression="${#joinElements(assetTypes, '|')}"/>
+    
+    
+    <!-- ....................... Assets ........................ -->
+    <!-- queried ImagesAssetMasters -->
+    <contextDataDef name="imageAssets" 			dataType="Data Object"	multiple="true"/>
+    <!-- queried AudioAssetMasters -->
+    <contextDataDef name="audioAssets" 			dataType="Data Object"	multiple="true"/>
+    <!-- queried DocumentAssetMasters -->
+    <contextDataDef name="documentAssets"     	dataType="Data Object"	multiple="true"/>
+    <!-- queried OtherAssetMasters -->
+    <contextDataDef name="otherAssets"			dataType="Data Object"	multiple="true"/>
+    <!-- queried Videos -->
+    <contextDataDef name="videoAssets"		    dataType="Data Object"	multiple="true"/>
+    <!-- queried Collections -->
+    <contextDataDef name="collectionAssets"		dataType="Data Object"	multiple="true"/>
+    <!-- queried Projects -->
+    <contextDataDef name="projectAssets"		dataType="Data Object"	multiple="true"/>
+    <!-- all dataObjects queried combined into this array -->
+    <contextDataDef name="allAssets"    		dataType="Data Object"	multiple="true"/>
+    
+    
+    <!-- ..................... Processing ...................... -->
+    <!-- Groovy Requires a result DataDef - gets set to true if the groovy script completes -->
+    <contextDataDef name="success"              dataType="Boolean"      defaultDataExpression="false"/>
+</workflow>

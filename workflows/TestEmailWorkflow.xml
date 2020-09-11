@@ -1,0 +1,26 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		xmlns="http://levelsbeyond.com/schema/workflow"
+		xsi:schemaLocation="http://levelsbeyond.com/schema/workflow
+			http://www.levelsbeyond.com/schema/workflow-4.0.xsd"
+		id="TestEmailWorkflow"
+		name="Email Hello"
+		description="A workflow that says 'Hello'" subjectDOClassName=""
+>
+	
+	<initialStepName>A_Test_Workflow</initialStepName>
+	
+	<testStep name="A_Test_Workflow" outputExpression="hello hello! I'm learning!">
+		<transition condition="${true}">
+			<targetStepName>Email_Hello</targetStepName>
+		</transition>
+	</testStep>
+	
+	<emailStep name="Email_Hello" emailAddressesExpression="aales@levelsbeyond.com" subjectExpression="Email after transition step...">
+		<body>
+			<![CDATA[
+				HELLO!
+			]]>
+		</body>
+	</emailStep>
+	
+</workflow>

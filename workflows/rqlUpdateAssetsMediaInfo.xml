@@ -1,0 +1,149 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.5.xsd"
+    id="rqlUpdateAssetsMediaInfo"
+    name="RQL Update Assets MediaInfo"
+    executionLabelExpression="RQL Update Assets MediaInfo | Start: ${startTime.toString()}"
+    subjectDOClassName=""
+    showInUserInterface="true"
+    sdkVersion=""
+	>
+
+    <initialStepName>find and update assets</initialStepName>
+
+	
+    <groovyStep name="find and update assets" 
+	    resultDataDef="message"
+	    continueOnException="true"
+	    >
+	    <transition condition="${message.contains('Success')}">
+		    <targetStepName>end</targetStepName>
+	    </transition>
+	    <transition condition="true">
+		    <targetStepName>fail</targetStepName>
+	    </transition>
+	    
+	    <script>
+	    <![CDATA[
+		    import org.slf4j.Logger
+		    import org.slf4j.LoggerFactory
+		    import com.fasterxml.jackson.databind.JsonNode
+		    import com.levelsbeyond.service.inventory.InventorySearchService
+		    import com.levelsbeyond.service.inventory.InventorySearchCriteria
+		    import com.levelsbeyond.api.inventory.InventorySearchResponse
+		    import com.levelsbeyond.api.inventory.InventorySearchResult
+		    import com.routeto1.spring.ApplicationContextHolder
+		    import com.routeto1.data.impl.DynamicDataObjectDAO
+		    import com.routeto1.data.IDataObjectDAO
+		    import com.routeto1.asset.convert.AssetConversionService
+		    import com.routeto1.asset.filesystem.AssetMaster
+		    import com.routeto1.asset.filesystem.AssetContent
+		
+		    // ------------------------------- CODE EXECUTION -------------------------------
+		    Logger logger = LoggerFactory.getLogger("mediaInfoUpdates")
+		    InventorySearchService inventorySearchService = ApplicationContextHolder.getApplicationContext().getBean(InventorySearchService.class)
+		    DynamicDataObjectDAO dynamicDataObjectDAO = ApplicationContextHolder.getApplicationContext().getBean(DynamicDataObjectDAO.class)
+		    IDataObjectDAO dataObjectDAO = ApplicationContextHolder.getApplicationContext().getBean(DynamicDataObjectDAO.class)
+		    AssetConversionService conversionService = ApplicationContextHolder.getApplicationContext().getBean(AssetConversionService.class)
+		    
+		    int errorCount = 0
+		    int offset = 0
+		    int totalAssetsUpdated = 0
+		    def accumulatedTime = 0.0
+		    def startTime = System.currentTimeMillis()
+		    
+		    logger.info("************************************************************")
+		    logger.info("Update MediaInfo on Assets - Start")
+		    logger.info("Start Time: {}", startTime.toString())
+		    logger.info("************************************************************")
+		    
+		    boolean moreAssetsToUpdate = true
+		    while (moreAssetsToUpdate){
+			    def batchStartTime = System.currentTimeMillis()
+			    String rqlString = inputRqlString + " OFFSET " + offset + " SIZE " + batchSize
+			
+			    logger.debug("[offset: {}] rql search: {}", offset, rqlString)
+			    
+			    InventorySearchCriteria criteria = InventorySearchCriteria.builder()
+				    .setRql(rqlString)
+				    .build()
+			
+			    Collection<JsonNode> results = inventorySearchService.search(criteria).getResults()
+			
+			    logger.debug("[offset: {}] Number of assets found: {}", offset, results.size())
+			    
+			    if (results.isEmpty()) {
+				    moreAssetsToUpdate = false
+			    } else {
+				    for (JsonNode result : results) {
+					    assetId = result.get("id").asText()
+					    
+					    try {
+						    logger.debug("[offset: {}] Attempting to update MediaInfo on asset id {}", offset, assetId)
+						    
+						    AssetMaster asset = dynamicDataObjectDAO.findById(AssetMaster.class, assetId)
+							AssetContent sourceContent = asset.getSourceContent()
+						    conversionService.updateAssetContentMetadata(sourceContent)
+						    dataObjectDAO.commitChanges()
+						
+						    logger.debug("[offset: {}] Asset id {} successfully updated", offset, asset.id)
+						    totalAssetsUpdated++
+					    } catch (Exception e) {
+						    logger.error("Asset id {} could not be updated. Error: {}", assetId, e.getMessage())
+						    errorCount++
+					    }
+				    }
+			    }
+			
+			    def batchExecutionTime = System.currentTimeMillis() - batchStartTime
+			    accumulatedTime += batchExecutionTime
+			    
+			    logger.info("************************************************************")
+			    logger.info("[offset: {}] End Batch. {} Assets Updated.", offset, results.size())
+			    logger.info("[offset: {}] Batch Time Executed: {} Seconds", offset, batchExecutionTime / 1000)
+			    logger.info("Total Assets Updated So Far: {}", totalAssetsUpdated)
+			    logger.info("Total Errors So Far: {}", errorCount)
+			    logger.info("Total Time Executed So Far: {} Seconds", accumulatedTime / 1000)
+			    logger.info("************************************************************")
+			
+			    offset += batchSize
+		    }
+		
+		    def overallTotalTime = System.currentTimeMillis() - startTime
+		    
+		    logger.info("************************************************************")
+		    logger.info("Update MediaInfo on Assets - Finish")
+		    logger.info("Overall Total Assets Updated: {}", totalAssetsUpdated)
+		    logger.info("Overall Total Errors: {}", errorCount)
+		    logger.info("Overall Time Executed: {} Seconds", overallTotalTime / 1000)
+		    logger.info("************************************************************")
+		
+		    return "Success. Updated " + totalAssetsUpdated + " assets."
+		    ]]>
+	    </script>
+    </groovyStep>
+	
+	
+	
+	<!-- .................................................. End Steps .................................................. -->
+    <noopStep name="end"
+        executionLabelExpression="End: ${message}"
+        />
+	
+	
+	<failWorkflowStep name="fail"
+		reasonExpression="${message}"
+		executionLabelExpression="${message}"
+		/>
+	
+	
+	<!-- .............................................. Context Data Defs .............................................. -->
+	<!-- ............ Input ............. -->
+	<contextDataDef name="inputRqlString" dataType="String"    userInput="true" required="true" displayIndex="1" label="Full RQL Statement (AssetMaster Only)"/>
+	
+	<!-- .......... Processing .......... -->
+	<contextDataDef name="startTime"      dataType="Date/Time" defaultDataExpression="${#newDate()}"/>
+	<contextDataDef name="batchSize"      dataType="Integer"   defaultDataExpression="500"/>
+	<contextDataDef name="message"        dataType="String"    defaultDataExpression="Check groovyStep for stack trace."/>
+	
+</workflow>

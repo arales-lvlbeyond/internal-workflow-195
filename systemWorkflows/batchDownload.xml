@@ -1,0 +1,122 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="batchDownload"
+	name="Batch Download"
+	executionLabelExpression="Batch Download | ${assetsToDownload.size()} Assets | Quality: ${downloadQuality}"
+	subjectDOClassName=""
+	showInUserInterface="false"
+	sdkVersion=""
+	hasDownload="true"
+	>
+    
+    <initialStepName>workflow start notification</initialStepName>
+    
+	
+    <createSuccessNotificationStep name="workflow start notification"
+	    pctComplete="2"
+	    notificationTypeExpression="success"
+	    notificationBodyExpression="Your download workflow has started."
+	    devStep="true"
+	    nextStep="make directory"
+        />
+    
+	
+    <runCommandStep name="make directory"
+	    pctComplete="10"
+	    executionLabelExpression="Make Directory: ${directoryToZip.absolutePath}"
+	    executablePathExpression="/bin/mkdir"
+	    nextStep="copy source files to directory"
+        >
+        <arg>${directoryToZip.absolutePath}</arg>
+    </runCommandStep>
+    
+	
+    <executeSubflowStep name="copy source files to directory"
+	    pctComplete="70"
+	    executionLabelExpression="Adding ${assetsToDownload.size()} files to the directory"
+	    targetWorkflowId="copyAssetToTempDirectory"
+	    subjectChangePath="${assetsToDownload}"
+	    subflowTargetDataDef="assetMaster"
+	    nextStep="zip directory"
+        >
+        <subflowContextDataMapping parentDataDef="directoryToZip"   subflowDataDef="directoryToZip"/>
+        <subflowContextDataMapping parentDataDef="downloadQuality"  subflowDataDef="assetQuality"/>
+    </executeSubflowStep>
+    
+	
+    <compressFileStep name="zip directory"
+	    pctComplete="90"
+	    executionLabelExpression="Zipping Directory: ${directoryToZip.name}"
+	    sourceFilesExpression="${directoryToZip}"
+	    targetDirectoryExpression="${directoryToZip.absolutePath}"
+	    resultDataDef="zippedFile"
+	    nextStep="set zip as download"
+        />
+    
+	
+    <setWorkflowDownloadStep name="set zip as download"
+	    pctComplete="95"
+	    executionLabelExpression="Download File: ${zippedFile.absolutePath}"
+	    sourceFileExpression="${zippedFile}"
+	    devStep="true"
+        >
+        <transition condition="${directoryToZip.exists()}">
+            <targetStepName>remove temp directory</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </setWorkflowDownloadStep>
+    
+	
+    <deleteFileStep name="remove temp directory"
+	    pctComplete="99"
+	    executionLabelExpression="Remove temp dir: ${directoryToZip.absolutePath}"
+	    sourceFilesExpression="${directoryToZip}"
+	    continueOnException="true"
+	    devStep="true"
+	    nextStep="notify download ready"
+        />
+    
+	
+    <createSuccessNotificationStep name="notify download ready"
+	    notificationTypeExpression="success"
+	    notificationBodyExpression="Your download is available on the status tab."
+	    devStep="true"
+	    nextStep="end"
+        />
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+    <noopStep name="end" />
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input .......... -->
+    <contextDataDef name="assetsToDownload"     dataType="Data Object"  label="Assets to Download"  userInput="true" required="true" displayIndex="1" multiple="true"/>
+    <contextDataDef name="downloadQuality"      dataType="String"       label="Download Quality"    userInput="true" required="true" displayIndex="2"/>
+	
+	<!-- ....... Processing ........ -->
+    <contextDataDef name="dataObjectsToUpdate"  dataType="Data Object"  multiple="true"/>
+    <contextDataDef name="tempPath"             dataType="String"       defaultDataExpression="${#sysconfig('temp.dir')}" />
+    <contextDataDef name="directoryToZip"       dataType="Directory"    defaultDataExpression="${tempPath}/${#uuid().toString()}"/>
+    <contextDataDef name="zippedFile"           dataType="Directory"/>
+</workflow>

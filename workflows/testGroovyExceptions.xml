@@ -1,0 +1,148 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="testGroovyExceptions"
+	name="Test Groovy Exceptions"
+	executionLabelExpression="Test Groovy Exceptions | Start: ${startTime}"
+	subjectDOClassName=""
+	showInUserInterface="true"
+	sdkVersion=""
+>
+	
+	<initialStepName>parse timecode</initialStepName>
+	
+	
+	<groovyStep name="parse timecode"
+		resultDataDef="timecodeDouble"
+		continueOnException="false"
+		executionLabelExpression="Parse the timecode ${badTimecode}"
+		>
+		<transition condition="${timecodeDouble != null AND timecodeDouble > 0}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>fail</targetStepName>
+		</transition>
+		<script>
+		<![CDATA[
+			import java.lang.Integer
+			
+			if(badTimecode.contains(":"))
+			{
+				def timecodeArray = badTimecode.split(":|\\;")
+				
+				if (timecodeArray.size() != 4)
+				{
+					return 0
+				}
+				else
+				{
+					// parse the strings to ints
+					int hours = Integer.parseInt(timecodeArray[0])
+					int minutes = Integer.parseInt(timecodeArray[1])
+					int seconds = Integer.parseInt(timecodeArray[2])
+					int frames = Integer.parseInt(timecodeArray[3])
+					
+					float videoFrameRateFloat = videoFrameRate.toFloat()
+					
+					int dropFrames = Math.round(videoFrameRateFloat*0.066666)
+					int frRound = Math.round(videoFrameRateFloat)
+					
+					if((videoFrameRateFloat == 29.97) || (videoFrameRateFloat == 59.94) || (videoFrameRateFloat == 23.976))
+					{
+						int d
+						int m
+						
+						int hourFrames = frRound*60*60
+						int minuteFrames = frRound*60
+						int totalMinutes = (60*hours) + minutes
+						int frameNumber = ((hourFrames * hours) + (minuteFrames * minutes) + (frRound * seconds) + frames) - (dropFrames * (totalMinutes - (totalMinutes / 10)))
+						
+						
+						int framesPerHour = Math.round(videoFrameRateFloat*60*60)
+						int framesPer24Hours = framesPerHour*24
+						int framesPer10Minutes = Math.round(videoFrameRateFloat * 60 * 10)
+						int framesPerMinute = (Math.round(videoFrameRateFloat)*60)-  dropFrames
+						
+						if (framenumber<0)
+						{
+							framenumber=framesPer24Hours+framenumber
+						}
+						
+						//If framenumber is greater than 24 hrs, next operation will rollover clock
+						framenumber = framenumber % framesPer24Hours
+						
+						d = framenumber/framesPer10Minutes
+						m = framenumber % framesPer10Minutes
+						
+						if (m>dropFrames)
+						{
+							framenumber=framenumber + (dropFrames*9*d) + dropFrames*((m-dropFrames)/framesPerMinute)
+						}
+						else
+						{
+							framenumber = framenumber + dropFrames*9*d
+						}
+						
+						int newFrames = framenumber % frRound
+						int newSeconds = (framenumber / frRound) % 60
+						int newMinutes = ((framenumber / frRound) / 60) % 60
+						int newHours = (((framenumber / frRound) / 60) / 60)
+						
+						double doubleSeconds = (newHours * 3600) + (newMinutes * 60) + newSeconds + (newFrames / frRound)
+						
+						doubleSeconds = doubleSeconds - videoStartOffset
+						if (doubleSeconds < 0)
+						{return 0}
+						else
+						{return doubleSeconds}
+					}
+					else
+					{
+						double doubleSeconds = (hours * 3600) + (minutes * 60) + seconds + (frames / frRound)
+						
+						doubleSeconds = doubleSeconds - videoStartOffset
+						if (doubleSeconds < 0)
+						{return 0}
+						else
+						{return doubleSeconds}
+					
+					}
+				}
+			}
+			else
+			{
+				return 0
+			}
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<noopStep name="end"/>
+	<failWorkflowStep name="fail" reasonExpression="fail"/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<contextDataDef name="badTimecode"    dataType="String"  defaultDataExpression=":00:37:20"/>
+	<contextDataDef name="timecodeDouble" dataType="Double"/>
+	<contextDataDef name="startTime"      dataType="String"  defaultDataExpression="${#newDate().toString()}"/>
+
+</workflow>

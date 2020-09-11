@@ -1,0 +1,38 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="markForPreservationClip"
+    name="Mark Clip for Preservation"
+    description="Sets Marked for Preservation category for selected clip. Then gets its assetMaster and passes it to another workflow to have its category set.
+    Input:VideoClip
+    
+    Result:Clip cateory set and assetMaster passed off"
+    executionLabelExpression="Mark VideoClip for Preservation | Set Marked for Preservation category for ${subject.name}"
+    showInUserInterface="true"
+    subjectDOClassName="VideoClip"
+    sdkVersion="">
+    
+    <initialStepName>set clip category</initialStepName>
+    
+    <!-- Sets Marked for Preservation category for clip -->
+    <nimbus:changeMetaCategoryStep name="set clip category" 
+        executionLabelExpression="Add Marked for Preservation category to ${subject.name}"
+        targetObjectExpression="${subject}" 
+        nextStep="raise ensure indexed event">
+        <nimbus:addCategory>Marked for Preservation</nimbus:addCategory>
+    </nimbus:changeMetaCategoryStep>
+    
+    <!-- Re-index the clip -->
+    <raiseWorkflowEventStep name="raise ensure indexed event"
+        eventTypeExpression="ensureIndexed"
+        executionLabelExpression="Ensure Clip is Indexed"
+        nextStep="end">
+        
+        <property name="indexTargetRef">${subject}</property>
+    </raiseWorkflowEventStep>
+    
+    <!-- End step -->
+    <noopStep name="end"/>
+    
+</workflow>

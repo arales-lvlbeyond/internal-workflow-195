@@ -1,0 +1,20 @@
+<workflow
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.11.xsd"
+    id="testQualifier"
+    name="Test Qualifer"
+    description=""
+    executionLabelExpression="Test Qualifier"
+    deadlineExpression=""
+    subjectDOClassName="AssetMaster"
+    subjectQualifierExpression="name.equals('automation_audio455.mp3')"
+    showInUserInterface="true"
+    resultDataDef=""
+    sdkVersion="5.11">
+
+    <initialStepName>end</initialStepName>
+
+    <noopStep name="end"/>
+
+</workflow>

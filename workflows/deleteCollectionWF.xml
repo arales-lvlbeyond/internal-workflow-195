@@ -1,0 +1,55 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="        
+	http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd
+	"
+	
+	id="deleteCollectionWF"
+	name="Delete Collection with this here workflow!"
+	executionLabelExpression="Delete Collection | User: ${ #this.startedByLabel } | [${ cid }] ${ cname }"
+	description="
+	
+	"
+	subjectDOClassName="AssetCollection"
+	showInUserInterface="true"
+	resultDataDef="success"
+	deadlineExpression="" 
+	>
+	
+	<initialStepName>check confirmation</initialStepName>
+	
+	<!-- Don't delete unless confirmed. -->
+	<noopStep name="check confirmation">
+		<transition condition="${ confirm == true }">
+			<targetStepName>delete data object</targetStepName>
+		</transition>
+		<transition condition="${ true }">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<!-- Only delete the AssetCollection data object. Don't touch files within the collection. -->
+	<deleteDataObjectStep name="delete data object"
+		dataObjectExpression="${ subject }"
+		nextStep="end" />
+	
+	<noopStep name="end" />
+	
+	
+	<!-- Input -->
+	<contextDataDef name="confirm" dataType="Boolean" label="Confirm Delete" userInput="true" /> 
+	<contextDataDef name="cid" dataType="String" defaultDataExpression="${ subject.id }" />
+	<contextDataDef name="cname" dataType="String" defaultDataExpression="${ subject.name }" />
+	
+	<!-- Result Data Def -->
+	<contextDataDef name="success" dataType="Boolean" defaultDataExpression="false" />
+	<contextDataDef name="collections" label="Collections" dataType="Data Object" multiple="true" userInput="true">
+		<picklist>
+			<dataObjectSearch dataObjectClass="assetCollection">
+				<searchPath>name</searchPath>
+			</dataObjectSearch>
+		</picklist>
+	</contextDataDef>
+	
+</workflow>

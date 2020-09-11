@@ -1,0 +1,104 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="treatsDefAsStringImproperly"
+          name="Treats Def As String Improperly"
+          executionLabelExpression="1: Treats Def As String Improperly"
+          description="Test workflow"
+          showInUserInterface="true"
+          subjectDOClassName=""
+          subjectQualifierExpression=""
+          sdkVersion="">
+
+    <initialStepName>add to json</initialStepName>
+
+    <setContextData
+            name="add to json"
+            executionLabelExpression="jsonMetadata result: ${jsonMetadata.toString()}"
+            targetDataDef="jsonMetadata"
+            valueExpression="${jsonMetadata.put('second', 'second')}"
+            nextStep="set integer"/>
+
+    <setContextData
+            name="set integer"
+            executionLabelExpression="integer result: ${intToSet}"
+            nextStep="get absolute path">
+        <set targetDataDef="intToSet" valueExpression="${doubleDef.intValue()}"/>
+    </setContextData>
+
+    <setContextData
+            name="get absolute path"
+            executionLabelExpression="absolutePath result = ${filePath}"
+            targetDataDef="filePath"
+            valueExpression="${fileDef.absolutePath}"
+            nextStep="get absolute path new file"/>
+
+    <setContextData
+            name="get absolute path new file"
+            executionLabelExpression="new absolutePath result = ${filePath}"
+            targetDataDef="filePath"
+            valueExpression="${newFile.absolutePath}"
+            nextStep="put another value from aws json"/>
+
+    <setContextData
+            name="put another value from aws json"
+            targetDataDef="jsonMetadata"
+            valueExpression="${jsonMetadata.put('third', awsJson.categoryName)}"
+            nextStep="end"/>
+
+    <noopStep name="end"/>
+
+    <!-- Input -->
+
+
+    <!-- Internal -->
+    <contextDataDef name="jsonMetadata" dataType="JSON">
+        <defaultDataExpression>
+            <![CDATA[
+            {
+                first: "first"
+            }
+            ]]>
+        </defaultDataExpression>
+    </contextDataDef>
+    <contextDataDef name="doubleDef" dataType="Double" defaultDataExpression="3.14"/>
+    <contextDataDef name="fileDef" dataType="File" defaultDataExpression="${#sysconfig('filesystem.root.temp')}/a_temp_file.txt"/>
+
+    <contextDataDef name="intToSet" dataType="Integer"/>
+    <contextDataDef name="filePath" dataType="String"/>
+
+    <contextDataDef name="awsJson" dataType="JSON">
+        <defaultDataExpression>
+            <![CDATA[
+{
+  "archiveDate": "2018-03-20T20:00:00.000Z",
+  "categoryName": "Elemental_IBC_Demo",
+  "comments": "Elemental IBC Demonstration - The man in the high castle",
+  "legacyArchiveName": "Quantum StorNext Main",
+  "files": [
+    {
+      "checksums": [
+        {
+          "type": "MD5",
+          "value": "00000000000000000000000000000000"
+        }
+      ],
+      "name": "/Elemental_IBC_Demo_The_man_in_the_high_castle_18/The_man_in_the_high_castle.mp4",
+      "uuid": "c68fad17-b2fa-4d86-bd74-4ebff8c15871"
+    }
+  ],
+  "objectName": "The_man_in_the_high_castle",
+  "originalPath": "/adobepremier/packages",
+  "originalServerName": "finishing2",
+  "tapeBarcodes": [
+    "10018"
+  ],
+  "legacyArchiveObjectUuid": "405ecf28-250b-4443-bc97-6f161b793c33"
+}
+            ]]>
+        </defaultDataExpression>
+    </contextDataDef>
+
+    <contextDataDef name="newFile" dataType="File" defaultDataExpression="${awsJson.files.get(0).get('name').asText()}"/>
+</workflow>

@@ -1,0 +1,125 @@
+<!--
+    For ingesting all assets in a directory.
+    Calls abc_ingest_manualAsset for each file in the directory
+-->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="parentTestWorkflow"
+	name="Parent Test Workflow: Subflow Index"
+	description=""
+	subjectDOClassName=""
+	executionLabelExpression="Parent Test Workflow"
+	sdkVersion="5.21"
+	showInUserInterface="true"
+	group="Ingest"
+>
+
+    <initialStepName>validate source files</initialStepName>
+
+    <noopStep name="validate source files"
+	    executionLabelExpression="Ingesting files"
+	    pctComplete="2"
+    >
+        <transition condition="${sourceFileList.size() &gt;= 1}">
+            <targetStepName>process files</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>invalid source files notification</targetStepName>
+        </transition>
+    </noopStep>
+	
+	<!-- ............................................. Find Revisions .............................................. -->
+
+
+    <executeSubflowStep name="process files"
+	    targetWorkflowId="testSubflowIndexFlow"
+	    subflowTargetDataDef="sourceFile"
+	    subjectChangePath="${sourceFileList}"
+	    continueOnException="true"
+	    subflowExecutionLimitExpression="${executionLimit}"
+	    executionLabelExpression="ingesting all files in the directory. Base revision number = ${revisionNumber}"
+    >
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        
+        <subflowContextDataMapping parentDataDef="episodeNumber"      subflowDataDef="episodeNumber"/>
+        <subflowContextDataMapping parentDataDef="seasonNumber"     subflowDataDef="seasonNumber"/>
+        <subflowContextDataMapping parentDataDef="revisionNumber"     subflowDataDef="revisionNumber"/>
+       
+        <subflowContextDataMapping parentDataDef="clipDescription"  subflowDataDef="clipDescription"/>
+        <subflowContextDataMapping parentDataDef="categories"      subflowDataDef="categories"/>
+        <subflowContextDataMapping parentDataDef="saveOrigName"     subflowDataDef="saveOrigName"/>
+        <subflowContextDataMapping parentDataDef="sixDigit"         subflowDataDef="sixDigit"/>
+	    <!--<subflowContextDataMapping parentDataDef="createCollection" subflowDataDef="createCollection"/>-->
+	    <!--<subflowContextDataMapping parentDataDef="collection"       subflowDataDef="collection"/>-->
+	    <!--<subflowContextDataMapping parentDataDef="jsonMetadata"     subflowDataDef="jsonMetadata"/>-->
+        <subflowContextDataMapping parentDataDef="directoryIngest"        subflowDataDef="directoryIngest"/>
+    </executeSubflowStep>
+	
+	
+	<!-- ............................................... End Steps ................................................ -->
+	
+	<noopStep name="end" executionLabelExpression="Success!" pctCompleteExpression="100"/>
+
+    <createFailureNotificationStep name="invalid source files notification"
+	    notificationTypeExpression="fail"
+	    notificationBodyExpression="Error: No valid source files found in ${sourceDirectory.toString()}"
+	    executionLabelExpression="No valid source files found in ${sourceDirectory.toString()}"
+	    nextStep="invalid source files"
+    />
+
+    <failWorkflowStep name="invalid source files" reasonExpression="No valid source files found"/>
+	
+	<!-- ........................................... Context Data Defs ............................................ -->
+	<!-- ....... Inputs ........ -->
+	<contextDataDef name="sourceDirectory"		dataType="Directory"	label="Folder To Ingest" userInput="true"      displayIndex="1"  required="true"/>
+	<!--<contextDataDef name="metadataForm"     dataType="MetadataForm" userInput="true"    />-->
+	<!--<contextDataDef name="showCode" 		    dataType="String" 		label="Show Code" 	userInput="true"	displayIndex="2" required="true">-->
+        <!--<picklist>-->
+            <!--<metadataProperty>showCodes</metadataProperty>-->
+        <!--</picklist>-->
+    <!--</contextDataDef>-->
+    <contextDataDef name="episodeNumber" 	dataType="String"		label="Episode Number" 			userInput="true" required="true"	displayIndex="3"/>
+    <contextDataDef name="seasonNumber" 	dataType="Integer"		label="Season Number"			userInput="true" required="false"	displayIndex="4"/>
+    <!--<contextDataDef name="elementType" 	    dataType="String"		label="Production Element Type"	userInput="true" required="true"	displayIndex="5">-->
+        <!--<picklist>-->
+            <!--<metadataProperty>productionElementType</metadataProperty>-->
+        <!--</picklist>-->
+    <!--</contextDataDef>-->
+    <contextDataDef name="clipDescription" 	dataType="String"		label="Description"			    userInput="true" required="false"	displayIndex="6"/>
+    <contextDataDef name="categories" 		dataType="Data Object" 	label="Additional Categories"   userInput="true" required="false"	displayIndex="7">
+        <picklist>
+            <dataObjectSearch dataObjectClass="AssetCategory">
+                <searchPath>name</searchPath>
+            </dataObjectSearch>
+        </picklist>
+    </contextDataDef>
+    <contextDataDef name="sixDigit"				dataType="String"	label="Six Digit" 				userInput="true" 	required="false"  displayIndex="8"/>
+    <contextDataDef name="saveOrigName"     	dataType="Boolean"  label="Use Original Filename" 	userInput="true"  	defaultDataExpression="false" displayIndex="9"/>
+	<!--<contextDataDef name="createCollection" 	dataType="Boolean"  label="Create Collection"       userInput="true" 	defaultDataExpression="false" displayIndex="10"/>-->
+	<!--<contextDataDef name="collections"		    dataType="Data Object"	   label="Collections"      userInput="true"  	multiple="true" displayIndex="11">-->
+	<!--<picklist>-->
+	<!--<dataObjectSearch dataObjectClass="AssetCollection">-->
+	<!--<searchPath>name</searchPath>-->
+	<!--</dataObjectSearch>-->
+	<!--</picklist>-->
+	<!--</contextDataDef>-->
+	
+	<!-- ....... Processing ........ -->
+	<contextDataDef name="sourceFileList"       dataType="File"         defaultDataExpression="${#walkDir(sourceDirectory, null)}"  multiple="true"/>
+    <contextDataDef name="sourceFileCount"      dataType="Integer"      defaultDataExpression="${sourceFileList.size()}"/>
+    <contextDataDef name="elementTypeLabel" 	dataType="String"	    defaultDataExpression="${#picklistLabel('productionElementType', elementType)}"/>
+    <contextDataDef name="collectionName"       dataType="String" />
+    <contextDataDef name="collection"           dataType="Data Object"/>
+    <!--<contextDataDef name="jsonMetadata" 		dataType="JSON"		    defaultDataExpression="{'showCode':'${showCode}','episodeNumber':'${episodeNumber}','productionElementType':'${elementType}'}"/>-->
+    <contextDataDef name="revisionNumber"       dataType="Integer"      defaultDataExpression="10"/>
+    <contextDataDef name="directoryIngest"      dataType="Boolean"      defaultDataExpression="true"/>
+	
+	<!-- ....... Options ........ -->
+	<contextDataDef name="executionLimit"       dataType="Integer"      defaultDataExpression="30"/>
+
+</workflow>

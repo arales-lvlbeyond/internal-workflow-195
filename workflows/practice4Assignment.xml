@@ -1,0 +1,64 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="practice4Assignment"
+    name="Practice 4 Assignment"
+    executionLabelExpression="Practice 4 Assignment"
+    description="
+    	Complete the workflow
+    		finish the JSON
+    		print the JSON in the log
+    "
+    subjectDOClassName=""
+    resultDataDef=""
+    deadlineExpression=""
+    showInUserInterface="true"
+    sdkVersion=""
+    >
+	
+    
+	<initialStepName>set json</initialStepName>
+	
+	
+	<!-- set json to hardcoded values -->
+	<setContextData name="set json"
+		executionLabelExpression="setting jsonDataDef"
+		nextStep="log json"
+		>
+		<set targetDataDef="jsonDataDef">
+			<![CDATA[
+				{
+                    "test":"hah",
+                    "hahahah":[
+                        {
+                            "test":"who"
+                        }
+                    ]
+				}
+			]]>
+		</set>
+	</setContextData>
+	
+	
+	<!-- display JSON in the RE log -->
+	<testStep name="log json"
+		outputExpression="${jsonDataDef}"
+		executionLabelExpression=""
+		nextStep="end"
+		/>
+	
+
+    <!-- ................................................... End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end"/>
+		
+	
+    <!-- ............................................... Context Data Defs ................................................ -->
+    <!-- ..... inputs ..... -->
+	
+	<!-- ... Calculated ... -->
+	<!-- JSON set and displayed -->
+	<contextDataDef name="jsonDataDef" 		dataType="JSON"/>
+
+</workflow>

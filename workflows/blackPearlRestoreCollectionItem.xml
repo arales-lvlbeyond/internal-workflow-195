@@ -1,0 +1,85 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2016 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="blackPearlRestoreCollectionItem"
+	name="Black Pearl Restore Collection Item"
+	description="Collection Restore is a bulk process so we update the assets in bulk after restoring files"
+	executionLabelExpression="Black Pearl Restore Collection Item | Marking the asset ${subject.asset.name} as restored"
+	deadlineExpression=""
+	subjectDOClassName="AssetContent"
+	showInUserInterface="false"
+	
+	
+	sdkVersion="5.4">
+	
+	<initialStepName>update asset content</initialStepName>
+	
+	<!-- .......................................... Save Metadata .......................................... -->
+	<saveDataObjectStep name="update asset content"
+		pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }"
+		executionLabelExpression="Mark asset content ${subject.file.name} as restored"
+		targetDataObjectClass="AssetContent"
+		dataObjectExpression="${subject}"
+		nextStep="save restore date metadata">
+		<property name="truncatedFlag">false</property>
+	</saveDataObjectStep>
+	
+	
+	
+	<saveDataObjectStep name="save restore date metadata"
+		pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }"
+		dataObjectExpression="${parentAsset.metadata}"
+		executionLabelExpression="Saving the restore date on ${parentAsset.name} >>> ${restoreDate}"
+		nextStep="set asset master available">
+		<property name="restoreDate">${#formatDate('w3c', #newDate())}</property>
+	</saveDataObjectStep>
+	
+	<saveDataObjectStep name="set asset master available"
+		pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }"
+		dataObjectExpression="${parentAsset}"
+		executionLabelExpression="Setting the Asset Master as AVAILABLE"
+		nextStep="end">
+		<property name="status">AVAILABLE</property>
+	</saveDataObjectStep>
+	
+	
+	
+	
+	
+	<!-- ........................................... Ending Steps .......................................... -->
+	<noopStep name="end" pctComplete="100"/>
+	
+	
+	
+	
+	
+	
+	
+	<!-- ........................................ Context Data Defs ........................................ -->
+	<!-- Default Data Defs -->
+	<contextDataDef name="parentAsset" 	dataType="Data Object"  defaultDataExpression="${subject.asset}"/>
+	
+	
+	<!-- pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }" -->
+	<contextDataDef name="wfExe" dataType="Data Object" defaultDataExpression="${#this}"/>
+
+
+</workflow>

@@ -1,0 +1,64 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="testGetStorageDirectoryPath2"
+    name="Test Get Storage Directory Path2"
+    executionLabelExpression="Get Storage Directory Path -- filesystem.root.temp"
+    subjectDOClassName=""
+    resultDataDef=""
+    showInUserInterface="true"
+    adminOnly="true"
+    devWorkflow="true"
+    sdkVersion=""
+    >
+
+    <initialStepName>get file contents</initialStepName>
+
+
+    <setContextData name="get file contents"
+        nextStep="end">
+        <set targetDataDef="directoryByName" valueExpression="${#sysconfig('filesystem.root.temp')}"/>
+        <set targetDataDef="directoryByPropPath" valueExpression="${#getStorageDirectoryPath('temp')}"/>
+        <set targetDataDef="nullDirectory" valueExpression="${#getStorageDirectoryPath('bogus')}"/>
+
+        <set targetDataDef="appendDirectoryByName" valueExpression="${#sysconfig('filesystem.root.temp')}${appendPath}${fileName}"/>
+        <set targetDataDef="appendDirectoryByPropPath" valueExpression="${#getStorageDirectoryPath('temp')}${appendPath}${fileName}"/>
+        <set targetDataDef="appendNullDirectory" valueExpression="${#getStorageDirectoryPath('bogus')}${appendPath}${fileName}"/>
+    </setContextData>
+
+
+    <noopStep name="end" pctComplete="100"/>
+
+    <contextDataDef name="directoryByName" dataType="String"/>
+    <contextDataDef name="directoryByPropPath" dataType="String"/>
+    <contextDataDef name="nullDirectory" dataType="String"/>
+
+    <contextDataDef name="appendDirectoryByName" dataType="String"/>
+    <contextDataDef name="appendDirectoryByPropPath" dataType="String"/>
+    <contextDataDef name="appendNullDirectory" dataType="String"/>
+
+    <contextDataDef name="appendPath" dataType="String" defaultDataExpression="/2020/01/24/"/>
+    <contextDataDef name="fileName" dataType="String" defaultDataExpression="file.out"/>
+
+
+
+</workflow>

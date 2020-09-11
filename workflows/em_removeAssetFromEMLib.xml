@@ -1,0 +1,72 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="em_removeAssetFromEMLib"
+    name="em_Remove Asset From EM Library"
+    executionLabelExpression="Remove Asset From EM Library | Assets before: ${#formatDate('yyyy-MM-dd', cutOffDate)}"
+    subjectDOClassName=""
+    showInUserInterface="true"
+    adminOnly="true"
+    sdkVersion=""
+    devWorkflow="true"
+    >
+    
+    
+    <initialStepName>find old em library assets</initialStepName>
+    
+    
+    <queryStep name="find old em library assets"
+        pctComplete="25"
+        targetDataObjectClass="AssetMaster"
+        resultDataDef="assets"
+        executionLabelExpression="Finding all the assets: ${assets.size().toString()}"
+        >
+        <transition condition="${assets.size() &gt; 0}">
+            <targetStepName>remove em library asset</targetStepName>
+        </transition> 
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <criteria>
+        <![CDATA[
+            <criteria>
+                <and>
+                    <condition property="metadata.arcisilonPath" op="notnull" nullTargets="false"/>
+                    <condition property="metadata.emLibraryPath" op="notnull" nullTargets="false"/>
+                    <condition property="assetType" op="noteq">
+                        <test value="Video"/>
+                    </condition>
+                    <condition property="dateCreated" op="lt" nullTargets="false">
+                        <test value="${#formatDate('yyyy-MM-dd', cutOffDate)}"/>
+                    </condition>
+                    <condition property="metadata.repoOnArcisilon" op="eq" nullTargets="false">
+                        <test value="1"/>
+                    </condition>
+                </and>
+            </criteria>
+        ]]>
+        </criteria>
+    </queryStep>
+    
+    
+    <executeSubflowStep name="remove em library asset"
+        pctComplete="50"
+        targetWorkflowId="em_removeAssetEMLibSubFlow" 
+        executionLabelExpression= "Removing ${assets.size()} "
+        subjectChangePath="${assets}"
+        subflowTargetDataDef="itemToUpdate"
+        nextStep="end"
+        />
+    
+    
+    <!-- ................................................... End Steps .................................................... -->
+    <noopStep name="end"    pctComplete="100"/>
+    
+    
+    <!-- ............................................... Context Data Defs ................................................ -->
+    <contextDataDef name="currentDate" 		dataType="Date/Time"    defaultDataExpression="${#newDate()}"/>
+    <contextDataDef name="cutOffDate" 		dataType="Date/Time"    defaultDataExpression="${#addDays(currentDate, -75)}"/>
+    <contextDataDef name="assets"           dataType="Data Object"  multiple="true"/>
+    
+</workflow>

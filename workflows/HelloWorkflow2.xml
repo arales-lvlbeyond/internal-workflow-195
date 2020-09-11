@@ -1,0 +1,36 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+        http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.x
+        "
+	id="HelloWorkflow2"
+	name="Hello Workflow 2"
+	description="A workflow that says 'Hello'"
+	subjectDOClassName=""
+	deadlineExpression=""
+	sdkVersion="">
+	<initialStepName>Hello_Workflow</initialStepName>
+	<testStep name="Hello_Workflow" outputExpression="Why, Hello Workflow.">
+		<transition condition="${sendEmail}">
+			<targetStepName>Email_Hello</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>Say_Goodbye</targetStepName>
+		</transition>
+	</testStep>
+	<emailStep name="Email_Hello"
+		emailAddressesExpression="eapodaca@levelsbeyond.com"
+		subjectExpression="I'm just writing to say..">
+		<body><![CDATA[
+          HELLO!
+]]> </body>
+	</emailStep>
+	<testStep name="Say_Goodbye"
+		outputExpression="I Didn't send an email because you told me not to. Goodbye.">
+	</testStep>
+	<!--DATA DEFS -->
+	<contextDataDef dataType="Boolean"
+		name="sendEmail"
+		required="true">
+	</contextDataDef>
+</workflow>

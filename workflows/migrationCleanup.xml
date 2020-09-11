@@ -1,0 +1,141 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+		http://levelsbeyond.com/schema/latest
+		https://s3-us-west-2.amazonaws.com/schema.levelsbeyond.com/2.3.16.17962/studio.xsd
+	"
+	id="migrationCleanup"
+	name="Migration Cleanup"
+	executionLabelExpression="Migration Cleanup | "
+	subjectDOClassName=""
+	showInUserInterface="true"
+	sdkVersion="">
+
+	<initialStepName>get videos</initialStepName>
+	
+	<queryStep name="get videos"
+		executionLabelExpression="Query for assets. Number of assets found: ${queriedVideos.size()}"
+		targetDataObjectClass="VideoAssetMaster"
+		resultDataDef="queriedVideos"
+		fetchLimitExpression="${queryFetchLimit}"
+	>
+        <transition condition="${queriedVideos.size() &gt; 0}">
+            <targetStepName>get timelines</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="contents.contentUses" op="notnull" />
+						<condition property="id" op="gt">
+							<test value="${lastVideoId}" />
+						</condition>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+        <sortOrder sortPropertyExpression="id" sortDirectionExpression="ASC"/>
+    </queryStep>
+	
+	<queryStep name="get timelines"
+		executionLabelExpression="Query for Timelines. Number of timelines found: ${queriedTimelines.size()}"
+		targetDataObjectClass="Timeline"
+		resultDataDef="queriedTimelines"
+		fetchLimitExpression="${queryFetchLimit}"
+	>
+        <transition condition="${queriedTimelines.size() &gt; 0}">
+            <targetStepName>get last ids</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="name" op="notnull" />
+						<condition property="id" op="gt">
+							<test value="${lastTimelineId}" />
+						</condition>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+        <sortOrder sortPropertyExpression="id" sortDirectionExpression="ASC"/>
+    </queryStep>
+	
+	<setContextData name="get last ids"
+		executionLabelExpression="Last Video id: ${lastVideoId} | Last Timeline id: ${lastTimelineId} "
+		nextStep="set data defs for queried assets"
+		devStep="true"
+	>
+		<set targetDataDef="lastVideoId">   ${ !queriedVideos.isEmpty() ? queriedVideos[queriedVideos.size()-1].id : null }</set>
+		<set targetDataDef="lastTimelineId">${ !queriedTimelines.isEmpty() ? queriedTimelines[queriedTimelines.size()-1].id : null }</set>
+	</setContextData>
+	
+	<setContextData name="set data defs for queried assets"
+		nextStep="call cleanup subflow"
+	>
+		<set targetDataDef="videoAssets">${queriedVideos}</set>
+		<set targetDataDef="timelines">${queriedTimelines}</set>
+	</setContextData>
+    
+    <executeSubflowStep name="call cleanup subflow"
+	    targetWorkflowId="${subflowId}"
+	    executionLabelExpression="${(videoAssets.size() - timelines.size()) &lt; 0 ? (videoAssets.size() - timelines.size()) * -1 : (videoAssets.size() - timelines.size())} assets remaining. Calling cleanup workflow on next assets..."
+    >
+	    <transition condition="${lastVideoId != null}">
+            <targetStepName>get timelines</targetStepName>
+        </transition>
+	    <transition condition="${true}">
+            <targetStepName>get videos</targetStepName>
+        </transition>
+	    
+	    <subflowContextDataMapping parentDataDef="videoAssets"          subflowDataDef="videos" />
+	    <subflowContextDataMapping parentDataDef="timelines"            subflowDataDef="timelines" />
+    </executeSubflowStep>
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end" />
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="videoAssets"                  dataType="Data Object"      multiple="true" />
+	<contextDataDef name="timelines"                    dataType="Data Object"      multiple="true" />
+	
+	<contextDataDef name="queriedVideos"                dataType="Data Object"      multiple="true" />
+	<contextDataDef name="queriedTimelines"             dataType="Data Object"      multiple="true" />
+	
+	<contextDataDef name="nextVideos"                   dataType="Data Object"      multiple="true" />
+	<contextDataDef name="nextTimelines"                dataType="Data Object"      multiple="true" />
+	
+	<contextDataDef name="batchSize"                    dataType="Integer"          defaultDataExpression="${#sysconfig('workflows.migrationCleanup.batchSize') ?: 2 }" />
+	<contextDataDef name="queryFetchLimit"              dataType="Integer"          defaultDataExpression="${#sysconfig('workflows.migrationCleanup.queryFetchLimit') ?: 10}" />
+	<contextDataDef name="executingSubflows"            dataType="Data Object"      multiple="true"/>
+    <contextDataDef name="queuePollInterval"            dataType="Integer"          defaultDataExpression="${#sysconfig('workflows.migrationCleanup.queuePollInterval') ?: 15}"/>
+    <contextDataDef name="queueLimit"                   dataType="Integer"          defaultDataExpression="${#sysconfig('workflows.migrationCleanup.queueLimit') ?: 11}"/>
+    <contextDataDef name="subflowId"                    dataType="String"           defaultDataExpression="migrationCleanupSubflow" />
+	
+	<contextDataDef name="lastVideoId"                  dataType="Integer"          defaultDataExpression="0"/>
+	<contextDataDef name="lastTimelineId"               dataType="Integer"          defaultDataExpression="0"/>
+</workflow>

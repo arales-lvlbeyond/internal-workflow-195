@@ -1,0 +1,83 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_emailImage"
+	name="Email Image"
+	executionLabelExpression="Email Image | Asset: ${subject.name}"
+	subjectDOClassName="ImageAssetMaster"
+	showInUserInterface="true"
+	sdkVersion="5.21"
+	>
+	
+	<initialStepName>verify proxy</initialStepName>
+	
+	
+	<noopStep name="verify proxy"
+		executionLabelExpression="proxy file exists? ${fileToExport != null AND fileToExport.exists()}"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		>
+		<transition condition="${fileToExport != null AND fileToExport.exists()}">
+			<targetStepName>email image proxy</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>proxy does not exist</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<emailStep name="email image proxy"
+		executionLabelExpression="emailing ${emailList.size()} addresses | List: ${emailList.toString()}"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		emailAddressesExpression="${emailList}"
+		attachmentsExpression="${fileToExport}"
+		subjectExpression="${emailSubject}"
+		nextStep="end"
+		>
+		<body>
+${emailBody}
+		</body>
+	</emailStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="proxy does not exist"
+		executionLabelExpression="${subject.name} is missing a proxy file"
+		reasonExpression="${subject.name} is missing a proxy file"
+		/>
+		
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<contextDataDef name="emailList"        dataType="Email"        multiple="true"     userInput="true"    required="true"     label="Send To"             displayIndex="1"/>
+	<contextDataDef name="emailSubject"     dataType="String"                           userInput="true"    required="true"     label="Email Subject"       displayIndex="2"/>
+	<contextDataDef name="emailBody"        dataType="String"                           userInput="true"                        label="Email Body"          displayIndex="3"/>
+	
+	<!-- .......... PROCESSING .......... -->
+	<contextDataDef name="fileToExport"     dataType="File"         defaultDataExpression="${subject?.proxy?.file}"/>
+	<contextDataDef name="imageAsset"       dataType="Data Object"  defaultDataExpression="${subject}"/>
+	<contextDataDef name="startedByUser"    dataType="Data Object"  defaultDataExpression="${#this.startedBy}"/>
+	<contextDataDef name="wfExe"            dataType="Data Object"  defaultDataExpression="${#this}"/>
+
+</workflow>

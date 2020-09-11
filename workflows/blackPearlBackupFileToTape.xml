@@ -1,0 +1,266 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="
+    http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-1.5.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-prelude.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-projects-workflow-1.5.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/re-prod-custom-steps.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/workflow-plugin-anywhere-1.0.xsd
+    "
+	
+	id="blackPearlBackupFileToTape"
+	name="Black Pearl Backup File To Tape"
+	executionLabelExpression="Black Pearl Backup To Tape | ${archiveOrBackup} File | ${subject.file?.absolutePath}"
+	description="
+    
+    "
+	subjectDOClassName="AssetContent"
+	showInUserInterface="true"
+	resultDataDef="copiedFile"
+	deadlineExpression=""
+	sdkVersion=""
+>
+	
+	<initialStepName>back up asset</initialStepName>
+	
+	<!-- .................................................... Backup Steps ..................................................... -->
+	<!-- The file can be archived directly from its Reach Engine location. Submit a request to Black Pearl to archive the file -->
+	<groovyStep name="back up asset"
+		executionLabelExpression="Back up file ${subject.file.absolutePath} to Black Pearl at ${url} in bucket ${bPBucket}"
+		resultDataDef="archiveResponse">
+		<transition condition="${archiveResponse.contains('OBJECT_ALREADY_EXISTS')}">
+			<targetStepName>object already exists</targetStepName>
+		</transition>
+		<transition condition="${archiveResponse.contains('ERROR')}">
+			<targetStepName>archive failed</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>display back up response</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+				import com.google.common.base.Joiner
+				import com.spectralogic.ds3client.Ds3Client
+				import com.spectralogic.ds3client.Ds3ClientBuilder
+				import com.spectralogic.ds3client.helpers.Ds3ClientHelpers
+				import com.spectralogic.ds3client.helpers.options.*
+				import com.spectralogic.ds3client.helpers.FileObjectPutter
+				import com.spectralogic.ds3client.helpers.JobRecoveryException
+				import com.spectralogic.ds3client.models.bulk.Ds3Object
+				import com.spectralogic.ds3client.models.*
+				import com.spectralogic.ds3client.models.Tape
+				import com.spectralogic.ds3client.models.TapeState
+				import com.spectralogic.ds3client.models.TapeList
+				import com.spectralogic.ds3client.models.common.Credentials
+				import com.spectralogic.ds3client.networking.FailedRequestUsingMgmtPortException
+				import com.spectralogic.ds3client.networking.FailedRequestException
+				import com.spectralogic.ds3client.commands.spectrads3.*
+				
+				
+				
+				import java.nio.file.Files
+				import java.io.IOException
+				import java.nio.file.Path
+				import java.nio.file.Paths
+				import java.util.List
+				
+				UUID jobId
+				def obj
+				
+				//This will connect to Black Pearl and will import a new tape.
+				//The new tape is added to the specified bucket and then all objects in the specified bucket will be downloaded to the specified directory
+				try {
+					
+					// .....
+					// Here there be Variables to use
+					// .....
+					
+					// use data def bpEndpoint
+					String endpoint = url
+					// use data def bpClientId
+					String id = username
+					// use data def bpClientKey
+					String key = password
+					// The bucket that we will be writing to
+				    String bucketName = bPBucket
+				
+				
+					// .....
+					// Creating the connection object for Black Pearl
+					// .....
+				
+					//Connect to the server.
+					Ds3Client client = Ds3ClientBuilder.create(endpoint, new Credentials(id, key) ).withHttps(false).build()
+					
+					// Wrap the Ds3Client with the helper functions
+					Ds3ClientHelpers helper = Ds3ClientHelpers.wrap(client, 3 , 3 )
+					
+					// Do we have access to the bucket?
+					def bucketUserId = client.getBucketSpectraS3(new GetBucketSpectraS3Request(bucketName)).getBucketResult().getUserId().toString()
+					println "Bucket is owned by user " + bucketUserId
+					
+				    // Check that the bucket exists
+				    helper.ensureBucketExists(bucketName)
+				    // Create DS3Object
+				    Path inputDir = Paths.get(fileDir)
+				    
+				    // The object name will be the file path minus the configured directories on the front
+				    String replaceString = fileDir + '/'
+				    def objName = filePath.replace( replaceString , '')
+				    def file = new File(filePath)
+				    obj = new Ds3Object(objName, file.length() )
+				    
+				    def objList = new ArrayList<Ds3Object>()
+				    objList.add( obj )
+				    // Create a job to put an object into a bucket
+				    def job = helper.startWriteJob(bucketName, objList)
+				    jobId = job.getJobId()
+					// Used for testing a network interruption or power outage
+					//throw new IOException('Simulating an interruption')
+				    // Start the write job
+				    job.transfer(new FileObjectPutter(inputDir))
+				    
+				    //return the name of the obj so
+				    println( obj.getName() )
+				    return obj.getName()
+					
+					
+					
+					
+				} catch (final UnknownHostException e) {
+				    println("Invalid Endpoint Server Name or IP Address")
+				    return "ERROR: Invalid Endpoint Server Name or IP Address"
+				    // Catch unknown host exceptions.
+				    
+				} catch (final FailedRequestUsingMgmtPortException e) {
+				    println("Attempted data access on management port -- check endpoint")
+				    return "ERROR: Attempted data access on management port -- check endpoint"
+				    // Catch failed requests with unexpected status codes.
+				    
+				} catch (final FailedRequestException e) {
+					// If this is invalid authorization.
+					if(e.getResponseString().contains('permission for bucket') )
+					{
+						def xml = e.getResponseString()
+						def error = new XmlSlurper().parseText(xml)
+						println("For the configured bucket " + error.Resource + " the error message is " + error.Message + ". Please adjust bucket permissions or use a different bucket.")
+						return "ERROR: User does not have permission to access configured bucket " + error.Resource
+					}
+					if (e.getStatusCode() == 403) {
+						println("Invalid Access ID or Secret Key or Ensure System Clocks Match" + e.getResponseString() )
+						return "ERROR: Invalid Access ID or Secret Key or Ensure System Clocks Match"
+					// Else unexpected status code.
+					} else {
+						println("BlackPearl return an unexpected status code we did not expect " + e.getStatusCode() + " " + e.getResponseString() + ".")
+				        // e.getStatusCode() can be used to get the status code BlackPearl returned for more accurate error handling and detection
+				        String end = "ERROR: BlackPearl return an unexpected status code we did not expect " + e.getStatusCode() + " " + e.getResponseString() + "."
+				        return end
+					}
+					
+				} catch (final IOException e) {
+				
+					try {
+					 
+					 	println('Attempting to recover job')
+					 
+						String endpoint = url
+						String id = username
+						String key = password
+					    String bucketName = bPBucket
+					    Path inputDir = Paths.get(fileDir)
+					
+						//Connect to the server.
+						Ds3Client client = Ds3ClientBuilder.create(endpoint, new Credentials(id, key) ).withHttps(false).build()
+						
+						// Wrap the Ds3Client with the helper functions
+						Ds3ClientHelpers helper = Ds3ClientHelpers.wrap(client, 3 , 3 )
+					
+				        // Ask the server for all unsent chunks from job
+				        Ds3ClientHelpers.Job recoverJob = helper.recoverWriteJob(jobId)
+				
+				        recoverJob.transfer(new FileObjectPutter(inputDir))
+				        
+				        println( obj.getName() )
+				    	return obj.getName()
+				
+				    } catch (JobRecoveryException er) {
+				
+				        println("Could not recover Job " + jobId)
+				        er.printStackTrace()
+				
+					}
+				
+				        println("Encountered a networking error OR an error while importing the new tape")
+				        println(e.printStackTrace())
+				        return "ERROR: Encountered a networking error OR an error while importing the new tape"
+				}
+			]]>
+		</script>
+	</groovyStep>
+	
+	
+	<!-- Display if the object already existed -->
+	<noopStep name="object already exists"
+		executionLabelExpression="The response from Black Pearl is that the object already exists"
+		nextStep="display back up response"/>
+	
+	
+	<!-- display response code to the UI and full response to the log -->
+	<testStep name="display back up response"
+		outputExpression="backup ${subject.file.absolutePath} >>> response message: ${archiveResponse}"
+		executionLabelExpression="backup ${subject.file.absolutePath} >>> response message: ${archiveResponse}"
+		pctComplete="80"
+		nextStep="update restore key">
+	</testStep>
+	
+	
+	<!-- save the restoreKey on the AssetContent to match the archiveLocation -->
+	<saveDataObjectStep
+		name="update restore key"
+		targetDataObjectClass="AssetContent"
+		dataObjectExpression="${subject}"
+		executionLabelExpression="Mark asset content ${subject.file.name} AssetContent ID ${subject.id} as backed up"
+		pctComplete="90"
+		nextStep="end">
+		<property name="restoreKey">${filePath.replace( (fileDir + '/') , '')}</property>
+	</saveDataObjectStep>
+	
+	
+	<!-- ...................................................... End Steps ...................................................... -->
+	<!-- Fail if archive was not successful -->
+	<failWorkflowStep name="archive failed"
+		executionLabelExpression="The archive request failed with the following response ${archiveResponse}"
+		reasonExpression="The archive request failed with the following response ${archiveResponse}"/>
+	
+	
+	<!-- success -->
+	<noopStep name="end" pctComplete="100"/>
+	
+	
+	<!-- .................................................. Context Data Defs .................................................. -->
+	<!-- User Input Data Defs -->
+	<contextDataDef name="archiveOrBackup"      dataType="String"       defaultDataExpression="backup"/>
+	
+	
+	
+	<!-- Default Data Defs -->
+	<!-- ......... Black Pearl Variables ........ -->
+	<!-- url = ip address or host name -->
+	<contextDataDef name="url"             	dataType="String"       defaultDataExpression="${#sysconfig('blackPearl.ip')}"/>
+	<!-- admin user for Black Pearl -->
+	<contextDataDef name="username"        	dataType="String"       defaultDataExpression="${#sysconfig('blackPearl.username')}"/>
+	<!-- matching password to the admin user -->
+	<contextDataDef name="password"        	dataType="String"       defaultDataExpression="${#sysconfig('blackPearl.password')}"/>
+	<!-- root archive directory -->
+	<contextDataDef name="bPBucket"        	dataType="String"       defaultDataExpression="${#sysconfig('blackPearl.archiveBucket')}"/>
+	
+	<contextDataDef name="filePath" 		dataType="String" 		defaultDataExpression="${subject.file.absolutePath}"/>
+	<contextDataDef name="fileDir" 			dataType="String" 		defaultDataExpression="${#sysconfig('blackPearl.repoRoot')}"/>
+	
+	
+	<!-- ..... SDK RESPONSE ..... -->
+	<contextDataDef name="archiveResponse" 	dataType="String" />
+	
+</workflow>

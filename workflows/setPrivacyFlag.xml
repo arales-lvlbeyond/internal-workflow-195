@@ -1,0 +1,90 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="setPrivacyFlag"
+	name="Set Privacy Flag"
+	executionLabelExpression="Set Privacy Flag | "
+	subjectDOClassName="AssetCollection"
+	showInUserInterface="true"
+	sdkVersion=""
+>
+	
+	<initialStepName>display privacy flag</initialStepName>
+	
+	<noopStep name="display privacy flag"
+		nextStep="set privacy flag"
+		executionLabelExpression="${collection.private}"
+		/>
+	
+	<submitHttpStep
+		name="set privacy flag"
+		executionLabelExpression="Set privacy flag.. ${#sysconfig('reachengine.url')} | ${collection.id}"
+		urlExpression="${#sysconfig('reachengine.url')}/reachengine/api/inventory/collections/${collection.id}"
+		requestMethodExpression="PUT"
+		responseCodeDataDef="responseCode"
+		responsePayloadDataDef="response">
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+		<!--<requestHeader name="apiKey">${#sysconfig('workflow.api.key')}</requestHeader>-->
+		<requestHeader name="auth_user">system</requestHeader>
+		<requestHeader name="auth_password">password</requestHeader>
+		<requestPayloadItem name="body">${reqPayload.toString()}</requestPayloadItem>
+	</submitHttpStep>
+	
+	<!--<saveDataObjectStep name="set privacy flag"-->
+		<!--executionLabelExpression="updating privacy flag"-->
+		<!--dataObjectExpression="${subject.metadata}"-->
+		<!--nextStep="end"-->
+		<!--&gt;-->
+		<!--<property name="private">${false}</property>-->
+	<!--</saveDataObjectStep>-->
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	
+	
+	<!-- ......... PROCESSING ........... -->
+	
+	<contextDataDef name="collection" dataType="Data Object"    defaultDataExpression="${subject}"  />
+	<contextDataDef name="id" dataType="String" defaultDataExpression="${collection.id}" />
+	
+	<contextDataDef name="collectionPrivacy" dataType="String"  defaultDataExpression="${collection.private}" />
+	
+	<contextDataDef name="response" dataType="String"   />
+	<contextDataDef name="responseCode" dataType="String"   />
+
+	<contextDataDef name="reqPayload" dataType="JSON"   >
+		<defaultDataExpression>
+			<![CDATA[
+			{
+				"private":"false"
+			}
+			]]>
+		</defaultDataExpression>
+	</contextDataDef>
+
+</workflow>

@@ -1,0 +1,43 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	
+	id="blackPearlRestoreAssetMaster"
+	name="Restore Asset from Black Pearl"
+	executionLabelExpression="Restore Asset from Black Pearl | Restore AssetMaster >>> ${subject.name}"
+	description=""
+	subjectDOClassName="AssetMaster"
+	subjectQualifierExpression=""
+	showInUserInterface="true"
+	sdkVersion=""
+>
+	
+	
+	
+	<initialStepName>restore content</initialStepName>
+	
+	
+	
+	<!-- ................................................. RESTORE FROM ASSET CONTENTS ......................................... -->
+	<executeSubflowStep name="restore content"
+		targetWorkflowId="blackPearlRestoreAssetContent"
+		subjectChangePath="${contentToRestore}"
+		pctComplete="98"
+		nextStep="end"
+	/>
+	
+	
+	
+	
+	<!-- .......................................................... END ........................................................ -->
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	
+	
+	
+	
+	<!-- .................................................. Context Data Defs .................................................. -->
+	<contextDataDef name="contentToRestore" dataType="Data Object"  defaultDataExpression="${#mezzanineContent(subject)}"/>
+</workflow>

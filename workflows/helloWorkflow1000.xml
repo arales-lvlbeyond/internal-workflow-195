@@ -1,0 +1,77 @@
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          sdkVersion=""
+          id="helloWorkflow1000"
+          name="Hello Workflow v1000"
+          executionLabelExpression="Hello Workflow v1000 | Start Time: ${startTime}"
+          subjectDOClassName=""
+          subjectQualifierExpression=""
+          resultDataDef="textToDisplay"
+          devWorkflow="false"
+          showInUserInterface="true"
+>
+
+    <initialStepName>display asset name</initialStepName>
+
+
+    <noopStep name="display asset name"
+              pctComplete="33"
+              executionLabelExpression="${subject.name}"
+              nextStep="wait"
+    />
+
+
+    <delayStep name="wait"
+               pctComplete="66"
+               executionLabelExpression="Waiting ${secondsToWait} seconds. | Text to display? ${textToDisplay != null AND textToDisplay.size() &gt; 0}"
+               delaySecondsExpression="${secondsToWait}"
+               devStep="false"
+    >
+        <transition condition="${textToDisplay != null AND textToDisplay.size() &gt; 0}">
+            <targetStepName>display selected text</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>no text to display</targetStepName>
+        </transition>
+    </delayStep>
+
+
+    <noopStep name="display selected text"
+              pctComplete="99"
+              executionLabelExpression="${textToDisplay.toString()}"
+              nextStep="end"
+    />
+
+
+    <!-- ................................................... End Steps .................................................... -->
+    <noopStep name="end"/>
+
+
+    <failWorkflowStep name="no text to display"
+                      reasonExpression="no text to display"
+                      executionLabelExpression="user did not supply custom text"
+    />
+
+
+    <!-- ................................................... Data Defs .................................................... -->
+    <!-- input -->
+    <contextDataDef name="secondsToWait"    dataType="Integer"                      userInput="true"    required="true"     label="Seconds To Wait" displayIndex="1"/>
+    <contextDataDef name="textToDisplay"    dataType="String"       multiple="true" userInput="true"    required="false"    label="Text To Display" displayIndex="2">
+        <picklist>
+            <picklistItem value="Hello!"/>
+            <picklistItem value="Some Text"/>
+            <picklistItem value="Select Me"/>
+            <picklistItem value="Another String"/>
+        </picklist>
+    </contextDataDef>
+
+    <!-- processing -->
+    <contextDataDef name="startTime"        dataType="Date/Time"                    defaultDataExpression="${#newDate()}"/>
+
+
+
+
+</workflow>

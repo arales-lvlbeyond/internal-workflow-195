@@ -1,0 +1,79 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="
+    http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-2.3.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-1.5.xsd
+    "
+    id="publishToWistia"
+    name="Publish To Wistia"
+    executionLabelExpression="Publish To Wistia"
+    subjectDOClassName="VideoAssetMaster"
+    resultDataDef=""
+    showInUserInterface="true"
+    subjectQualifierExpression=""
+    sdkVersion="">
+
+    <initialStepName>copy file</initialStepName>
+
+
+
+    <copyFileStep
+        name="copy file"
+        sourceFileExpression="${file}"
+        targetDirectoryExpression="${tempDir}"
+        createTargetDirectoryFlag="true"
+        resultDataDef="sourceFilePath"
+        nextStep="end"/>
+
+    <runCommandStep
+        name="commandStep"
+        executionLabelExpression="run commandStep, file=${file.name}"
+        executableNameExpression=""
+        stdoutDataDef="curlResponse"
+        executablePathExpression="/bin/sh"
+        pctComplete="90"
+        nextStep="add asset metadata">
+        <arg>-c</arg>
+        <arg>${commandArgs}</arg>
+    </runCommandStep>
+
+
+    <saveDataObjectStep
+        name="add asset metadata"
+        dataObjectExpression="${subject.metadata}"
+        jsonValuesDataDef="jsonMetadata"
+        executionLabelExpression="Updating metadata for ${subject.name}"
+    >
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </saveDataObjectStep>
+
+    <deleteFileStep
+        name="cleanup temp"
+        sourceFilesExpression="${tempDir}"
+        nextStep="end"/>
+
+
+
+    <noopStep name="end"/>
+
+    <failWorkflowStep
+        name="fail step"
+        reasonExpression="this file is not approved for publish">
+
+    </failWorkflowStep>
+
+    <contextDataDef	name="sourceFilePath" dataType="File"/>
+    <contextDataDef name="file" dataType="Data Object" defaultDataExpression="${subject}"/>
+
+    <contextDataDef name="formattedAuthUrl" dataType="String" defaultDataExpression="https://upload.wistia.com?api_password=1c4f985d1f807647174b4e61342ab577de5fc04da0777cdd34d83dfb89675f49"/>
+    <contextDataDef name="commandArgs" dataType="String" defaultDataExpression="curl -X POST -H &quot;username=api&quot; -H &quot;password=1c4f985d1f807647174b4e61342ab577de5fc04da0777cdd34d83dfb89675f49&quot; -F upload=@${sourceFilePath.absolutePath} ${formattedAuthUrl}"/>
+    <contextDataDef name="tempDir" dataType="String" defaultDataExpression="${#sysconfig('filesystem.root.temp')}/${#uuid().toString()}"/>
+    <contextDataDef name="wistiaUploader"   dataType="String" defaultDataExpression="${subject.metadata ?: #this(startedBy.userName)}" required="true"/>
+    <contextDataDef name="wistiaUploadDate" dataType="Date"   defaultDataExpression="${subject.metadata.wistiaUploadDate ?: #newDate()}" required="true"/>
+    <contextDataDef name="jsonMetadata"    dataType="JSON"    defaultDataExpression="{wistiaUploader:&quot;${wistiaUploader}&quot;, wistiaUploadDate:&quot;${wistiaUploadDate}&quot;, wistiaHashedID:&quot;${curlResponse.hashed_id}&quot;, wistiaId:&quot;${curlResponse.id}&quot;}"/>
+    <contextDataDef name="curlResponse"    dataType="JSON"/>
+</workflow>
+

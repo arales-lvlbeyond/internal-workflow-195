@@ -1,0 +1,148 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.5.xsd"
+    id="saveAssetToCollection"
+    name="Save asset to collection"
+    executionLabelExpression="Saving assets to collection"
+    description=""
+    subjectDOClassName=""
+    showInUserInterface="true"
+    resultDataDef="failedAssetEmailBody"
+    sdkVersion="">
+
+
+    <initialStepName>construct resource name</initialStepName>
+
+    <!--.........................................Construct filename from csv...........................................-->
+    <setContextData
+        name="construct resource name"
+        targetDataDef="resourceName"
+        executionLabelExpression="Constructed Resource Name: ${resourceName}"
+        devStep="true"
+        valueExpression="${csvJson.get('Clip ID')?.asText() ?: null}">
+        <transition condition="${resourceName != null AND !resourceName.equals('')}">
+            <targetStepName>construct collection name</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>fail on resourceName</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData
+        name="construct collection name"
+        targetDataDef="collectionName"
+        executionLabelExpression="Constructed Collection Name: ${collectionName}"
+        devStep="true"
+        valueExpression="${csvJson.get('Bin Name')?.asText() ?: null}">
+        <transition condition="${collectionName != null AND collectionName.length() &lt; 100}">
+            <targetStepName>query for existing asset</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>add to fail list</targetStepName>
+        </transition>
+    </setContextData>
+
+
+    <queryStep
+        name="query for existing asset"
+        targetDataObjectClass="AssetMaster"
+        executionLabelExpression="Does ${resourceName} exist? >>> ${asset != null}"
+        resultDataDef="assetArray">
+        <transition condition="${assetArray != null and assetArray.length() != 0}">
+            <targetStepName>query for collection</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>add to fail list</targetStepName>
+        </transition>
+
+        <criteria>
+            <![CDATA[
+                          <criteria>
+                              <and>
+                                  <condition property="metadata.resourceName" op="eq">
+                                      <test value="${resourceName}" />
+                                  </condition>
+                              </and>
+                          </criteria>
+                      ]]>
+        </criteria>
+    </queryStep>
+
+
+
+    <queryStep
+        name="query for collection"
+        executionLabelExpression="Checking to see if collection ${collectionName} exists >>> ${collection != null}"
+        targetDataObjectClass="AssetCollection"
+        resultDataDef="collection">
+        <transition condition="${collection == null}">
+            <targetStepName>create collection</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>add asset to collection</targetStepName>
+        </transition>
+
+        <criteria>
+            <![CDATA[
+               <criteria>
+                   <and>
+                       <condition property="name" op="eq">
+                           <test value="${collectionName}" />
+                       </condition>
+                   </and>
+               </criteria>
+           ]]>
+        </criteria>
+    </queryStep>
+
+
+    <saveDataObjectStep name="create collection"
+        targetDataObjectClass="AssetCollection"
+        resultDataDef="collection"
+        executionLabelExpression="Creating collection: ${collectionName}"
+        nextStep="add asset to collection"
+    >
+        <property name="name">${collectionName}</property>
+    </saveDataObjectStep>
+
+
+    <executeSubflowStep name="add asset to collection"
+        targetWorkflowId="_addAssetToCollection"
+        subjectChangePath="${assetArray}"
+        nextStep="end">
+
+        <subflowContextDataMapping parentDataDef="collection" subflowDataDef="collection"/>
+    </executeSubflowStep>
+
+
+    <setContextData
+        name="add to fail list"
+        targetDataDef="failedAssetEmailBody"
+        valueExpression="${resourceName}"
+        nextStep="end"/>
+
+
+    <failWorkflowStep
+        name="fail on resourceName"
+        executionLabelExpression="There was an error extracting resource name metadata from csv."
+        reasonExpression="There was an error extracting resource name metadata from the csv."/>
+
+    <failWorkflowStep
+        name="fail on collection name"
+        executionLabelExpression="There was an error extracting the collection name from csv."
+        reasonExpression="There was an error extracting the collection name from the csv."/>
+
+
+
+    <noopStep name="end"/>
+
+
+    <!--...........................context data defs.............................-->
+    <contextDataDef name="collection"            dataType="Data Object"/>
+    <contextDataDef name="assetArray"            dataType="Data Object" multiple="true"/>
+    <contextDataDef name="csvJson"               dataType="JSON"/>
+    <contextDataDef name="resourceName"              dataType="String"/>
+    <contextDataDef name="collectionName"        dataType="String"/>
+    <contextDataDef name="failedAssetEmailBody"  dataType="String"/>
+
+</workflow>

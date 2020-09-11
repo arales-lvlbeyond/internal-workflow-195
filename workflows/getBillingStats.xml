@@ -1,0 +1,297 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="getBillingStats"
+	name="Get Billing Stats"
+	executionLabelExpression="Sending Billing Stats to ${emailAddress}"
+	subjectDOClassName=""
+	adminOnly="true"
+	showInUserInterface="true"
+	sdkVersion=""
+>
+	
+	<initialStepName>get all assets count</initialStepName>
+	
+	<!-- All Assets Count -->
+	<executeSubflowStep name="get all assets count"
+		targetWorkflowId="getAssetsJsonByRQL"
+		resultDataDef="allAssetCountsJSON"
+		subflowTargetDataDef="rqlString"
+		subjectChangePath="${allAssetsRQLstring}"
+		nextStep="get all videos count" />
+	
+	<!-- All Videos count -->
+	<executeSubflowStep name="get all videos count"
+		targetWorkflowId="getAssetsJsonByRQL"
+		resultDataDef="allVideoCountsJSON"
+		subflowTargetDataDef="rqlString"
+		subjectChangePath="${allVideosRQLstring}"
+		nextStep="get all audios count" />
+	
+	<!-- All Audios count -->
+	<executeSubflowStep name="get all audios count"
+		targetWorkflowId="getAssetsJsonByRQL"
+		resultDataDef="allAudioCountsJSON"
+		subflowTargetDataDef="rqlString"
+		subjectChangePath="${allAudiosRQLstring}"
+		nextStep="get all images count" />
+	
+	<!-- All Images count -->
+	<executeSubflowStep name="get all images count"
+		targetWorkflowId="getAssetsJsonByRQL"
+		resultDataDef="allImageCountsJSON"
+		subflowTargetDataDef="rqlString"
+		subjectChangePath="${allImagesRQLstring}"
+		nextStep="get all documents count" />
+	
+	<!-- All Documents count -->
+	<executeSubflowStep name="get all documents count"
+		targetWorkflowId="getAssetsJsonByRQL"
+		resultDataDef="allDocumentCountsJSON"
+		subflowTargetDataDef="rqlString"
+		subjectChangePath="${allDocumentsRQLstring}"
+		nextStep="get all timelines count" />
+	
+	<!-- All Timelines count -->
+	<executeSubflowStep name="get all timelines count"
+		targetWorkflowId="getAssetsJsonByRQL"
+		resultDataDef="allTimelineCountsJSON"
+		subflowTargetDataDef="rqlString"
+		subjectChangePath="${allTimelinesRQLstring}"
+		nextStep="get all collections count" />
+	
+	<!-- All Collections count -->
+	<executeSubflowStep name="get all collections count"
+		targetWorkflowId="getAssetsJsonByRQL"
+		resultDataDef="allCollectionCountsJSON"
+		subflowTargetDataDef="rqlString"
+		subjectChangePath="${allCollectionsRQLstring}"
+		nextStep="get all projects count" />
+	
+	<!-- All Projects count -->
+	<executeSubflowStep name="get all projects count"
+		targetWorkflowId="getAssetsJsonByRQL"
+		resultDataDef="allProjectCountsJSON"
+		subflowTargetDataDef="rqlString"
+		subjectChangePath="${allProjectsRQLstring}"
+		nextStep="get all markers count" />
+	
+	<!-- All Markers count -->
+	<executeSubflowStep name="get all markers count"
+		targetWorkflowId="getAssetsJsonByRQL"
+		resultDataDef="allMarkerCountsJSON"
+		subflowTargetDataDef="rqlString"
+		subjectChangePath="${allMarkersRQLstring}"
+		nextStep="get all clips count" />
+	
+	<!-- All Clips count -->
+	<executeSubflowStep name="get all clips count"
+		targetWorkflowId="getAssetsJsonByRQL"
+		resultDataDef="allClipCountsJSON"
+		subflowTargetDataDef="rqlString"
+		subjectChangePath="${allClipsRQLstring}"
+		nextStep="get all archived assets" />
+	
+	<!-- total assets Archived in RE -->
+	<executeSubflowStep name="get all archived assets"
+		targetWorkflowId="getAssetsJsonByRQL"
+		resultDataDef="allUnArchivedJSON"
+		subflowTargetDataDef="rqlString"
+		subjectChangePath="${allUnArchivedRQLstring}"
+		nextStep="set context data for counts" />
+	
+	<setContextData name="set context data for counts"
+		nextStep="send email with information" >
+		<set targetDataDef="allAssetCount">${allAssetCountsJSON.total}</set>
+		<set targetDataDef="allVideoCount">${allVideoCountsJSON.total}</set>
+		<set targetDataDef="allAudioCount">${allVideoCountsJSON.total}</set>
+		<set targetDataDef="allImageCount">${allImageCountsJSON.total}</set>
+		<set targetDataDef="allDocumentCount">${allDocumentCountsJSON.total}</set>
+		<set targetDataDef="allTimelineCount">${allTimelineCountsJSON.total}</set>
+		<set targetDataDef="allCollectionCount">${allCollectionCountsJSON.total}</set>
+		<set targetDataDef="allProjectCount">${allProjectCountsJSON.total}</set>
+		<set targetDataDef="allMarkerCount">${allMarkerCountsJSON.total}</set>
+		<set targetDataDef="allClipCount">${allClipCountsJSON.total}</set>
+		<set targetDataDef="allUnArchivedCount">${allUnArchivedJSON.total}</set>
+		<set targetDataDef="allArchivedCount">${allAssetCountsJSON.total - allUnArchivedJSON.total}</set>
+	</setContextData>
+	
+	
+	<!-- Email CSV to emailAddress -->
+	<emailStep name="send email with information"
+		emailAddressesExpression="${emailAddress}"
+		subjectExpression="${clientName} Asset Information"
+		executionLabelExpression="Sending information to ${emailAddress}"
+		nextStep="end">
+		<body>
+	Hello Reach Employee,
+		The following is a report of all assets on ${clientName} system.
+			
+	All Assets: ${allAssetCount}
+		Video: ${allVideoCount}
+		Audio: ${allAudioCount}
+		Image: ${allImageCount}
+		Documents: ${allDocumentCount}
+		Timelines:   ${allTimelineCount}
+		Collections: ${allCollectionCount}
+		Projects:    ${allProjectCount}
+		Markers:     ${allMarkerCount}
+		Clips:       ${allClipCount}
+			
+	Assets marked as either Archived or Backed Up: ${allArchivedCount}    **
+			
+
+				
+			
+	** This is a marker for assets with restore keys which should accurately represent most clients.
+
+		Some of our clients track archived information in other ways in which this will not represent accurately. 
+			An example would be a custome metadata field, representing the state of archives.
+		Must be determined on a case by case basis.
+		</body>
+	</emailStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end" pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input Variables .......... -->
+	<contextDataDef name="clientName"       dataType="String"   userInput="true"    required="true"     label="1. Name of client" />
+	
+	
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="emailAddress"     dataType="Email"        defaultDataExpression="usagestats@levelsbeyond.com" />
+	<contextDataDef name="rqlString"        dataType="String"       defaultDataExpression="name = '${fileName}'" />
+	<!-- All Assets -->
+	<contextDataDef name="allAssetsRQLstring" dataType="String"     defaultDataExpression="SIZE 0 OFFSET 0" />
+	<contextDataDef name="allAssetCountsJSON" dataType="JSON"       />
+	<contextDataDef name="allAssetCount"      dataType="Integer"    />
+	<!-- All Videos -->
+	<contextDataDef name="allVideosRQLstring" dataType="String"     >
+		<defaultDataExpression>
+			<![CDATA[
+				inventoryKey = \"video\" SIZE 0 OFFSET 0
+            ]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	<contextDataDef name="allVideoCountsJSON" dataType="JSON"       />
+	<contextDataDef name="allVideoCount"      dataType="Integer"    />
+	<!-- All Audios -->
+	<contextDataDef name="allAudiosRQLstring" dataType="String"     >
+		<defaultDataExpression>
+			<![CDATA[
+				inventoryKey = \"audio\" SIZE 0 OFFSET 0
+            ]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	<contextDataDef name="allAudioCountsJSON" dataType="JSON"       />
+	<contextDataDef name="allAudioCount"      dataType="Integer"    />
+	<!-- All Images -->
+	<contextDataDef name="allImagesRQLstring" dataType="String"     >
+		<defaultDataExpression>
+			<![CDATA[
+				inventoryKey = \"image\" SIZE 0 OFFSET 0
+            ]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	<contextDataDef name="allImageCountsJSON" dataType="JSON"       />
+	<contextDataDef name="allImageCount"      dataType="Integer"    />
+	<!-- All Documents -->
+	<contextDataDef name="allDocumentsRQLstring" dataType="String"     >
+		<defaultDataExpression>
+			<![CDATA[
+				inventoryKey = \"document\" SIZE 0 OFFSET 0
+            ]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	<contextDataDef name="allDocumentCountsJSON" dataType="JSON"       />
+	<contextDataDef name="allDocumentCount"      dataType="Integer"    />
+	<!-- All Timelines -->
+	<contextDataDef name="allTimelinesRQLstring" dataType="String"     >
+		<defaultDataExpression>
+			<![CDATA[
+				inventoryKey = \"timeline\" SIZE 0 OFFSET 0
+            ]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	<contextDataDef name="allTimelineCountsJSON" dataType="JSON"       />
+	<contextDataDef name="allTimelineCount"      dataType="Integer"    />
+	<!-- All Collections -->
+	<contextDataDef name="allCollectionsRQLstring" dataType="String"     >
+		<defaultDataExpression>
+			<![CDATA[
+				inventoryKey = \"collection\" SIZE 0 OFFSET 0
+            ]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	<contextDataDef name="allCollectionCountsJSON" dataType="JSON"       />
+	<contextDataDef name="allCollectionCount"      dataType="Integer"    />
+	<!-- All Projects -->
+	<contextDataDef name="allProjectsRQLstring" dataType="String"     >
+		<defaultDataExpression>
+			<![CDATA[
+				inventoryKey = \"project\" SIZE 0 OFFSET 0
+            ]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	<contextDataDef name="allProjectCountsJSON" dataType="JSON"       />
+	<contextDataDef name="allProjectCount"      dataType="Integer"    />
+	<!-- All Markers -->
+	<contextDataDef name="allMarkersRQLstring" dataType="String"     >
+		<defaultDataExpression>
+			<![CDATA[
+				inventoryKey = \"marker\" SIZE 0 OFFSET 0
+            ]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	<contextDataDef name="allMarkerCountsJSON" dataType="JSON"       />
+	<contextDataDef name="allMarkerCount"      dataType="Integer"    />
+	<!-- All Clips -->
+	<contextDataDef name="allClipsRQLstring" dataType="String"     >
+		<defaultDataExpression>
+			<![CDATA[
+				inventoryKey = \"clip\" SIZE 0 OFFSET 0
+            ]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	<contextDataDef name="allClipCountsJSON" dataType="JSON"       />
+	<contextDataDef name="allClipCount"      dataType="Integer"    />
+	
+	<!-- All Archived Assets -->
+	<contextDataDef name="allUnArchivedRQLstring" dataType="String"     >
+		<defaultDataExpression>
+			<![CDATA[
+				restoreKey IS NULL SIZE 0 OFFSET 0
+            ]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	<contextDataDef name="allUnArchivedJSON"        dataType="JSON"       />
+	<contextDataDef name="allUnArchivedCount"      dataType="Integer"    />
+	<contextDataDef name="allArchivedCount"         dataType="Integer"  />
+	
+
+</workflow>

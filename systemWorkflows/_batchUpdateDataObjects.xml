@@ -1,0 +1,95 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="
+        http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+        "
+        
+ id="_batchUpdateDataObjects"
+ name="Batch Data Update"
+ executionLabelExpression="Batch Data Update"
+ description=""
+ subjectDOClassName=""
+ showInUserInterface="false">
+    
+	<initialStepName>check data objects to update</initialStepName>
+	
+	<testStep name="check data objects to update"
+			  outputExpression="check whether query is necessary: ${dataObjectsToUpdate == null}"
+			  devStep="true">
+		<transition condition="${dataObjectsToUpdate == null}">
+			<targetStepName>do query</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>save objects</targetStepName>
+		</transition>
+	</testStep>
+	
+	<queryStep name="do query"
+		executionLabelExpression="Query for Data Objects"
+		targetDataObjectClass="${queryTargetClass}" 
+		resultDataDef="dataObjectsToUpdate"
+		pctComplete="10"
+	>
+		<transition condition="=true">
+			<targetStepName>save objects</targetStepName>
+		</transition>
+		<criteria>${query}</criteria>		
+	</queryStep>
+	
+    <executeSubflowStep 
+    	name="save objects"
+    	executionLabelExpression="Update ${dataObjectsToUpdate.size()} data objects"
+    	targetWorkflowId="_updateDataObject"
+    	subjectChangePath="${dataObjectsToUpdate}"
+    	subflowTargetDataDef="dataObjectToUpdate"
+    	pctComplete="95"    	
+   	>
+        <transition condition="=true">
+        	<targetStepName>update categories</targetStepName>
+        </transition>
+        <subflowContextDataMapping subflowDataDef="dataValues" parentDataDef="dataValues"/>
+    </executeSubflowStep>
+
+	<nimbus:changeMetaCategoryStep name="update categories" targetObjectExpression="${dataObjectsToUpdate}">
+		<transition condition="=true">
+			<targetStepName>raise completion event</targetStepName>
+		</transition>
+		<nimbus:addCategory>${addCategories}</nimbus:addCategory>
+		<nimbus:removeCategory>${removeCategories}</nimbus:removeCategory>
+	</nimbus:changeMetaCategoryStep>
+	    
+    <raiseWorkflowEventStep 
+    	name="raise completion event"
+    	eventTypeExpression="BatchUpdateCompleted"
+    	executionLabelExpression="Sending Batch Update Completion event"
+    	summaryExpression="Batch Data Update is complete"
+    >
+    	<property name="dataObjectCount">${dataObjectsToUpdate.size()}</property>
+    </raiseWorkflowEventStep>
+    
+    <contextDataDef name="query" dataType="XML"/>
+    <contextDataDef name="queryTargetClass" dataType="String" required="true"/>
+    <contextDataDef name="dataObjectsToUpdate" dataType="Data Object" multiple="true"/>
+    <contextDataDef name="dataValues" dataType="NameValuePair" multiple="true" required="true"/>
+	<contextDataDef name="addCategories" dataType="String" multiple="true"/>
+	<contextDataDef name="removeCategories" dataType="String" multiple="true"/>
+
+</workflow>

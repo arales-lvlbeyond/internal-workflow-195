@@ -1,0 +1,91 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="findMeTest"
+	name="Find me test"
+	executionLabelExpression="Find me test."
+	description="
+		Complete the workflow
+			Find an AssetMaster with the metadata field 'findMe' set to true
+		The workflow will then set the 'findMe' field on the found asset to false
+	"
+	subjectDOClassName=""
+	resultDataDef=""
+	deadlineExpression=""
+	showInUserInterface="true"
+	sdkVersion=""
+>
+	
+	
+	<initialStepName>get asset</initialStepName>
+	
+	
+	<!-- find an AssetMaster object with the 'findMe' metadata field set to true -->
+	<queryStep name="get asset"
+		targetDataObjectClass="AssetMaster"
+		resultDataDef="foundAsset"
+		pctComplete="33"
+		executionLabelExpression="finding an asset where 'findMe' is set to true"
+	>
+		<transition condition="${foundAsset != null}">
+			<targetStepName>set to false</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>no asset found</targetStepName>
+		</transition>
+		
+		<criteria>
+			<![CDATA[
+			<and>
+				<condition property="metadata.findMe" op="eq">
+						<test value="true" />
+					</condition>
+				</and>
+			]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<!-- save 'findMe' to false on the found asset -->
+	<saveDataObjectStep name="set to false"
+		dataObjectExpression="${foundAsset.metadata}"
+		executionLabelExpression="saving 'findMe' as false on ${foundAsset.name}"
+		pctComplete="66"
+		nextStep="reindex"
+	>
+		<property name="findMe">false</property>
+	</saveDataObjectStep>
+	
+	
+	<!-- reindex the found asset in elasticsearch -->
+	<raiseWorkflowEventStep name="reindex"
+		eventTypeExpression="ensureIndexed"
+		executionLabelExpression="Ensure Asset Indexed"
+		pctComplete="99"
+		nextStep="end"
+	>
+		<property name="indexTargetRef">${foundAsset}</property>
+	</raiseWorkflowEventStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- no asset found in the query -->
+	<noopStep name="no asset found"
+		executionLabelExpression="no asset found in the query"
+		nextStep="end"
+	/>
+	
+	
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ..... inputs ..... -->
+	
+	<!-- ... Calculated ... -->
+	<!-- AssetMaster returned from the query -->
+	<contextDataDef name="foundAsset" 	dataType="Data Object"/>
+
+</workflow>

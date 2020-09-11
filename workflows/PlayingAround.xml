@@ -1,0 +1,189 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          id="PlayingAround"
+          name="Playing Around"
+          executionLabelExpression="Playing Around"
+          subjectDOClassName="VideoAssetMaster"
+          showInUserInterface="true"
+          sdkVersion="">
+
+    <initialStepName>original content</initialStepName>
+
+    <noopStep name="original content"
+              executionLabelExpression="${subject.originalContent.name}"
+              nextStep="end"/>
+
+    <groovyStep name="handle results"
+                resultDataDef="txtOut"
+                nextStep="get results from file">
+        <script>
+            <![CDATA[
+
+            import java.io.File
+            import java.text.SimpleDateFormat
+            import com.routeto1.filesystem.FileWrapperUtils
+
+            File file = new File(txtOut.getAbsolutePath())
+            //check if a new file should be created or append to old
+            if (!appendToFile){
+                //replace|new file
+                file.write(messageToWrite)
+            }
+            else{
+                //append to existing file
+                file.append("\n" + messageToWrite)
+            }
+            return txtOut
+            ]]>
+        </script>
+    </groovyStep>
+
+    <groovyStep name="get results from file"
+                resultDataDef="fileResults"
+                nextStep="send e-mail">
+        <script>
+            <![CDATA[
+            return new File('/reachengine/media/tmpResults.txt').text
+            ]]>
+        </script>
+    </groovyStep>
+
+
+    <queryStep name="check for duplicates"
+               targetDataObjectClass="AssetMaster"
+               resultDataDef="duplicateResults"
+               executionLabelExpression="test ${json.uuid} found ${duplicateResults.size()}"
+               nextStep="send e-mail">
+
+        <criteria>
+            <![CDATA[
+                 <criteria>
+                    <and>
+                        <condition property="metadata.recordOID" op="eq">
+                            <test value="102235" />
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+
+    <!-- generate api key copied from nfl day 4 guide -->
+<!--    <submitHttpStep name="generate api key"-->
+<!--                    executionLabelExpression="generate API key for ${username}">-->
+<!--        urlExpression="${remoteReachUrl}/reachengine/api/v1/apikey/${username}"-->
+<!--        requestMethodExpression="POST"-->
+<!--        responsePayloadDataDef="apiKeyResponse"-->
+<!--        continueOnException="true"-->
+<!--        devStep="true">-->
+
+<!--        <transition condition="${apiKeyResponse.get('apiKey') != null}">-->
+<!--            <targetStepName>set api key</targetStepName>-->
+<!--        </transition>-->
+<!--        <transition condition="${true}">-->
+<!--            <targetStepName>end</targetStepName>-->
+<!--        </transition>-->
+<!--        <requestHeader name="apikey">${workflowAPIKey}</requestHeader>-->
+<!--    </submitHttpStep>-->
+
+
+    <emailStep  name="send e-mail"
+                    emailAddressesExpression="=T(java.util.Arrays).asList('gwohlford@levelsbeyond.com', 'gabrielwohlford@gmail.com')"
+                    subjectExpression="Reach Engine workflow example"
+                    attachmentsExpression="/reachengine/media/tmpResults.txt"
+                    nextStep="end">
+        <body>Results from run</body>
+    </emailStep>
+
+
+
+    <!-- tinker area -->
+<!--    <noopStep name="get workflow name" executionLabelExpression="${#this.workflow.executionLabel}" nextStep="end"/>-->
+
+    <groovyStep name="testJsonToArray" resultDataDef="testStringArray" nextStep="end">
+        <script>
+           <![CDATA[
+            import groovy.*
+            import groovy.json.*
+            import groovy.json.JsonSlurper
+
+            def jsonSlurper = new JsonSlurper()
+            def object = jsonSlurper.parseText(json.toString())
+            def result = []
+
+            object.each{k, v ->
+                result.add(v)
+            }
+            return  result
+            ]]>
+
+        </script>
+    </groovyStep>
+
+
+
+    <!-- ................................................... End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end"/>
+    <contextDataDef name="fileToIngest" dataType="File"				/>
+    <contextDataDef name="FileName"     dataType="String"                       defaultDataExpression="${#filename(fileToIngest)}"/>
+    <contextDataDef name="json"         dataType="JSON">
+        <defaultDataExpression>
+            {
+            "uuid":"recordOID",
+            "wid":"weekID",
+            "location":"eventLocation",
+            "description":"longDescription",
+            "short":"shortDescription",
+            "keywords":"keywords",
+            "validated":"preValidated",
+            "project":"collection",
+            "department":"category"
+            }
+        </defaultDataExpression>
+    </contextDataDef>
+
+
+    <contextDataDef name="testStringArray"    dataType="String" multiple="true"/>
+    <contextDataDef name="testNameValue"      dataType="NameValuePair" multiple="true"/>
+    <contextDataDef name="duplicateResults"   dataType="Data Object" multiple="true"/>
+    <nimbus:setMetadataValueStep name="testset" targetExpression="${subject}" propertyNameExpression="proxyTriage" valueExpression="${true}" nextStep="end"/>
+
+
+    <!--F = handle results -->
+    <contextDataDef name="appendToFile"     dataType="Boolean"  defaultDataExpression="false"/>
+    <contextDataDef name="messageToWrite"   dataType="String"   defaultDataExpression="yes,no, maybe so?"/>
+    <contextDataDef name="workflowName"     dataType="String"   defaultDataExpression=""/>
+    <contextDataDef name="txtOut"           dataType="File"     defaultDataExpression="/reachengine/media/tmpResults.txt"/>
+    <contextDataDef name="fileResults"      dataType="String"/>
+
+
+    <contextDataDef name="originalC"        dataType="Data Object" defaultDataExpression="${subject.originalContent}"/>
+
+
+    <!-- ................................................... Data Defs .................................................... -->
+    <!-- ............ INPUT ............. -->
+
+
+    <!-- ......... PROCESSING ........... -->
+
+
+</workflow>

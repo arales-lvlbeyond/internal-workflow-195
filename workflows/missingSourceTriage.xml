@@ -1,0 +1,226 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="missingSourceTriage"
+	name="Missing Source Triage"
+	executionLabelExpression="Searching for assets missing source content..."
+	resultDataDef="assetsMissingSource"
+	showInUserInterface="true"
+	subjectDOClassName=""
+	adminOnly="true"
+	group="Troubleshooting"
+	hasDownload="true"
+	sdkVersion=""
+>
+	
+    <initialStepName>query for assets</initialStepName>
+
+    <queryStep name="query for assets"
+	    executionLabelExpression="Checking for missing sources in batch of assets found: ${queriedAssets.size()}"
+	    targetDataObjectClass="VideoAssetMaster"
+	    resultDataDef="queriedAssets"
+	    fetchOffsetExpression="${queryFetchOffset}"
+	    fetchLimitExpression="${queryFetchLimit}"
+    >
+		<transition condition="${queriedAssets.size() &gt; 0}">
+			<targetStepName>get last id</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>check for report file</targetStepName>
+		</transition>
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="contents.contentUses" op="like">
+						    <test value="%SOURCE%" />
+						</condition>
+						<condition property="dateCreated" op="lte">
+							<test value="${targetEndDate}" />
+						</condition>
+						<condition property="dateCreated" op="gte">
+							<test value="${targetStartDate}" />
+						</condition>
+						<condition property="id" op="gt">
+							<test value="${lastId}" />
+						</condition>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+	    <sortOrder sortPropertyExpression="id" sortDirectionExpression="ASC"/>
+    </queryStep>
+	
+	<setContextData name="get last id"
+		executionLabelExpression="last id: ${lastId}"
+		targetDataDef="lastId"
+		valueExpression="${ !queriedAssets.isEmpty() ? queriedAssets[queriedAssets.size()-1].id : null }"
+		nextStep="filter assets with missing source files"
+		devStep="true"
+	/>
+	
+	<setContextData name="filter assets with missing source files"
+		executionLabelExpression="Number of assets missing source file: ${assetsMissingSource.size()}"
+		targetDataDef="assetsMissingSource"
+		valueExpression="${queriedAssets.?[#sourceContent(#this)?.file != null and !#sourceContent(#this)?.file.exists()]}"
+	>
+		<transition condition="${assetsMissingSource.size() &gt; 0}">
+			<targetStepName>get asset contents</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>query for assets</targetStepName>
+		</transition>
+	</setContextData>
+	
+	<setContextData name="get asset contents"
+		executionLabelExpression="Number of source content objects: ${sourceContents.size()}"
+		targetDataDef="sourceContents"
+		valueExpression="${assetsMissingSource.![#sourceContent(#this)]}"
+		nextStep="log problem asset into report"
+		devStep="true"
+	/>
+	
+	<groovyStep name="log problem asset into report"
+		executionLabelExpression="${numOfMissingSources} entries added to report file. | File Location: ${reportFile.absolutePath}"
+		resultDataDef="numOfMissingSources"
+		nextStep="query for assets"
+	>
+		<script>
+			<![CDATA[
+			import com.csvreader.CsvWriter
+			
+			char delimiter = ','
+			
+			
+			// Initialize output csv
+			CsvWriter outputCsv = new CsvWriter(new FileWriter(reportFile.absolutePath, true), delimiter)
+			
+			if (numOfMissingSources == 0)
+			{
+				outputCsv.write('Asset ID')
+				outputCsv.write('Name')
+				outputCsv.write('File Size')
+				outputCsv.write('Date Created')
+				outputCsv.write('Date Updated')
+				outputCsv.write('Source File Path')
+				outputCsv.endRecord()
+			}
+			
+			// add entry for each asset identified as missing source file
+			sourceContents.each { source ->
+				outputCsv.write(source.asset.id.toString())
+				outputCsv.write(source.asset.name)
+				outputCsv.write(source.fileSize.toString())
+				outputCsv.write(source.dateCreated.toString())
+				outputCsv.write(source.dateUpdated.toString())
+				outputCsv.write(source.file.absolutePath)
+				outputCsv.endRecord()
+			}
+			
+			outputCsv.close()
+			
+			return numOfMissingSources + 1
+			]]>
+		</script>
+	</groovyStep>
+	
+	<!--
+		This groovy step was merely used to track the batches of assets queried that had missing source files.
+		This is commented out to reduce the risk of force evaluating all the assets in memory if the query returns a large set of assets.
+	-->
+	<!--<groovyStep name="add fetched assets to list"-->
+	<!--executionLabelExpression="Number of fetched asset: ${allQueriedAssets.size()}"-->
+	<!--resultDataDef="allQueriedAssets"-->
+	<!--nextStep="query for assets"-->
+	<!--&gt;-->
+	<!--<script>-->
+	<!--<![CDATA[-->
+	<!--list = []-->
+	<!--if (allQueriedAssets != null || allQueriedAssets?.isEmpty())-->
+	<!--list = allQueriedAssets-->
+	<!--queriedAssets.each { asset ->-->
+	<!--list.add(asset)-->
+	<!--}-->
+	<!--return list-->
+	<!--]]>-->
+	<!--</script>-->
+	<!--</groovyStep>-->
+	
+	
+	<noopStep name="check for report file"
+		executionLabelExpression="Report file exists? | ${reportFile.exists()}"
+	>
+		<transition condition="${reportFile.exists()}">
+			<targetStepName>download report</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<setWorkflowDownloadStep name="download report"
+		executionLabelExpression="Making report file available for download."
+		sourceFileExpression="${reportFile}"
+		nextStep="clean up report file"
+	/>
+	
+	
+	<deleteFileStep name="clean up report file"
+		sourceFilesExpression="${reportFile}"
+		nextStep="end"
+		devStep="true"
+	/>
+	
+	<!-- ................................................. End Steps ................................................. -->
+	<noopStep name="end"/>
+	
+	<!-- fail steps -->
+	<failWorkflowStep name="error creating report"
+		reasonExpression="Error creating report file."
+		executionLabelExpression="Error creating report file."
+	/>
+	
+	<!-- ................................................. Context Data Defs .............................................. -->
+	<!-- Inputs -->
+	<!-- Date range data defs -->
+	<contextDataDef name="startDate"            dataType="Date"             label="Start Date: "    userInput="true"        required="true"         displayIndex="1"/>
+	<contextDataDef name="targetStartDate"      dataType="String"           defaultDataExpression="${ #formatDate('yyyy-MM-dd', startDate)}" />
+	<contextDataDef name="endDate"              dataType="Date"             label="End Date: "      userInput="true"        required="true"         displayIndex="2"/>
+	<contextDataDef name="targetEndDate"        dataType="String"           defaultDataExpression="${ #formatDate('yyyy-MM-dd', endDate)}" />
+	
+	<!-- .......... Query Variables .......... -->
+	<contextDataDef name="queryFetchLimit" 		dataType="Integer"		    defaultDataExpression="${#sysconfig('workflows.missingSourceTriage.queryFetchLimit') ?: 100 }"/>
+    <contextDataDef name="queryFetchOffset" 	dataType="Integer"		    defaultDataExpression="0"/>
+	
+	<contextDataDef name="assetID"              dataType="String"/>
+	<!-- Processing -->
+	<contextDataDef name="queriedAssets"        dataType="Data Object"      multiple="true"/>
+    <contextDataDef name="allQueriedAssets"     dataType="Data Object"      multiple="true"/>
+	<contextDataDef name="lastId"               dataType="Integer"          defaultDataExpression="0"/>
+	<contextDataDef name="success"              dataType="Boolean" />
+	<contextDataDef name="numOfMissingSources"  dataType="Integer"          defaultDataExpression="0"/>
+	<contextDataDef name="assetsMissingSource"  dataType="Data Object"      multiple="true"/>
+    <contextDataDef name="sourceContents"       dataType="Data Object"      multiple="true"/>
+	
+	<contextDataDef name="reportFile"           dataType="File"             defaultDataExpression="/reachengine/temp/missingSourceFiles_${#uuid()}.csv"/>
+
+</workflow>

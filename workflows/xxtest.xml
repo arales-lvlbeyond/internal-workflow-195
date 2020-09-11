@@ -1,0 +1,29 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="xxtest"
+	name="xxTest"
+	executionLabelExpression="Ingest WSC Video - ${#filename(fileToIngest.absolutePath)}"
+	description=""
+	adminOnly="true"
+	group="Ingest"
+	showInUserInterface="true"
+	subjectDOClassName=""
+	subjectQualifierExpression=""
+	sdkVersion="">
+	
+	<initialStepName>testtest</initialStepName>
+	
+	<noopStep name="testtest"
+		executionLabelExpression="${fileToIngest.name}.${#extension(fileToIngest.name)}"
+		nextStep="end"
+		/>
+	
+	<noopStep name="end" />
+	
+	
+	<!-- Input -->
+	<contextDataDef name="fileToIngest" dataType="File" userInput="true" required="true"/>
+
+</workflow>

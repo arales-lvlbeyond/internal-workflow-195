@@ -1,0 +1,142 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_exportTimelineClip"
+	name="Export Timeline Clip"
+	executionLabelExpression="Export ${subject.name} to ${exportPath.absolutePath} as ${targetTemplateName}"
+	description=""
+	subjectDOClassName="Clip"
+	deadlineExpression=""
+	showInUserInterface="false"
+	resultDataDef="exportedFile"
+	sdkVersion="4.2"
+	>
+
+    <initialStepName>extract assets from json</initialStepName>
+	
+
+    <groovyStep name="extract assets from json"
+        resultDataDef="assetObjs"
+	    nextStep="set video assets"
+        >
+        <script>
+            <![CDATA[
+                import groovy.*;
+                import groovy.json.*;
+                import org.slf4j.Logger;
+                import org.slf4j.LoggerFactory;
+                Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow");
+
+                def json = new JsonSlurper().parseText(assets.toString());
+                def jsonObject = new JsonSlurper().parseText("{}");
+                
+                jsonObject.putAt("videos", []);
+                jsonObject.putAt("audios", []);
+                
+                json.each { asset ->
+                    if (asset.type.equals("video")) {
+                        jsonObject.videos.push( "[VideoAssetMaster." + asset.id + "]");
+                    }
+                    else if (asset.type.equals("audio")) {
+                        jsonObject.audios.push( "[AudioAssetMaster." + asset.id + "]");
+                    }
+                    else {
+                        log.warn("Unable to export clip for asset (" + asset.type + ", " + asset.id + ").  Skipping...");
+                    }
+                }
+                return jsonObject;
+            ]]>
+        </script>
+    </groovyStep>
+	
+
+    <setContextData name="set video assets"
+        targetDataDef="videoList"
+        valueExpression="${assetObjs.videos}"
+	    nextStep="export video clips"
+        />
+
+	
+    <executeSubflowStep name="export video clips"
+        targetWorkflowId="_exportTimelineVideoClip"
+        subjectChangePath="${videoList}"
+	    nextStep="set audio assets"
+        >
+        <subflowContextDataMapping parentDataDef="clip"                 subflowDataDef="clip" />
+        <subflowContextDataMapping parentDataDef="exportPath"           subflowDataDef="exportPath" />
+        <subflowContextDataMapping parentDataDef="targetTemplateName"   subflowDataDef="targetTemplateName" />
+        <subflowContextDataMapping parentDataDef="priority"             subflowDataDef="priority" />
+    </executeSubflowStep>
+
+	
+    <!-- TODO: Set devStep below to false when _exportTimelineAudioClip is implemented. -->
+    <setContextData name="set audio assets"
+        targetDataDef="audioList"
+        devStep="true"
+        valueExpression="${assetObjs.audios}"
+	    nextStep="export audio clips"
+        >
+        <transition condition="=true">
+            <targetStepName>export audio clips</targetStepName>
+        </transition>
+    </setContextData>
+
+	
+    <!-- TODO: Write _exportTimelineAudioClip and hook it up like the example below. -->
+    <!-- <executeSubflowStep name="export audio clips"
+        targetWorkflowId="_exportTimelineAudioClip"
+        subjectChangePath="${audioList}"
+        nextStep="end"
+        >
+        <subflowContextDataMapping parentDataDef="clip" subflowDataDef="clip" />
+        <subflowContextDataMapping parentDataDef="exportPath" subflowDataDef="exportPath" />
+        <subflowContextDataMapping parentDataDef="targetTemplateName" subflowDataDef="targetTemplateName" />
+        <subflowContextDataMapping parentDataDef="priority" subflowDataDef="priority" />
+    </executeSubflowStep -->
+
+	
+    <!-- TODO: Remove this when _exportTimelineAudioClip is implemented. -->
+    <noopStep name="export audio clips"
+		devStep="true"
+		executionLabelExpression="Skipping audio clip export.  Not implemented yet."
+	    nextStep="end"
+        />
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+    <noopStep name="end" />
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input .......... -->
+    <contextDataDef name="assets"               dataType="JSON"         defaultDataExpression="[]" multiple="true" />
+	
+	<!-- ....... Processing ........ -->
+    <!-- used locally -->
+    <contextDataDef name="assetObjs"            dataType="JSON"         defaultDataExpression="{}"/>
+    <contextDataDef name="videoList"            dataType="Data Object"  multiple="true" />
+    <contextDataDef name="audioList"            dataType="Data Object"  multiple="true" />
+    <!-- Passed to subflows -->
+    <contextDataDef name="clip"                 dataType="Data Object"  defaultDataExpression="${subject}" />
+    <contextDataDef name="exportPath"           dataType="Directory"    defaultDataExpression="${#sysconfig('clip.export.path')}" />
+    <contextDataDef name="targetTemplateName"   dataType="String"       defaultDataExpression="${#sysconfig('clip.export.template')}" />
+    <contextDataDef name="priority"             dataType="Integer"      defaultDataExpression="85"/>
+</workflow>

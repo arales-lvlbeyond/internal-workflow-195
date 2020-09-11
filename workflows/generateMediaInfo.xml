@@ -1,0 +1,226 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="generateMediaInfo"
+    name="Generate Media Info On File"
+    executionLabelExpression="Generate Media Info for ${subject.name}"
+    subjectDOClassName="AssetMaster"
+    showInUserInterface="true"
+    resultDataDef=""
+	sdkVersion=""
+    >
+
+
+    <initialStepName>check for r3d file</initialStepName>
+
+    <noopStep name="check for r3d file"
+              executionLabelExpression="Are we processing an R3d file? ${#extension(subject.originalContent.file).equalsIgnoreCase('r3d')}">
+        <transition condition="${#extension(subject.originalContent.file).equalsIgnoreCase('r3d')}">
+            <targetStepName>create target directory</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>skipping non r3d file</targetStepName>
+        </transition>
+    </noopStep>
+
+	<runCommandStep name="create target directory"
+        executablePathExpression="/bin/mkdir"
+        nextStep="run exiftool">
+        <arg>-p</arg>
+        <arg>${outputDir}</arg>
+    </runCommandStep>
+
+
+    <runCommandStep name="run exiftool"
+		executablePathExpression="/bin/sh"
+		continueOnException="false"
+		>
+
+		<arg>-c</arg>
+		<arg>${exiftoolPath} "${subject.originalContent.file.absolutePath}" > "${exifOutputFile.absolutePath}"</arg>
+
+		<transition condition="${exifOutputFile.exists()}">
+			<targetStepName>set result</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>no output</targetStepName>
+		</transition>
+	</runCommandStep>
+
+	<setContextData name="set result"
+        targetDataDef="exifResult"
+        valueExpression="${#nameValuePairs(exifOutputFile, ':')}"
+		nextStep="create json">
+	</setContextData>
+
+	<groovyStep name="create json"
+		resultDataDef="exifJson"
+		nextStep="run redline"
+		>
+		<script>
+			<![CDATA[
+				exifResult.each {
+					exifJson.put(it.name, it.value);
+				}
+
+				return exifJson
+			]]>
+		</script>
+	</groovyStep>
+
+	<runCommandStep name="run redline"
+		executablePathExpression="/bin/sh"
+		executionLabelExpression="${fullRedlineCmd}"
+		stdoutDataDef="responseOutString"
+        stderrDataDef="responseErrString"
+		continueOnException="true">
+
+		<arg>-c</arg>
+		<arg>${fullRedlineCmd}</arg>
+
+		<transition condition="${redlineOutputFile.exists()}">
+			<targetStepName>set redline result</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>no redline output</targetStepName>
+		</transition>
+	</runCommandStep>
+
+	<setContextData name="set redline result"
+        targetDataDef="redlineResult"
+        valueExpression="${#nameValuePairs(redlineOutputFile, ':')}"
+		nextStep="append to json">
+	</setContextData>
+
+	<groovyStep name="append to json"
+		resultDataDef="exifJson"
+		nextStep="delete temp files"
+		>
+		<script>
+			<![CDATA[
+				redlineResult.each {
+					exifJson.put(it.name, it.value);
+				}
+
+				return exifJson
+			]]>
+		</script>
+	</groovyStep>
+
+	<deleteFileStep name="delete temp files"
+	                sourceFilesExpression="${ outputDir }"
+					nextStep="get start time">
+	</deleteFileStep>
+
+	<groovyStep name="get start time"
+				executionLabelExpression="Calculating start time ${startTime}"
+				resultDataDef="startTime"
+				nextStep="persist media info">
+		<script>
+			<![CDATA[
+				String startTimecode = exifJson.get('Start Timecode').asText();
+
+				String[] split = startTimecode.split(":");
+				Integer hours = Integer.parseInt(split[0])
+				Integer minutes = Integer.parseInt(split[1]);
+				Integer seconds = Integer.parseInt(split[2]);
+				Integer frames = Integer.parseInt(split[3]);
+
+				Double frameRate = exifJson.get('Frame Rate').asDouble();
+
+				int dropFrames = 0;
+				if (frameRate == 29.97) {
+					dropFrames = 2;
+				} else if (frameRate == 59.94) {
+					dropFrames = 4;
+				} else if (frameRate == 119.880) {
+					dropFrames = 8;
+				}
+
+				// timebase is the rounded framerate to the nearest ceiling.
+				// ie: 59.94 runs in 60 timebase, 29.97 runs in 30 timebase, 23.976 runs in 24 timebase.
+				int timebase = (int) Math.ceil(frameRate);
+
+				// Number of frames per hour
+				int hourFrames = timebase * 60 * 60;
+
+				// Number of frames per minute
+				int minuteFrames = timebase * 60;
+
+				// Total number of minutes
+				int totalMinutes = (60 * hours) + minutes;
+
+				// frame number is hours * number of frames in an hour + minutes * number of frames in a minute + timeBase * seconds + frames.
+				int frameNumber = ((hourFrames * hours) + (minuteFrames * minutes) + (timebase * seconds) + frames);
+
+				// subtract "skipped" drop frame timecode values
+				//if (timeCodeFormat == 'DROP_FRAME') {
+				//	frameNumber = frameNumber - (dropFrames * (totalMinutes - (int) Math.floor(totalMinutes / 10)));
+				//}
+
+				return frameNumber / frameRate;
+			]]>
+		</script>
+	</groovyStep>
+
+	<saveDataObjectStep name="persist media info"
+		dataObjectExpression="${subject.originalContent}"
+		executionLabelExpression="Set source media info"
+		nextStep="end"
+		>
+		<property name="aspectRatio">${exifJson.hasNonNull('Aspect Ratio') ? exifJson.get('Aspect Ratio').asText() : ''}</property>
+		<property name="frameRate">${exifJson.hasNonNull('Frame Rate') ? exifJson.get('Frame Rate').asText() : ''}</property>
+		<property name="height">${exifJson.hasNonNull('Image Height') ? exifJson.get('Image Height').asText() : ''}</property>
+		<property name="width">${exifJson.hasNonNull('Image Width') ? exifJson.get('Image Width').asText() : ''}</property>
+
+		<property name="startTimecode">${exifJson.hasNonNull('Start Timecode') ? exifJson.get('Start Timecode').asText() : ''}</property>
+		<property name="startTime">${startTime}</property>
+		<property name="duration">${exifJson.hasNonNull('Total Frames') AND exifJson.hasNonNull('Frame Rate') ? (exifJson.get('Frame Rate').asDouble() * exifJson.get('Total Frames').asDouble()) : null}</property>
+		<property name="timecodeFormat">${exifJson.hasNonNull('Dropped Frame Count') ? (exifJson.get('Dropped Frame Count').asInt() == 0 ? 'NON_DROP_FRAME' : 'DROP_FRAME') : 'NON_DROP_FRAME'}</property>
+
+		<!--<property name="bitrateKbs">${}</property>-->
+		<!--<property name="containerType">${}</property>-->
+		<!--<property name="fieldOrder">${}</property>-->
+		<!--<property name="videoCodec">${}</property>-->
+		<!--<property name="audioChannelCount">${}</property>-->
+		<!--<property name="audioBitrate">${}</property>-->
+		<!--<property name="audioCodec">${}</property>-->
+		<!--<property name="audioLanguage">${}</property>-->
+		<!--<property name="audioSampleRate">${}</property>-->
+		<!--<property name="audioSampleDepth">${}</property>-->
+
+	</saveDataObjectStep>
+
+    <!-- ..............................End States ...................................... -->
+    <noopStep name="skipping non r3d file"/>
+
+	<noopStep name="end"/>
+
+	<failWorkflowStep name="no output"
+        reasonExpression="Failed to get output from exiftool"
+        executionLabelExpression="Failed to get output from exiftool"/>
+
+	<failWorkflowStep name="no redline output"
+        reasonExpression="Failed to get output from REDline"
+        executionLabelExpression="Failed to get output from REDline"/>
+
+    <!-- .............................. Context Data Defs ...................................... -->
+	<contextDataDef name="asset" dataType="Data Object" defaultDataExpression="${subject}"/>
+
+	<contextDataDef name="responseOutString" dataType="String"/>
+	<contextDataDef name="responseErrString" dataType="String"/>
+
+	<contextDataDef name="startTime" dataType="Double"/>
+	<contextDataDef name="exitCode" dataType="Integer"/>
+    <contextDataDef name="exiftoolPath" dataType="String" defaultDataExpression="${ #sysconfig('exiftool.path') }"/>
+	<contextDataDef name="exifResult" dataType="NameValuePair" multiple="true"/>
+	<contextDataDef name="redlineResult" dataType="NameValuePair" multiple="true"/>
+	<contextDataDef name="exifOptions" dataType="String" defaultDataExpression=""/>
+	<contextDataDef name="outputDir" dataType="String" defaultDataExpression="${#sysconfig('filesystem.root.temp')}/${#uuid()}"/>
+	<contextDataDef name="exifOutputFile" dataType="File" defaultDataExpression="${outputDir}/exifOutput.txt"/>
+	<contextDataDef name="redlineOutputFile" dataType="File" defaultDataExpression="${outputDir}/redlineOutput.txt"/>
+	<contextDataDef name="exifJson" dataType="JSON" defaultDataExpression="{}"/>
+	<contextDataDef name="REDlineCmd" dataType="String" defaultDataExpression="${#sysconfig('workflow.redline.cmd.path')}"/>
+	<contextDataDef name="fullRedlineCmd" dataType="String" defaultDataExpression="${REDlineCmd}/REDline --i '${subject.originalContent.file.absolutePath}' -printMeta 1 --useMeta --logFile ${REDlineCmd}/logs/REDline.log | grep Total > '${redlineOutputFile.absolutePath}'"/>
+</workflow>

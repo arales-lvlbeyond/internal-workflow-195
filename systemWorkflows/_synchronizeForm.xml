@@ -1,0 +1,403 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_synchronizeForm"
+	name="Synchronize Form"
+	executionLabelExpression="Synchronize Form | Form: ${subject.name} (id: ${subject.id})"
+	subjectDOClassName="IngestFormDataObject"
+	resultDataDef="schemaId"
+	showInUserInterface="false"
+	devWorkflow="true"
+	sdkVersion="5.6"
+	>
+
+	<initialStepName>check if workflow is running</initialStepName>
+	
+	
+	<!-- ................................................. Initial Steps .................................................. -->
+	<queryStep name="check if workflow is running"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="currentExecutions"
+		executionLabelExpression="Is a workflow running already? ${currentExecutions.size() != 0}"
+		pctComplete="1"
+		>
+		<transition condition="${currentExecutions.size() == 0}">
+			<targetStepName>get form metadata values</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>workflow is running</targetStepName>
+		</transition>
+		
+		<criteria>
+			<![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="workflowVersion.workflow.key" op="eq">
+                            <test value="${ #this.workflow.workflowVersion.workflow.key }" />
+                        </condition>
+                        <condition property="uuid" op="noteq">
+                            <test value="${ #this.workflow.uuid }" />
+                        </condition>
+                        <condition property="executionLabel" op="like">
+							<test value="%Form: ${subject.name} (id: ${subject.id})" />
+						</condition>
+                        <condition property="status" op="in">
+                            <tests>
+                                <test value="CREATED" />
+                                <test value="QUEUED" />
+                                <test value="EXECUTING" />
+                            </tests>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<!-- ........................................... Convert Ingest Form Steps ............................................ -->
+	<queryStep name="get form metadata values"
+		targetDataObjectClass="IngestFormMetadataPropertyDataObject"
+		resultDataDef="ingestFormValues"
+		executionLabelExpression="get form values | form id: ${subject.id}"
+		pctComplete="25"
+		>
+		<transition condition="${ingestFormValues != null}">
+			<targetStepName>get properties from form values</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>check for existing schema</targetStepName>
+		</transition>
+		
+		<criteria>
+			<![CDATA[
+            <criteria>
+                <and>
+                    <condition property="form" op="eq">
+                        <test value="${subject.id}"/>
+                    </condition>
+                </and>
+            </criteria>
+        ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<groovyStep name="get properties from form values"
+		resultDataDef="metadataProperties"
+		pctComplete="40"
+		>
+		<transition condition="${metadataProperties != null}">
+			<targetStepName>convert form to schema</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>check for existing schema</targetStepName>
+		</transition>
+		
+		<script>
+		<![CDATA[
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.levelsbeyond.service.metadata.field.MetadataFieldService
+            import com.levelsbeyond.persistence.domain.metadata.field.MetadataField
+            import com.levelsbeyond.nimbus.common.data.IngestFormMetadataPropertyDataObject
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+
+            Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+            
+            MetadataFieldService metadataFieldService = ApplicationContextHolder.getApplicationContext().getBean(MetadataFieldService.class)
+            metadataProperties = new ArrayList()
+
+            for (IngestFormMetadataPropertyDataObject ingestFormProperty : ingestFormValues) {
+                try {
+                    MetadataField fieldToAdd = metadataFieldService.find(ingestFormProperty.propertyId)
+                    metadataProperties.add(fieldToAdd)
+                }
+                catch (Exception e) {
+                    log.error("Cannot find metadata field. Error: ${e}")
+                }
+            }
+
+            return metadataProperties
+        ]]>
+		</script>
+	</groovyStep>
+	
+	
+	<groovyStep name="convert form to schema"
+		resultDataDef="schemaJSON"
+		pctComplete="55"
+		nextStep="check for existing schema"
+		>
+		<script>
+		<![CDATA[
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.levelsbeyond.persistence.domain.metadata.field.MetadataField
+            import com.levelsbeyond.persistence.domain.metadata.field.option.MetadataFieldOption
+            import com.levelsbeyond.service.metadata.field.option.MetadataFieldOptionService
+            import com.levelsbeyond.persistence.domain.metadata.MetadataFieldType
+            import com.levelsbeyond.util.APIResourceUtil.RangeRequestParams
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+
+            Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+            MetadataFieldOptionService metadataFieldOptionService = ApplicationContextHolder.getApplicationContext().getBean(MetadataFieldOptionService.class)
+            
+            def schemaMap = [:]
+            
+            // default map keys
+            schemaMap.put("name", ingestForm.name)
+            schemaMap.put("workspaceIds", [])
+            schemaMap.workspaceIds.push(defaultSchemaWorkspaceId)
+            schemaMap.put("schemaData", [:])
+            schemaMap.schemaData.put("title", ingestForm.name)
+            schemaMap.schemaData.put("type", "object")
+            schemaMap.schemaData.put("properties", [:])
+            
+            // existing schema
+            if(schemaId != null){
+	            schemaMap.put("id", schemaId)
+            }
+            
+            // specific workspace to add?
+            if(specificWorkspaceId != null && specificWorkspaceId != defaultSchemaWorkspaceId){
+	            schemaMap.workspaceIds.push(specificWorkspaceId)
+            }
+            
+            // metadata field data
+            for(MetadataField field : metadataProperties) {
+                def propMap = [:]
+                
+                if(field.list) {
+                    RangeRequestParams rangeRequest = new RangeRequestParams(0, Integer.MAX_VALUE, null);
+                    def result = metadataFieldOptionService.find(rangeRequest, null, field.id, null)
+
+                    if (field.multi) {
+	                    propMap.put("type", "array")
+	                    propMap.put("title", field.name)
+	                    propMap.put("items", [:])
+	                    propMap.items.put("enum", [])
+                        for(MetadataFieldOption fieldOption : result.results()) {
+	                        propMap.items.enum.push(fieldOption.textValue)
+                        }
+                    }
+                    else {
+	                    propMap.put("type", "string")
+	                    propMap.put("enum", [])
+                        for(MetadataFieldOption fieldOption : result.results()) {
+	                        propMap.enum.push(fieldOption.textValue)
+                        }
+                    }
+                }
+                else if (field.fieldType == MetadataFieldType.STRING || field.fieldType == MetadataFieldType.TEXT) {
+	                propMap.put("type","string")
+                }
+                else if (field.fieldType == MetadataFieldType.BOOLEAN) {
+	                propMap.put("type", "boolean")
+                }
+                else if (field.fieldType == MetadataFieldType.DATE) {
+	                propMap.put("type", "string")
+	                propMap.put("format","date-time")
+                }
+                else if (field.fieldType == MetadataFieldType.DOUBLE) {
+	                propMap.put("type", "integer")
+                }
+                else{
+	                log.warn("Unsupported Metadata Field Type: ${field.fieldType}. Cannot add to Schema. Skipping...")
+	                continue
+                }
+	
+	            schemaMap.schemaData.properties.put(field.label, propMap)
+            }
+
+            // Creates required metadata fields.  This lazily creates the "required" array for json schema because in the
+            // schema v4, an empty "required" array makes for a syntactically invalid schema.
+
+            def isRequiredCreated = false
+
+            for(Object prop : ingestFormValues) {
+                if (prop.required == true) {
+                    if (!isRequiredCreated){
+                        schemaMap.schemaData.put("required", [])
+                        isRequiredCreated = true
+                    }
+                    for (Object metadata : metadataProperties) {
+                        if (prop.propertyId == metadata.id) {
+                            schemaMap.schemaData.required.push(metadata.name)
+                        }
+                    }
+                }
+            }
+
+            return schemaMap
+        ]]>
+		</script>
+	</groovyStep>
+	
+
+	<!-- ............................................. Existing Schema Steps .............................................. -->
+	<noopStep name="check for existing schema"
+		executionLabelExpression="Schema linked to form already? ${subject.cloudformSchemaId != null}"
+		pctComplete="60"
+		>
+		<transition condition="${subject.cloudformSchemaId != null}">
+			<targetStepName>get schema data</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>create or update schema</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<submitHttpStep name="get schema data"
+		urlExpression="${metadataSearchServiceUrl}/schemas/${subject.cloudformSchemaId}"
+		requestMethodExpression="GET"
+		responsePayloadDataDef="metadataSchemaData"
+		pctComplete="70"
+		nextStep="add workspaces to new schema json"
+		>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+
+	
+	<groovyStep name="add workspaces to new schema json"
+		resultDataDef="workspacesUpdated"
+		pctComplete="80"
+		continueOnException="true"
+		>
+		<transition condition="${workspacesUpdated}">
+			<targetStepName>create or update schema</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>sync form error</targetStepName>
+		</transition>
+		<script>
+		<![CDATA[
+			import org.slf4j.Logger
+			import org.slf4j.LoggerFactory
+			
+			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+			
+			try{
+				metadataSchemaData.workspaceIds.each { existingWorkspaceId ->
+					def result = schemaJSON.workspaceIds.findResult {
+						it.intValue() == existingWorkspaceId.intValue() ? it.intValue() : null
+					}
+					if (result != null) {
+						schemaJSON.workspaceIds.add(existingWorkspaceId.intValue())
+					}
+				}
+				return true
+			}
+			catch(Exception e){
+				log.error("Unable to determine existing workspaces. Error: ${e}")
+				return false
+			}
+		]]>
+		</script>
+	</groovyStep>
+	
+
+	<!-- .......................................... Create/Update Schema Steps ............................................ -->
+	<submitHttpStep name="create or update schema"
+		urlExpression="${metadataSearchServiceUrl}${saveSchemaEndpoint}"
+		requestMethodExpression="${schemaSaveRequestMethod}"
+		responseCodeDataDef="savedSchemaCode"
+		responsePayloadDataDef="savedSchemaJson"
+		continueOnException="true"
+		pctComplete="95"
+		>
+		<transition condition="${savedSchemaCode != 200}">
+			<targetStepName>sync form error</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>link form to schema</targetStepName>
+		</transition>
+		
+		<requestPayloadItem name="body">${schemaJSON}</requestPayloadItem>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+	
+	
+	<setContextData name="get schema id"
+		targetDataDef="schemaId"
+		valueExpression="${savedSchemaJson.id}"
+		devStep="true"
+		pctComplete="96"
+		nextStep="link form to schema"
+		/>
+	
+
+	<saveDataObjectStep name="link form to schema"
+		dataObjectExpression="${subject}"
+		pctComplete="99"
+		nextStep="end"
+		>
+		<property name="cloudformSchemaId">${savedSchemaJson.id}</property>
+	</saveDataObjectStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="sync form error" 
+		reasonExpression="Something went wrong syncing the ingest form to collaborate. Check workflow and log for details."
+		executionLabelExpression="Something went wrong syncing the ingest form to collaborate. Check workflow and log for details."
+		/>
+	
+	
+	<failWorkflowStep name="workflow is running"
+		executionLabelExpression="Workflow already executing"
+		reasonExpression="Workflow already executing"
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ......... Input Variables ........... -->
+	<!-- optional if a parent workflow needs to sync a schema to a particular workspace -->
+	<contextDataDef name="specificWorkspaceId"      dataType="String"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="ingestForm"               dataType="Data Object"  defaultDataExpression="${subject}"/>
+	<contextDataDef name="schemaId"                 dataType="Integer"      defaultDataExpression="${subject.cloudformSchemaId}"/>
+	<contextDataDef name="defaultSchemaWorkspaceId" dataType="String"       defaultDataExpression="${#sysconfig('cloudform.defaultSchemaWorkspaceId')}"/>
+	<contextDataDef name="ingestFormValues"         dataType="Data Object"  multiple="true"/>
+	<contextDataDef name="metadataProperties"       dataType="Data Object"  multiple="true"/>
+	<contextDataDef name="workspacesUpdated"        dataType="Boolean"/>
+	<contextDataDef name="currentExecutions" 	    dataType="Data Object" 	multiple="true"/>
+	<!-- API endpoint logic -->
+	<contextDataDef name="saveSchemaEndpoint"       dataType="String"       defaultDataExpression="/schemas${subject.cloudformSchemaId == null ? '' : '/' + subject.cloudformSchemaId}"/>
+	<contextDataDef name="schemaSaveRequestMethod"  dataType="String"       defaultDataExpression="${subject.cloudformSchemaId == null ? 'POST' : 'PUT'}"/>
+	<!-- API Responses -->
+	<contextDataDef name="schemaJSON"               dataType="JSON"/>
+	<contextDataDef name="metadataSchemaData"       dataType="JSON"/>
+	<contextDataDef name="savedSchemaCode"          dataType="Integer"/>
+	<contextDataDef name="savedSchemaJson"          dataType="JSON"/>
+	<!-- API Config -->
+	<contextDataDef name="cloudformApiKey"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.apiKey')}"/>
+	<contextDataDef name="metadataSearchServiceUrl" dataType="String"       defaultDataExpression="${#sysconfig('cloudform.metadataSearchService.url')}"/>
+
+</workflow>

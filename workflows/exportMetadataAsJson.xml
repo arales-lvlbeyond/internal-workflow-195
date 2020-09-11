@@ -1,0 +1,140 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="exportMetadataAsJson"
+	name="Export Metadata As Json"
+	executionLabelExpression="Export Metadata As Json | Asset: ${asset.name}"
+	subjectDOClassName=""
+	showInUserInterface="false"
+	resultDataDef="exportFile"
+	hasDownload="true"
+	sdkVersion=""
+	>
+	
+	<initialStepName>check for export file</initialStepName>
+	
+	
+	<noopStep name="check for export file"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		executionLabelExpression="old file already exists? ${exportFile.exists()}"
+		>
+		<transition condition="${exportFile.exists()}">
+			<targetStepName>delete old file</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>get asset metadata</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<deleteFileStep name="delete old file"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		executionLabelExpression="deleting old file: ${exportFile.absolutePath}"
+		sourceFilesExpression="${exportFile}"
+		continueOnException="true"
+		>
+		<transition condition="${!exportFile.exists()}">
+			<targetStepName>get asset metadata</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>delete error</targetStepName>
+		</transition>
+	</deleteFileStep>
+	
+	
+	<groovyStep name="get asset metadata"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		executionLabelExpression="extracting metadata from the asset"
+		resultDataDef="jsonMetadata"
+		nextStep="create metadata file"
+		>
+		<script>
+		<![CDATA[
+			import com.routeto1.spring.ApplicationContextHolder
+			import com.levelsbeyond.service.inventory.MetadataService
+			
+			MetadataService metadataService = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class)
+			
+			return metadataService.toMetadataSetDTO(asset.getMetadata()).getMetadata()
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<groovyStep name="create metadata file"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		executionLabelExpression="extracting metadata from the asset"
+		resultDataDef="exportFile"
+		continueOnException="true"
+		>
+		<transition condition="${exportFile.exists()}">
+			<targetStepName>set workflow download</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>export error</targetStepName>
+		</transition>
+		<script>
+        <![CDATA[
+			import groovy.json.JsonOutput
+			
+			new File(exportFilePath).write(JsonOutput.prettyPrint(jsonMetadata.toString()))
+			return exportFilePath
+		]]>
+        </script>
+	</groovyStep>
+	
+	
+	<setWorkflowDownloadStep name="set workflow download"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		executionLabelExpression="set download file to: ${exportFile.absolutePath}"
+		sourceFileExpression="${exportFile}"
+		nextStep="end"
+		/>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="delete error"
+		reasonExpression="A metadata file already exists and failed to delete"
+		executionLabelExpression="A metadata file already exists and failed to delete"
+		/>
+	
+	
+	<failWorkflowStep name="export error"
+		reasonExpression="Unable to create the metadata file"
+		executionLabelExpression="Unable to create the metadata file"
+		/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<contextDataDef name="asset"            dataType="Data Object"/>
+	
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="exportFilePath"   dataType="String"       defaultDataExpression="${#sysconfig('filesystem.root.temp')}/${#baseFilename(asset.name)}_metadata.json"/>
+	<contextDataDef name="exportFile"       dataType="File"         defaultDataExpression="${exportFilePath}"/>
+	<contextDataDef name="wfExe"            dataType="Data Object"  defaultDataExpression="${#this}"/>
+	<contextDataDef name="jsonMetadata"     dataType="JSON"/>
+
+</workflow>

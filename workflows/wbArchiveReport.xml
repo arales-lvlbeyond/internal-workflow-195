@@ -1,0 +1,131 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2016 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="wbArchiveReport"
+	name="WB Archive Report"
+	description="Report on incomplete WB package archival"
+	
+	executionLabelExpression="WB Archive Report | Time: ${#newDate().toString()}"
+	deadlineExpression=""
+	subjectDOClassName=""
+    adminOnly="true"
+	>
+	
+	<initialStepName>query for incomplete WB archival</initialStepName>
+		
+	<!-- ................................................ Query Steps ................................................... -->
+	<!-- Get incomplete WB archival -->
+	<queryStep name="query for incomplete WB archival"
+		targetDataObjectClass="AssetCollection"
+		resultDataDef="incompletePackages"
+		pctComplete="25"
+		nextStep="create email body"
+		>
+		<criteria>
+			<![CDATA[
+            <and>
+                <condition property="metadata.archiveStatus" op="eq">
+                    <test value="To Review"/>
+                </condition>
+            </and>
+    	]]>
+		</criteria>
+	</queryStep>
+	
+
+	<!-- ................................................ Create Email Body ................................................ -->
+	<!--  -->
+	<groovyStep name="create email body"
+		resultDataDef="emailBody"
+		executionLabelExpression="Creating incomplete package archival report"
+		pctComplete="90"
+		>
+		<transition condition="${emailBody != ''}">
+			<targetStepName>email incomplete archival report</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>no incomplete packages to report on</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+			import java.util.*
+			import com.routeto1.data.IDataObjectDAO
+			import com.routeto1.asset.filesystem.*
+			import com.routeto1.metadata.Metadata
+			import com.levelsbeyond.service.inventory.MetadataServiceImpl
+			import com.levelsbeyond.nimbus.common.data.Timeline
+			
+			def emailBody = ''
+			
+			for (incompletePackage in incompletePackages) {
+				if (incompletePackage != null) {
+					
+					try {
+						for (metadataField in metadataToReport) {
+							emailBody += metadataField + ': '
+							emailBody += incompletePackage.getMetadata().readAndConvertProperty(metadataField).toString()
+							emailBody += '\n'
+						}
+						
+						emailBody += '\n'
+					}
+					catch (Exception e) {
+						println "Error creating archival daily report email body: ${e}"
+					}
+				}
+			}
+			
+			return emailBody
+			]]>
+		</script>
+	</groovyStep>	
+	
+	<!-- ................................................. Email Steps .................................................. -->
+	<emailStep name="email incomplete archival report"
+		emailAddressesExpression="${emailAddress}"
+		subjectExpression="Incomplete Archival Report"
+		executionLabelExpression="sending report to >>> ${emailAddress}"
+		pctComplete="99"
+		nextStep="end"
+		>
+		<body>
+			${emailBody}
+		</body>
+	</emailStep>
+	
+    <!-- .................................................. End Steps ................................................... -->
+	<noopStep name="no incomplete packages to report on"
+		executionLabelExpression="no incomplete packages found in the queries"
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+    <!-- success -->
+    <noopStep name="end"	pctComplete="100"/>
+	
+
+	<!-- .............................................. Context Data Defs ............................................... -->
+	<contextDataDef name="incompletePackages"   dataType="Data Object"                      multiple="true" />
+	<contextDataDef name="emailBody" 		    dataType="String" />
+	<contextDataDef name="emailAddress" 	    dataType="Email"                            defaultDataExpression="#sysconfig('archive.email')"/>
+	<contextDataDef name="metadataToReport"     dataType="String" multiple="true"           defaultDataExpression="${#sysconfig('archiveCollection.report.metadata')}"/>
+</workflow>

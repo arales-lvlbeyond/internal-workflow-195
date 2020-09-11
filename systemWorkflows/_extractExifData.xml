@@ -1,0 +1,83 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          id="_extractExifData"
+          name="Extract Exif data"
+          executionLabelExpression="Extracting EXIF data from file ${sourceFile.absolutePath}"
+          subjectDOClassName=""
+          showInUserInterface="false"
+          resultDataDef="result"
+          sdkVersion="4.2">
+
+	<initialStepName>extract exif meta</initialStepName>
+
+	<!-- Run exiftool on input file -->
+	<runCommandStep name="extract exif meta"
+	                executablePathExpression="${exifExePath}"
+	                pctComplete="20"
+	                continueOnException="true"
+		>
+
+		<transition condition="true">
+			<targetStepName>set result</targetStepName>
+		</transition>
+
+		<arg>${sourceFile.absolutePath}</arg>
+		<arg>-w!</arg>
+		<arg>.txt</arg>
+	</runCommandStep>
+
+	<!-- Parse results into NameValuePairs and set on result -->
+	<setContextData name="set result" targetDataDef="result" valueExpression="${#nameValuePairs(outputFile, ':')}">
+		<transition condition="${true}">
+			<targetStepName>delete temp file</targetStepName>
+		</transition>
+	</setContextData>
+
+	<deleteFileStep name="delete temp file"
+	                sourceFilesExpression="${ outputFile }"
+	                continueOnException="true"
+	                devStep="true">
+
+		<transition condition="${true}">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</deleteFileStep>
+
+
+	<noopStep name="end"></noopStep>
+
+	<!-- INGEST DEFS -->
+	<contextDataDef name="sourceFile" label="Source File" dataType="File" userInput="true" required="true"/>
+	<contextDataDef name="exifExePath" dataType="File" required="true" defaultDataExpression="${ #sysconfig('exiftool.path') }"/>
+
+	<!-- PROCESSING DEFS -->
+	<contextDataDef name="exifData" dataType="String"></contextDataDef>
+	<contextDataDef name="outputFile" dataType="File" defaultDataExpression="${#filepath(sourceFile.absolutePath)}${#baseFilename(sourceFile.absolutePath)}.txt"/>
+
+	<!-- RESULT DEF -->
+	<contextDataDef name="result" dataType="NameValuePair" multiple="true"/>
+
+	<!--
+		REQUIRED PROPERTIES
+
+		exiftool.exePath:  executable location of exiftool on the local system.
+	-->
+</workflow>

@@ -1,0 +1,161 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		  xsi:noNamespaceSchemaLocation="http://levelsbeyond.com/schema/latest/studio.xsd"
+		  xmlns="http://levelsbeyond.com/schema/workflow"
+		  id="_restoreAssetContent"
+		  name="Restore Asset Content"
+		  executionLabelExpression="Restore Asset Contents ${subject.file?.absolutePath} from ${archiveFile?.absolutePath}"
+		  subjectDOClassName="AssetContent"
+		  subjectQualifierExpression="${truncatedFlag == true}"
+		  showInUserInterface="false"
+		  resultDataDef="resultFile"
+		  sdkVersion="4.2">
+
+	<initialStepName>check whether content is archived</initialStepName>
+
+	<noopStep name="check whether content is archived">
+		<transition condition="${subject.truncatedFlag != null and subject.truncatedFlag}">
+			<targetStepName>check for restore script</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>copy restored file to repository</targetStepName>
+		</transition>
+	</noopStep>
+
+	<noopStep name="check for restore script">
+		<transition condition="${restoreScriptPath != null or restoreCommand != null}">
+			<targetStepName>run restore script</targetStepName>
+		</transition>
+		<transition condition="${isPartialRestore}">
+			<targetStepName>trim restored video</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>copy restored file to repository</targetStepName>
+		</transition>
+	</noopStep>
+
+	<runCommandStep
+			name="run restore script"
+			executionLabelExpression="Run restore script ${restoreScriptPath.absolutePath} on archive file ${archiveFile.absolutePath}"
+			executableNameExpression="${restoreCommand}"
+			executablePathExpression="${restoreScriptPath}"
+			resultCodeDataDef="restoreResultCode"
+			argsExpression="${restoreScriptArgs}"
+			pctComplete="50">
+		<transition condition="${isPartialRestore}">
+			<targetStepName>trim restored video</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>copy restored file to repository</targetStepName>
+		</transition>
+	</runCommandStep>
+
+	<convertVideoStep name="trim restored video"
+					  executionLabelExpression="Trim file "
+					  targetContentTemplateExpression="=targetTemplateName"
+					  sourceFileExpression="${archiveFile}"
+					  trimStartExpression="=startOffset"
+					  trimEndExpression="=endOffset"
+					  pctComplete="80"
+					  resultDataDef="restoredFile">
+		<transition condition="=true">
+			<targetStepName>copy trimmed file to restore path</targetStepName>
+		</transition>
+	</convertVideoStep>
+
+	<copyFileStep
+			name="copy trimmed file to restore path"
+			executionLabelExpression="copy trimmed file ${restoredFile.absolutePath} to ${restorePath.absolutePath}"
+			sourceFileExpression="${restoredFile}"
+			targetDirectoryExpression="${restorePath}"
+			createTargetDirectoryFlag="true"
+			pctComplete="85"
+			resultDataDef="resultFile">
+		<transition condition="=true">
+			<targetStepName>delete transcode artifact</targetStepName>
+		</transition>
+	</copyFileStep>
+
+	<deleteFileStep
+			name="delete transcode artifact"
+			executionLabelExpression="Delete transcode artifact ${restoredFile.absolutePath}"
+			sourceFilesExpression="${restoredFile}"
+			pctComplete="95">
+		<transition condition="=true">
+			<targetStepName>raise content restored event</targetStepName>
+		</transition>
+	</deleteFileStep>
+    
+	<copyFileStep
+			name="copy restored file to repository"
+			executionLabelExpression="Copy restored file ${archiveFile.absolutePath} to repo (${restorePath.absolutePath})"
+			sourceFileExpression="${archiveFile}"
+			targetDirectoryExpression="${restorePath}"
+			createTargetDirectoryFlag="true"
+			pctComplete="70"
+			resultDataDef="repoFile">
+		<transition condition="=true">
+			<targetStepName>update asset content</targetStepName>
+		</transition>
+	</copyFileStep>
+
+	<saveDataObjectStep
+			name="update asset content"
+			executionLabelExpression="Mark asset content ${subject.id} as restored"
+			targetDataObjectClass="AssetContent"
+			dataObjectExpression="${subject}"
+			pctComplete="73">
+		<transition condition="=true">
+			<targetStepName>raise content restored event</targetStepName>
+		</transition>
+		<property name="truncatedFlag">false</property>
+		<property name="truncateAfter">${#newDate()}</property>
+		<property name="contentUuid">=#filename(repoFile)</property>
+	</saveDataObjectStep>
+
+	<raiseWorkflowEventStep
+			name="raise content restored event"
+			eventTypeExpression="ContentRestored"
+			continueOnException="true"
+			executionLabelExpression="Sending Content Restored event"
+			summaryExpression="Asset content has been ${resultFile != null ? 'partially ' : ''} restored">
+		<property name="isPartialRestore">${isPartialRestore}</property>
+		<property name="archiveFile">${archiveFile?.path}</property>
+		<property name="repoFile">${repoFile.path}</property>
+	</raiseWorkflowEventStep>
+
+	<noopStep name="end" devStep="true"/>
+
+	<contextDataDef name="archiveFile" dataType="File" defaultDataExpression="=subject.restoreKey"/>
+	<contextDataDef name="repoFile" dataType="File"/>
+	<contextDataDef name="restoreScriptPath" dataType="File"
+					defaultDataExpression="=#sysconfig('asset.restore.script')"/>
+	<contextDataDef name="restoreCommand" dataType="String"
+					defaultDataExpression="=#sysconfig('asset.restore.command')"/>
+	<contextDataDef name="restoreScriptArgs" dataType="String"
+					defaultDataExpression="=#sysconfig('asset.restore.args')"/>
+	<contextDataDef name="restoreResultCode" dataType="Integer"/>
+	<contextDataDef name="resultFile" dataType="File"/>
+	<contextDataDef name="startOffset" dataType="Double"/>
+	<contextDataDef name="endOffset" dataType="Double"/>
+	<contextDataDef name="isPartialRestore" dataType="Boolean" defaultDataExpression="${endOffset > 0}"/>
+	<contextDataDef name="restoredFile" dataType="File"/>
+	<contextDataDef name="targetTemplateName" dataType="String" defaultDataExpression="${subject.contentTemplate}"/>
+	<contextDataDef name="restorePath" dataType="File" defaultDataExpression="${#filepath(subject.file)}"/>
+</workflow>

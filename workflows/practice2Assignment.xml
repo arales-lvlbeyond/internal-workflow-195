@@ -1,0 +1,55 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="practice2Assignment"
+    name="Practice 2 Assignment"
+    executionLabelExpression="Practice 2 Assignment"
+    description="
+    	Complete the workflow
+    		Add a String contextDataDef that takes user input
+    		Add a String contextDataDef that has a default value
+    		Print the context data defs
+    "
+    subjectDOClassName=""
+    resultDataDef=""
+    deadlineExpression=""
+    showInUserInterface="true"
+    sdkVersion=""
+    >
+    
+	
+	<initialStepName>print data def 1</initialStepName>
+	
+    
+	<!-- display data def value to the user -->
+	<noopStep name="print data def 1"
+		executionLabelExpression="${Name}"
+		>
+		<transition condition="true">
+			<targetStepName>print data def 2</targetStepName>
+		</transition>
+	</noopStep>
+  
+	
+	<!-- display data def value to the user -->
+	<noopStep name="print data def 2"
+		executionLabelExpression="${Default}"
+		pctComplete="99"
+		>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+
+
+    <!-- ................................................... End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end"/>
+	
+
+    <!-- ............................................... Context Data Defs ................................................ -->
+    <contextDataDef name="Name" dataType="String" userInput="true"/>
+	<contextDataDef name="Default" dataType="String" userInput="false" defaultDataExpression="I am Z default"/>
+	
+</workflow>

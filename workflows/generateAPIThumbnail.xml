@@ -1,0 +1,264 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="generateAPIThumbnail"
+    name="Generate Thumbnail via API"
+    description=""
+    executionLabelExpression="Create Thumbnail for &quot;${subject.name}&quot;"
+    showInUserInterface="true"
+    subjectDOClassName="VideoClip"
+    resultDataDef="outputURI"
+    sdkVersion="5.4"
+    adminOnly="true">
+    
+    <initialStepName>confirm thumbnail offset</initialStepName>
+    
+    <noopStep name="confirm thumbnail offset"
+        executionLabelExpression="Is thumbnailTimecode provided? ${subject.metadata.thumbnailTimecode != null AND !subject.metadata.thumbnailTimecode.isEmpty()}">
+        <transition condition="${subject.metadata.thumbnailTimecode != null AND !subject.metadata.thumbnailTimecode.isEmpty()}">
+            <targetStepName>calculate thumbnail offset frames</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>no thumbnailTimecode provided</targetStepName>
+        </transition>
+    </noopStep>
+    
+    
+    
+    <noopStep name="check if dropframe"
+        executionLabelExpression="Check if thumbnail is dropframe">
+        <transition condition="${isDropframe}">
+            <targetStepName>add semicolon for dropframe</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>calculate thumbnail offset frames</targetStepName>
+        </transition>
+    </noopStep>
+    
+    <setContextData name="add semicolon for dropframe"
+        executionLabelExpression="replacing colon with semicolon for dropframe"
+        valueExpression="${thumbnailTimecode.reverse().replaceFirst(':', ';').reverse()}"
+        targetDataDef="thumbnailTimecode"
+        nextStep="calculate thumbnail offset frames" />
+    
+    <groovyStep name="calculate thumbnail offset frames"
+        executionLabelExpression="Offset frames for thumbnail ${thumbnailOffsetConverted}"
+        nextStep="set payload"
+        resultDataDef="thumbnailOffsetConverted">
+        <script>
+            <![CDATA[
+            import com.routeto1.asset.video.util.MediaTimecode;
+            import com.routeto1.asset.video.util.TimecodeUtils;
+
+            MediaTimecode mediaTimecode = new MediaTimecode(thumbnailTimecode);
+            MediaTimecode startMediaTimecode = new MediaTimecode(clip.assetMaster.startTimecode)
+            startMediaTimecode.setFramerate(Double.parseDouble(frameRate));
+            mediaTimecode.setFramerate(Double.parseDouble(frameRate));
+            double timecodeInSeconds = mediaTimecode.getOffsetInSeconds();
+            double startTimecodeInSeconds = startMediaTimecode.getOffsetInSeconds();
+            timecodeInSeconds -= startTimecodeInSeconds;
+            long secondsDec = (long)timecodeInSeconds;
+            double secondsFrac = timecodeInSeconds - secondsDec;
+            long frames = (long)(secondsFrac * mediaTimecode.getFramerate());
+            String offset = secondsDec + "." + frames;
+            return offset;
+          ]]>
+        </script>
+    </groovyStep>
+    
+    <setContextData name="set payload"
+        executionLabelExpression="setting payload ${payloadJSON}"
+        devStep="true"
+        nextStep="generate thumbnail via api">
+        <set targetDataDef="payloadJSON">
+            <![CDATA[
+            {
+                "type": "thumb",
+                "typePayload": {
+                    "srcKey": "${s3mappedSourceFilePath}",
+                    "frames": ["${thumbnailOffsetConverted}"],
+                    "destKeyTemplate": "${s3mappedResultFilePath}"
+                },
+                "ref": "${clip.id}"
+            }
+            ]]>
+        </set>
+    </setContextData>
+    
+    <!-- post to AMS -->
+    <submitHttpStep name="generate thumbnail via api"
+        executionLabelExpression="Sending thumbnail request | Payload: ${payloadJSON.toString()}"
+        requestMethodExpression="POST"
+        urlExpression="${amsURL}"
+        responseCodeDataDef="submitResponseCode"
+        responsePayloadDataDef="submitResponseBody"
+        continueOnException="true">
+        <transition condition="${submitResponseCode == '200'}">
+            <targetStepName>set job id</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>thumbnail fail status</targetStepName>
+        </transition>
+        <requestPayloadItem name="body">${payloadJSON.toString()}</requestPayloadItem>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="Authorization">Bearer ${sharedToken}</requestHeader>
+    </submitHttpStep>
+    
+    
+    <setContextData name="set job id" valueExpression="${submitResponseBody.id}" targetDataDef="jobID" devStep="true" nextStep="set job ref"/>
+    <setContextData name="set job ref" valueExpression="${submitResponseBody.ref}" targetDataDef="jobRef" devStep="true" nextStep="wait some seconds and check status"/>
+    
+    <delayStep name="wait some seconds and check status"
+        delaySecondsExpression="${pollIntervalSeconds}"
+        executionLabelExpression="Status ${jobStatus} - Waiting ${pollIntervalSeconds} seconds. ${elapsedTimeString} | Job ID: ${jobID}"
+        nextStep="check thumbnail progress"/>
+    
+    <submitHttpStep name="check thumbnail progress"
+        executionLabelExpression="Checking thumbnail progress &quot;${subject.name}&quot;| Job ID: ${jobID}"
+        requestMethodExpression="GET"
+        urlExpression="${amsURL}/${jobID}"
+        responseCodeDataDef="responseCode"
+        responsePayloadDataDef="responseBody"
+        continueOnException="true">
+        <transition condition="${responseCode != '200'}">
+            <targetStepName>thumbnail fail status</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>set job status</targetStepName>
+        </transition>
+        <requestHeader name="Authorization">Bearer ${sharedToken}</requestHeader>
+    </submitHttpStep>
+    
+    <!-- Job status: 0 = pending, 1 = processing, 2 = complete, 3 = error -->
+    <setContextData name="set job status"
+        valueExpression="${responseBody.status == 0 ? 'pending' : responseBody.status == 1 ? 'processing' : responseBody.status == 2 ? 'complete' : responseBody.status == 'completed' ? 'complete' : responseBody.status == 3 ? 'error' : responseBody.status}"
+        targetDataDef="jobStatus"
+        devStep="true"
+        nextStep="set job error"/>
+    
+    <setContextData name="set job error"
+        valueExpression="${responseBody.error}"
+        targetDataDef="jobError"
+        devStep="true"
+        nextStep="calculate elapsed time"/>
+    
+    <setContextData name="calculate elapsed time"
+        valueExpression="${(initialLoopCountdown - loopCountdown + 1) * pollIntervalSeconds}"
+        devStep="true"
+        targetDataDef="elapsedTimeSeconds"
+        nextStep="calculate elapsed time string"/>
+    
+    <setContextData name="calculate elapsed time string"
+        valueExpression="Elapsed time: ${elapsedTimeSeconds &gt; 3599 ? (elapsedTime / 3600) + 'h, ' : ''}${elapsedTimeSeconds &gt; 59 ? (elapsedTimeSeconds % 3600 / 60) + 'm, ' : ''}${(elapsedTimeSeconds % 60) + 's'}"
+        devStep="true"
+        targetDataDef="elapsedTimeString"
+        nextStep="update loop counter"/>
+    
+    <setContextData name="update loop counter"
+        valueExpression="${loopCountdown - 1}"
+        targetDataDef="loopCountdown"
+        executionLabelExpression="Polled ${initialLoopCountdown - loopCountdown} times, ${elapsedTimeString}"
+        devStep="true">
+        <transition condition="${jobStatus == 'error'}">
+            <targetStepName>thumbnail fail status</targetStepName>
+        </transition>
+        <transition condition="${loopCountdown &lt; 1}">
+            <targetStepName>thumbnail taking too long status</targetStepName>
+        </transition>
+        <transition condition="${jobStatus == 'complete'}">
+            <targetStepName>set job URI</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>wait some seconds and check status</targetStepName>
+        </transition>
+    </setContextData>
+    
+    <setContextData name="set job URI"
+        valueExpression="${responseBody.output[0]}"
+        targetDataDef="outputURI"
+        devStep="true"
+        nextStep="thumbnail success status"/>
+    
+    <noopStep name="thumbnail success status"
+        executionLabelExpression="Success. Clip saved as ${transcribeResultFilePath}"
+        nextStep="end">
+    </noopStep>
+    
+    <noopStep name="thumbnail fail status"
+        executionLabelExpression="ERROR: ${jobStatus}: ${jobError}"
+        nextStep="end">
+    </noopStep>
+    
+    <noopStep name="thumbnail taking too long status"
+        executionLabelExpression="thumbnail took too long: ${elapsedTimeString}"
+        nextStep="end">
+    </noopStep>
+    
+    <noopStep name="no thumbnailTimecode provided"
+        executionLabelExpression="thumbnailTimecode is null or blank"
+        nextStep="end"/>
+    
+    <noopStep name="end"/>
+    
+    
+    <contextDataDef name="clip"                     dataType="Data Object"      defaultDataExpression="${subject}"/>
+    
+    <!-- computed or set by parent workflow-->
+    <contextDataDef name="clipSourceFile"           dataType="File"             defaultDataExpression="${clip.assetMaster.originalContent.file}"/>
+    <contextDataDef name="clipSourceFilePath"       dataType="String"           defaultDataExpression="${#mapPath(clipSourceFile.absolutePath, 's3mapping')}"/>
+    
+    <!-- computed -->
+    <contextDataDef name="s3mappedSourceFilePath"   dataType="String"           defaultDataExpression="${clipSourceFilePath.startsWith('s3://') ? clipSourceFilePath : clipSourceFilePath.replace(':','/').replaceAll('^s3/','s3://')}"/>
+    <contextDataDef name="thumbnailTimecode"        dataType="String"           defaultDataExpression="${subject.metadata.thumbnailTimecode}"/>
+    <contextDataDef name="frameRate"                dataType="String"           defaultDataExpression="${subject.assetMaster.originalContent.frameRate}"/>
+    <contextDataDef name="thumbnailOffsetConverted"    dataType="String"/>
+    <contextDataDef name="outputRoot"               dataType="String"           defaultDataExpression="${#sysconfig('filesystem.root.s3temp')}ams_clips/"/>
+    <contextDataDef name="destinationFileName"      dataType="String"           defaultDataExpression="${clip.name.replaceAll('[^a-zA-Z0-9\\.\\-]', '_')}"/>
+    <contextDataDef name="resultFilePath"           dataType="String"           defaultDataExpression="${outputRoot}${destinationFileName}_%s.jpg"/>
+    <contextDataDef name="resultFile"               dataType="File"             defaultDataExpression="${resultFilePath}"/>
+    <contextDataDef name="s3mappedResultFilePath"   dataType="String"           defaultDataExpression="${resultFilePath.startsWith('s3://') ? resultFilePath : resultFilePath.replace(':','/').replaceAll('^s3/','s3://')}"/>
+    
+    <contextDataDef name="payloadJSON"              dataType="JSON"/>
+    <contextDataDef name="sharedToken"  dataType="String"   defaultDataExpression="${#sysconfig('ams.external.client.id')}|${#sysconfig('ams.external.client.secret')}" hidden="true"/>
+    <contextDataDef name="amsURL"       dataType="String"   defaultDataExpression="${#sysconfig('ams.host')}/external/reachengine"/>
+    
+    <!-- Response code  -->
+    <contextDataDef name="responseCode" dataType="String"/>
+    <contextDataDef name="submitResponseCode" dataType="String"/>
+    <!-- Response payload -->
+    <contextDataDef name="submitResponseBody" dataType="JSON"/>
+    <contextDataDef name="responseBody" dataType="JSON"/>
+    <contextDataDef name="jobID"        dataType="String"/>
+    <contextDataDef name="jobStatus"    dataType="String" defaultDataExpression="pending"/>
+    <contextDataDef name="jobRef"       dataType="String"/>
+    <contextDataDef name="jobError"     dataType="String"/>
+    <contextDataDef name="outputURI"    dataType="String"/>
+    
+    <!-- Poll limit - 2 hours -->
+    <contextDataDef name="pollIntervalSeconds" dataType="Integer" defaultDataExpression="30" />
+    <contextDataDef name="loopCountdown" dataType="Integer" defaultDataExpression="720"/>
+    <contextDataDef name="initialLoopCountdown" dataType="Integer" defaultDataExpression="${loopCountdown}" />
+    <contextDataDef name="elapsedTimeSeconds" dataType="Integer" />
+    <contextDataDef name="elapsedTimeString" dataType="String" />
+    
+    <contextDataDef name="isDropframe" dataType="Boolean" defaultDataExpression="${subject.assetMaster.originalContent.timecodeFormat.equals('DROP_FRAME') ? true : false}"/>
+
+</workflow>

@@ -1,0 +1,72 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="addAssetsToTimeline"
+          name="Add Assets from a collection to a timeline track"
+          executionLabelExpression="Add Assets to Timeline - Collection ${subject.name} to Timeline ${timeline.name} track ${trackName}"
+          description="Subflow to add assets to a track without overlapping them.  Make sure the assets are the same media type as the track or bad things will happen.  This doesn't check for mismatches."
+          showInUserInterface="true"
+          subjectDOClassName="Timeline"
+          subjectQualifierExpression=""
+          sdkVersion="">
+    <initialStepName>validate track was found</initialStepName>
+
+    <groovyStep name="validate track was found"
+                resultDataDef="groovyResult">
+        <!-- this forces evaluation of all of the context data defs to guarantee we have the context data for troubleshooting -->
+        <transition condition="${track == null}">
+            <targetStepName>you fail at life</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>add assets to the track in question</targetStepName>
+        </transition>
+        <script>
+            <![CDATA[
+            return "validated"
+            ]]>
+        </script>
+    </groovyStep>
+
+    <executeSubflowStep name="add assets to the track in question"
+                        targetWorkflowId="addAssetsToTrack"
+                        subjectChangePath="${track}"
+                        nextStep="fin">
+        <subflowContextDataMapping parentDataDef="assets" subflowDataDef="assets"/>
+        <subflowContextDataMapping parentDataDef="timeline" subflowDataDef="timeline"/>
+        <subflowContextDataMapping parentDataDef="startOffset" subflowDataDef="startOffset"/>
+        <subflowContextDataMapping parentDataDef="gapOffset" subflowDataDef="gapOffset"/>
+    </executeSubflowStep>
+
+    <createFailureNotificationStep name="you fail at life"
+                                   notificationTypeExpression="error"
+                                   executionLabelExpression="I couldn't find the track '${trackName}' on timeline ${timeline.name}.  Valid track names: '${allTrackNames}'."
+                                   notificationBodyExpression="I couldn't find the track '${trackName}' on timeline ${timeline.name}.  Valid track names: '${allTrackNames}'."
+                                   nextStep="fin"/>
+
+    <noopStep name="fin" />
+
+    <!-- input -->
+    <contextDataDef name="timeline" dataType="Data Object" defaultDataExpression="${subject}" />
+    <contextDataDef name="collection" dataType="Data Object" userInput="true"    label="Collection" displayIndex="1">
+        <picklist>
+            <dataObjectSearch dataObjectClass="AssetCollection">
+                <searchPath>name</searchPath>
+            </dataObjectSearch>
+        </picklist>
+    </contextDataDef>
+    <contextDataDef name="trackName" dataType="String" userInput="true" label="Name of the track to add assets to" displayIndex="2" />
+    <contextDataDef name="startOffset" dataType="Double" userInput="true" label="Start offset for the first asset" displayIndex="3" />
+    <contextDataDef name="gapOffset" dataType="Double" userInput="true" label="Gap/Offset between assets" displayIndex="4" />
+
+    <!-- internal -->
+    <contextDataDef name="allTracks" dataType="Data Object" multiple="true" defaultDataExpression="${timeline.tracks}"/>
+    <!-- this is forced to be evaluated by the first groovy step above to make sure we have the proper track names in the context data def in case we get it wrong -->
+    <contextDataDef name="allTrackNames" dataType="String" defaultDataExpression="${allTracks?.![#this.name]}"/>
+    <contextDataDef name="tracks" dataType="Data Object" multiple="true" defaultDataExpression="${timeline.tracks.?[name.equalsIgnoreCase(#root.trackName)]}"/>
+    <contextDataDef name="track" dataType="Data Object" defaultDataExpression="${tracks.size() > 0 ? tracks[0] : null}" />
+    <contextDataDef name="trackMediaType" dataType="String" defaultDataExpression="${track?.mediaType}" />
+    <contextDataDef name="assets" dataType="Data Object" multiple="true" defaultDataExpression="${collection.items.![asset].?[assetType?.equalsIgnoreCase(#root.trackMediaType)?:false]}" />
+    <contextDataDef name="addedTimelineAssets" dataType="Data Object" />
+    <contextDataDef dataType="String" name="groovyResult" />
+</workflow>

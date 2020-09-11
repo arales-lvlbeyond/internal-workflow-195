@@ -1,0 +1,112 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          id="_removeExpiredMezzanines"
+          name="Remove Expired Mezzanines"
+          executionLabelExpression="Remove Mezzanines older than ${ expirationDays } days from disk"
+          description="Finds source content that is archived and has been on disk for too long and removes them."
+          subjectDOClassName=""
+          showInUserInterface="false"
+          deadlineExpression=""
+          sdkVersion="4.2">
+
+	<initialStepName>Check for mezzanine archive enabled</initialStepName>
+
+	<noopStep name="Check for mezzanine archive enabled">
+		<transition condition="${ mezzArchiveEnabled }">
+			<targetStepName>Set Expiration Date</targetStepName>
+		</transition>
+		<transition condition="${ true }">
+			<targetStepName>Mezzanine Archive is Disabled</targetStepName>
+		</transition>
+	</noopStep>
+
+	<setContextData name="Set Expiration Date"
+	                targetDataDef="expirationDate" valueExpression="${ #addDays(#newDate(), 0 - expirationDays) }">
+
+		<transition condition="${ true }">
+			<targetStepName>Find Expired Content</targetStepName>
+		</transition>
+	</setContextData>
+
+	<queryStep name="Find Expired Content"
+	           executionLabelExpression="Find content to be removed from disk"
+	           targetDataObjectClass="AssetContent"
+	           resultDataDef="expiredContents">
+
+		<transition condition="${ expiredContents != null and expiredContents.size() &gt; 0 }">
+			<targetStepName>Remove Content Files from Disk</targetStepName>
+		</transition>
+		<transition condition="${ true }">
+			<targetStepName>End</targetStepName>
+		</transition>
+
+		<criteria>
+			<![CDATA[
+            <criteria>
+                <and>
+                    <condition property="contentUses" op="like">
+                        <test value="%MEZZANINE%"/>      
+                    </condition>
+                    <condition property="restoreKey" op="notnull"/>
+                    <condition property="truncatedFlag" op="eq">
+                        <test value="false"/>
+                    </condition>
+                    <!-- NOTE:  truncateAfter is a 'legacy' term, the workflow is calculating 
+                            the expiration on the query now, not upon setting the on-disk date. -->
+                    <condition property="truncateAfter" op="lt">
+                        <test value="${ #formatDate('w3c', expirationDate) }"/>
+                    </condition>                          
+                </and>  
+            </criteria>            
+            ]]>
+		</criteria>
+	</queryStep>
+
+	<deleteFileStep name="Remove Content Files from Disk"
+	                executionLabelExpression="Remove ${ expiredContents.size() } files from disk"
+	                sourceFilesExpression="${ expiredContents.![file] }">
+
+		<transition condition="${ true }">
+			<targetStepName>Mark Content Files Removed</targetStepName>
+		</transition>
+	</deleteFileStep>
+
+	<saveDataObjectStep name="Mark Content Files Removed"
+	                    executionLabelExpression="Mark ${ expiredContents.size() } contents as removed from disk"
+	                    targetDataObjectClass="AssetContent"
+	                    dataObjectExpression="${expiredContents}"
+		>
+		<transition condition="${ true }">
+			<targetStepName>End</targetStepName>
+		</transition>
+
+		<property name="truncatedFlag">true</property>
+	</saveDataObjectStep>
+
+	<noopStep name="Mezzanine Archive is Disabled"/>
+
+	<testStep name="End" outputExpression="${expiredContents != null ? expiredContents.size() : 0} assets removed from disk."/>
+
+	<contextDataDef name="mezzArchiveEnabled" dataType="Boolean" defaultDataExpression="${ #sysconfig('archive.mezzanine.enabled') }"/>
+	<contextDataDef name="expirationDays" dataType="Integer" defaultDataExpression="${ #sysconfig('archive.mezzanine.expirationDays') }"></contextDataDef>
+	<contextDataDef name="expirationDate" dataType="Date/Time"></contextDataDef>
+	<contextDataDef name="expiredContents" dataType="Data Object" multiple="true"></contextDataDef>
+</workflow>

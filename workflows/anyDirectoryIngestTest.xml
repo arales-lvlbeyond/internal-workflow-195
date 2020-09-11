@@ -1,0 +1,172 @@
+<workflow
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.11.xsd"
+    id="anyDirectoryIngestTest"
+    name="Any Directory Ingest Test"
+    description=""
+    executionLabelExpression="Any Directory Ingest Test Total Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+    deadlineExpression=""
+    subjectDOClassName=""
+    showInUserInterface="true"
+    resultDataDef="totalTime"
+    sdkVersion="5.11">
+
+    <initialStepName>create directory</initialStepName>
+
+    <runCommandStep name="create directory" executionLabelExpression="${dir.absolutePath}" executablePathExpression="/bin/mkdir" nextStep="create test files">
+        <arg>${dir.absolutePath}</arg>
+    </runCommandStep>
+
+    <runCommandStep name="create test files"
+                    executablePathExpression="/bin/sh"
+                    nextStep="time taken for creating the assets">
+        <arg>-c</arg>
+        <arg>for i in {1..${numberOfFiles}}; do fallocate -l ${sizeOfFiles} ${dir.absolutePath}/anyDirectoryTestAsset$i.${fileExtension}; done</arg>
+    </runCommandStep>
+
+    <setContextData name="time taken for creating the assets" nextStep="start ingest">
+        <set targetDataDef="ingestWorkflowStartTime" valueExpression="${#newDate()}"/>
+    </setContextData>
+
+    <noopStep name="start ingest"
+              executionLabelExpression="${#this.name} - Time to Reach This Step: ${T(String).valueOf(#this.getStartDate().getTime() - thisExecution.getStartDate().getTime())}ms"
+              nextStep="ingest directory"/>
+
+    <executeSubflowStep name="ingest directory"
+                        executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+                        targetWorkflowId="_anyDirectoryIngest"
+                        subjectChangePath="${dir}"
+                        subflowTargetDataDef="directoryToIngest"
+                        waitForCompletionExpression="true"
+                        nextStep="query for running subflows">
+        <subflowContextDataMapping parentDataDef="createMezz"               subflowDataDef="createMezz"/>
+        <subflowContextDataMapping parentDataDef="createProxy"              subflowDataDef="createProxy"/>
+        <subflowContextDataMapping parentDataDef="createThumb"              subflowDataDef="createThumb"/>
+        <subflowContextDataMapping parentDataDef="createThumbVideo"         subflowDataDef="createThumbVideo"/>
+    </executeSubflowStep>
+
+
+    <queryStep name="query for running subflows"
+               targetDataObjectClass="WorkflowExecution"
+               resultDataDef="executingSubflows"
+               executionLabelExpression="Checking for workflows that are not in a finished state"
+               devStep="false"
+               nextStep="check running subflows"
+    >
+        <criteria>
+            <![CDATA[
+            <criteria>
+                <and>
+                    <condition property="workflowVersion.workflow.key" op="eq">
+                        <test value="${ingestSubflow}"/>
+                    </condition>
+                    <condition property="executionLabel" op="like">
+                            <test value="%${T(org.apache.commons.lang.StringEscapeUtils).escapeXml(dir.absolutePath)}%" />
+                        </condition>
+                    <condition property="status" op="in">
+                        <tests>
+                            <test value="CREATED" />
+                            <test value="QUEUED" />
+                            <test value="EXECUTING" />
+                         </tests>
+                    </condition>
+                </and>
+            </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+
+    <noopStep name="check running subflows"
+              executionLabelExpression="Found ${executingSubflows.size()} running subflows for the ingest"
+              devStep="true"
+    >
+        <transition condition="${executingSubflows.size() &gt; 0 }">
+            <targetStepName>wait for files to ingest</targetStepName>
+        </transition>
+        <transition condition="${ true }">
+            <targetStepName>Calculate time taken for ingesting the assets</targetStepName>
+        </transition>
+    </noopStep>
+
+
+    <delayStep name="wait for files to ingest"
+               delaySecondsExpression="${ queryPollInterval }"
+               executionLabelExpression="${executingSubflows.size()} subflows running | Waiting ${queryPollInterval} seconds"
+               nextStep="query for running subflows"
+    />
+
+    <setContextData name="Calculate time taken for ingesting the assets" nextStep="Time taken for ingesting assets">
+        <set targetDataDef="ingestWorkflowEndTime" valueExpression="${#newDate()}"/>
+    </setContextData>
+
+    <noopStep name="Time taken for ingesting assets"
+              executionLabelExpression="${#this.name} - Total ingest time: ${(ingestWorkflowEndTime.time - ingestWorkflowStartTime.time).toString()} ms"
+              nextStep="query for all assets"/>
+
+    <queryStep name="query for all assets"
+               executionLabelExpression="Querying for all the assets ingested"
+               targetDataObjectClass="AssetMaster"
+               resultDataDef="allAssets"
+               nextStep="cleanup ingested files"
+    >
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="versions.name" op="like">
+                            <test value="anyDirectoryTestAsset%" />
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+
+
+    <deleteDataObjectStep name="cleanup ingested files"
+                          dataObjectExpression="${allAssets}"
+                          nextStep="cleanup directory"/>
+
+    <runCommandStep
+        name="cleanup directory"
+        executablePathExpression="/bin/rm"
+        stderrDataDef="stdOut"
+        nextStep="end - set total time">
+        <arg>-fr</arg>
+        <arg>${dir.absolutePath}</arg>
+    </runCommandStep>
+
+    <setContextData name="end - set total time"
+                    targetDataDef="totalTime"
+                    valueExpression="${T(String).valueOf(#this.getStartDate().getTime() - thisExecution.getStartDate().getTime())}"/>
+
+    <!-- ................................................... Data Defs .................................................... -->
+
+    <contextDataDef name="mbSize" dataType="Integer" defaultDataExpression="${1024 * 1024}"/>
+    <contextDataDef name="stdOut" dataType="String"/>
+    <contextDataDef name="totalTime" dataType="String"/>
+    <contextDataDef name="ingestWorkflowStartTime" dataType="Date/Time"/>
+    <contextDataDef name="ingestWorkflowEndTime" dataType="Date/Time"/>
+    <contextDataDef name="createMezz" dataType="Boolean" defaultDataExpression="${false}"/>
+    <contextDataDef name="createProxy" dataType="Boolean" defaultDataExpression="${false}"/>
+    <contextDataDef name="createThumb" dataType="Boolean" defaultDataExpression="${false}"/>
+    <contextDataDef name="createThumbVideo" dataType="Boolean" defaultDataExpression="${false}"/>
+    <contextDataDef name="thisExecution" dataType="Data Object" defaultDataExpression="${#this}"/>
+    <contextDataDef name="filesToIngest" 		    dataType="File"		    multiple="true"     defaultDataExpression="${#walkDir(directoryToIngest, null)}"/>
+
+    <contextDataDef name="numberOfFiles" dataType="Integer" userInput="true" required="true"/>
+    <contextDataDef name="sizeOfFiles" dataType="Integer" label="File size (in bytes)" userInput="true" required="true"/>
+    <contextDataDef name="fileExtension" dataType="String" userInput="true" required="true"/>
+    <contextDataDef name="allAssets" dataType="Data Object" multiple="true"/>
+    <contextDataDef name="dir" dataType="Directory" defaultDataExpression="/reachengine/media/mezzanines/${#uuid()}/"/>
+
+    <!-- queue loop variables -->
+    <contextDataDef name="nextFiles"    		    dataType="File" 		multiple="true"/>
+    <contextDataDef name="executingSubflows" 	    dataType="Data Object" 	multiple="true"/>
+    <contextDataDef name="queueLimit" 			    dataType="Integer" 		defaultDataExpression="${#sysconfig('workflows.default.ingestDirectory.queueLimit') ?: 100}"/>
+    <contextDataDef name="batchSize" 		        dataType="Integer" 		defaultDataExpression="${#sysconfig('workflows.default.ingestDirectory.batchSize') ?: 100}"/>
+    <contextDataDef name="queryPollInterval"  	    dataType="Integer" 		defaultDataExpression="${#sysconfig('workflows.default.ingestDirectory.queryPollInterval') ?: 10}"/>
+    <contextDataDef name="ingestSubflow"      	    dataType="String" 		defaultDataExpression="${#sysconfig('workflows.default.ingestAssetWorkflow') ?: '_anyAssetIngest'}"/>
+
+</workflow>

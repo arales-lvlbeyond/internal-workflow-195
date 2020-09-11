@@ -1,0 +1,226 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="createAzureTimelyEvent"
+	name="Create Timely Event - Azure"
+	executionLabelExpression="Creating Timely event: ${jsonEntry.get('Full name').asText()} - ${jsonEntry.get('Issue Key').asText()}"
+	subjectDOClassName=""
+	showInUserInterface="false"
+	resultDataDef="assets"
+	sdkVersion=""
+>
+
+    <initialStepName>check issue type</initialStepName>
+
+	<noopStep name="check issue type"
+		executionLabelExpression="Issue Key : ${jsonEntry.get('Timely Project').asText()"
+	>
+		<transition condition="${!jsonEntry.get('Timely Project').asText().contains('Internal Time')}">
+			<targetStepName>validate entry</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>set interjection values</targetStepName>
+		</transition>
+	</noopStep>
+
+	<noopStep name="validate entry"
+		executionLabelExpression="Issue Key : ${jsonEntry.get('Issue Key').asText()"
+	>
+		<transition condition="${projectName == null or projectName.isEmpty()}">
+			<targetStepName>email error</targetStepName>
+		</transition>
+		<transition condition="${labelName == null or labelName.isEmpty()}">
+			<targetStepName>email error</targetStepName>
+		</transition>
+		<transition condition="${clientName == null or clientName.isEmpty()}">
+			<targetStepName>email error</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>get project id</targetStepName>
+		</transition>
+	</noopStep>
+
+	<setContextData name="set interjection values"
+		nextStep="set events url">
+		<set targetDataDef="projectId">2361112</set>
+		<set targetDataDef="labelId">793767</set>
+	</setContextData>
+
+    <groovyStep name="get project id"
+	    executionLabelExpression="projectId ${projectId}"
+	    resultDataDef="projectId"
+	    nextStep="get label id"
+    >
+		<script>
+			<![CDATA[
+			String projId;
+			String internalProjId;
+			projectsResponse.each { project ->
+				if (projectName.toLowerCase().contains(project.get('name').asText().toLowerCase().replaceAll('-','').replaceAll(' ',''))) {
+					if (project.get('client').get('name').asText().toLowerCase().contains(clientName.toLowerCase())) {
+						projId = project.get('id').asText();
+					} else if (project.get('client').get('name').asText().contains('Levels Beyond')) {
+						internalProjId = project.get('id').asText();
+					}
+				}
+			}
+			if (projId == null) {
+				return internalProjId;
+			}
+			return projId;
+			]]>
+		</script>
+	</groovyStep>
+
+    <groovyStep name="get label id"
+	    executionLabelExpression="labelId - ${labelId}"
+	    resultDataDef="labelId"
+	    nextStep="set events url"
+    >
+		<script>
+			<![CDATA[
+			String labelId;
+			labelsResponse.each { label ->
+				label.get('children').each { child ->
+					if (child.get('name').asText().equals(labelName)) {
+						labelId = child.get('id').asInt();
+					}
+				}
+			}
+			return labelId;
+			]]>
+		</script>
+	</groovyStep>
+
+	<setContextData name="set events url"
+		targetDataDef="eventsUrl"
+		valueExpression="https://api.timelyapp.com/1.1/715456/projects/${projectId}/events"
+		nextStep="format date"
+	/>
+	
+	<groovyStep name="format date"
+		resultDataDef="formattedDate"
+		nextStep="set event body"
+	>
+		<script>
+			<![CDATA[
+			split = []
+			split = date.split('/')
+			
+			year = split[2]
+			day = split[1]
+			month = split[0]
+			
+			split[0] = year
+			split[1] = month
+			split[2] = day
+			
+			return split.join('-')
+			]]>
+		</script>
+	</groovyStep>
+
+	<setContextData name="set event body"
+		executionLabelExpression="setting eventBody"
+		nextStep="create timely event"
+	>
+		<set targetDataDef="eventBody">
+			<![CDATA[
+			{
+				"event": {
+					"hours":${hours},
+					"minutes":${minutes},
+					"seconds":0,
+					"day":"${formattedDate}",
+					"note":"${userName} -- ${notes}",
+					"project_id":${projectId},
+					"label_ids": [${labelId}]
+				}
+			}
+			]]>
+		</set>
+	</setContextData>
+
+    <submitHttpStep name="create timely event"
+	    urlExpression="${eventsUrl}"
+	    requestMethodExpression="POST"
+	    responsePayloadDataDef="eventResponse"
+    >
+		<requestHeader name="Authorization">${auth}</requestHeader>
+		<requestPayloadItem name="body">${eventBody}</requestPayloadItem>
+
+		<exception-transition type="WorkflowException">
+			<targetStepName>email error</targetStepName>
+		</exception-transition>
+		<transition condition="${true}">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</submitHttpStep>
+
+    <noopStep name="end"/>
+
+	<emailStep name="email error"
+		executionLabelExpression="send email"
+		emailAddressesExpression="aales@levelsbeyond.com"
+		subjectExpression="${jsonEntry.get('Person').asText()} - ${jsonEntry.get('Work Item').asText()} - Error"
+		nextStep="event failed">
+		<body>
+			${jsonEntry.get('Person').asText()} - ${jsonEntry.get('Work Item').asText()} failed
+		</body>
+	</emailStep>
+
+    <failWorkflowStep name="event failed"
+	    executionLabelExpression="event failed"
+	    reasonExpression="event failed"
+    />
+
+	<contextDataDef name="jsonEntry" dataType="JSON"/>
+    <contextDataDef name="rqlString" dataType="String"/>
+    <contextDataDef name="assets" dataType="Data Object" multiple="true"/>
+    <contextDataDef name="auth" dataType="String" defaultDataExpression="Bearer 4581bda3879607039a12facb1905ba8d5a733acfdbea39dd31cdd25592d1802d"/>
+    <contextDataDef name="eventsUrl" dataType="String" defaultDataExpression="https://api.timelyapp.com/1.1/715456/projects/${projectId}/events"/>
+
+
+	<contextDataDef name="projectName" dataType="String" defaultDataExpression="${jsonEntry.hasNonNull('Timely Project') ? jsonEntry.get('Timely Project').asText().replaceAll('-','').replaceAll(' ','') : null}"/>
+	<contextDataDef name="labelName" dataType="String" defaultDataExpression="${jsonEntry.hasNonNull('Timely Tag') ? jsonEntry.get('Timely Tag').asText() : null}"/>
+	<contextDataDef name="clientName" dataType="String" defaultDataExpression="${jsonEntry.hasNonNull('Customer') ? jsonEntry.get('Customer').asText() : null}"/>
+
+	<contextDataDef name="notes" dataType="String" defaultDataExpression="${jsonEntry.get('Comment').asText()}"/>
+	<contextDataDef name="date" dataType="String" defaultDataExpression="${jsonEntry.get('Date').asText()}"/>
+	<contextDataDef name="formattedDate" dataType="String" />
+	<contextDataDef name="timeVal" dataType="String" defaultDataExpression="${jsonEntry.get('Hours').asText()}"/>
+	<contextDataDef name="hours" dataType="String" defaultDataExpression="${timeVal.contains('.') ? timeVal.substring(0, timeVal.lastIndexOf('.')) : timeVal}"/>
+	<contextDataDef name="hoursDec" dataType="Double" defaultDataExpression="${timeVal.contains('.') ? timeVal.substring(timeVal.lastIndexOf('.'), timeVal.length()) : 0}"/>
+	<contextDataDef name="minutes" dataType="Integer" defaultDataExpression="${hoursDec &lt; 0.25 ? 0 : hoursDec * 60}"/>
+	<!--<contextDataDef name="minutes" dataType="Integer" defaultDataExpression="${hoursDec * 60}"/>-->
+	<contextDataDef name="userName" dataType="String" defaultDataExpression="${jsonEntry.get('Person').asText()}"/>
+
+    <contextDataDef name="projectId" dataType="String" defaultDataExpression="0"/>
+    <contextDataDef name="labelId" dataType="Integer"/>
+
+    <contextDataDef name="projectsResponse" dataType="JSON" multiple="true"/>
+    <contextDataDef name="labelsResponse" dataType="JSON" multiple="true"/>
+    <contextDataDef name="eventResponse" dataType="String" multiple="true"/>
+
+    <contextDataDef name="eventBody" 			dataType="JSON"/>
+
+
+</workflow>

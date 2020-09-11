@@ -1,0 +1,130 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="downloadAsset"
+          name="Download Asset"
+          executionLabelExpression="Download Asset - ${format} of ${subject.name}"
+          description="Downloading is disabled for all but super admins. This workflow will be controlled by groups and have a download link created."
+          hasDownload="true"
+          showInUserInterface="true"
+          subjectDOClassName="AssetMaster"
+          subjectQualifierExpression=""
+          sdkVersion="">
+
+    <initialStepName>check input</initialStepName>
+
+    <noopStep
+            name="check input"
+            executionLabelExpression="Request ${format} of ${assetMaster.name}">
+        <transition condition="${format == 'source' and assetMaster.getSourceContent() != null and assetMaster.getSourceContent().file != null}">
+            <targetStepName>set download file to source</targetStepName>
+        </transition>
+        <transition condition="${format == 'source' and assetMaster.getMezzanineContent() != null and assetMaster.getMezzanineContent().file != null}">
+            <targetStepName>set download file to mezzanine</targetStepName>
+        </transition>
+        <transition condition="${format == 'proxy' and assetMaster.getProxyContent() != null and assetMaster.getProxyContent().file != null}">
+            <targetStepName>set download file to proxy</targetStepName>
+        </transition>
+        <!--<transition condition="${format == 'mezzanine'}">-->
+            <!--<targetStepName>create digital mezzanine</targetStepName>-->
+        <!--</transition>-->
+        <transition condition="true">
+            <targetStepName>notify requested file not available</targetStepName>
+        </transition>
+    </noopStep>
+
+    <setContextData
+            name="set download file to source"
+            targetDataDef="downloadFile"
+            valueExpression="${assetMaster.getSourceContent().file}"
+            nextStep="copy to temp dir with unique name"/>
+
+    <setContextData
+            name="set download file to mezzanine"
+            targetDataDef="downloadFile"
+            valueExpression="${assetMaster.mezzanine.file}"
+            nextStep="copy to temp dir with unique name"/>
+
+    <setContextData
+            name="set download file to proxy"
+            targetDataDef="downloadFile"
+            valueExpression="${assetMaster.getProxyContent().file}"
+            nextStep="copy to temp dir with unique name"/>
+
+    <!--<executeSubflowStep name="create digital mezzanine"-->
+                        <!--targetWorkflowId="createVideoMezzanine"-->
+                        <!--resultDataDef="downloadFile"-->
+                        <!--nextStep="create download link"/>-->
+
+    <copyFileStep name="copy to temp dir with unique name"
+        sourceFileExpression="downloadFile"
+        targetDirectoryExpression="${tempDirectory}"
+        targetFilenameExpression="${#baseFilename(downloadFile) + '_' + #uuid() + '.' + #extension(downloadFile)}"
+        resultDataDef="fileToDownload"
+    >
+        <transition condition="${fileToDownload.exists()}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>notify requested file not available</targetStepName>
+        </transition>
+    </copyFileStep>
+    
+    <setWorkflowDownloadStep
+            name="create download link"
+            sourceFileExpression="${fileToDownload}"
+            nextStep="notify success"/>
+
+
+    <createFailureNotificationStep
+            name="notify requested file not available"
+            notificationTypeExpression="error"
+            notificationBodyExpression="Requested file: ${format} of ${assetMaster.name} does not exist! Please contact an adminstrator for assistance."
+            nextStep="fail requested file not available"/>
+
+    <createSuccessNotificationStep
+            name="notify success"
+            notificationTypeExpression="success"
+            notificationBodyExpression="Your download is ready from the Status tab!"
+            nextStep="end"/>
+
+    <!--<executeSubflowStep-->
+            <!--name="log download"-->
+            <!--targetWorkflowId="logActivity"-->
+            <!--nextStep="end">-->
+        <!--<subflowContextDataMapping parentDataDef="assetMaster" subflowDataDef="assets"/>-->
+        <!--<subflowContextDataMapping parentDataDef="format" subflowDataDef="exportFormat"/>-->
+        <!--<subflowContextDataMapping parentDataDef="activity" subflowDataDef="activity"/>-->
+        <!--<subflowContextDataMapping parentDataDef="workflowUsed" subflowDataDef="workflowUsed"/>-->
+        <!--<subflowContextDataMapping parentDataDef="performedBy" subflowDataDef="performedBy"/>-->
+        <!--<subflowContextDataMapping parentDataDef="destination" subflowDataDef="destination"/>-->
+        <!--<subflowContextDataMapping parentDataDef="downloadFile" subflowDataDef="deliveredFile"/>-->
+    <!--</executeSubflowStep>-->
+
+    <failWorkflowStep name="fail requested file not available" reasonExpression="Requested file: ${format} of ${assetMaster.name} does not exist!"/>
+
+    <noopStep name="end"/>
+
+    <!-- Input -->
+    <contextDataDef name="format" dataType="String" userInput="true" required="true">
+        <picklist>
+            <picklistItem value="source" label="Source Media"/>
+            <picklistItem value="mezzanine" label="Digital Mezzanine"/>
+            <picklistItem value="proxy" label="Proxy"/>
+        </picklist>
+    </contextDataDef>
+
+    <!-- Internal -->
+    <contextDataDef name="assetMaster" dataType="Data Object" defaultDataExpression="${subject}"/>
+    <contextDataDef name="downloadFile" dataType="File"/>
+
+    <contextDataDef name="activity" dataType="String" defaultDataExpression="Download"/>
+    <contextDataDef name="workflowUsed" dataType="String" defaultDataExpression="${#this.workflowVersion.workflow.name}"/>
+    <contextDataDef name="performedBy" dataType="String" defaultDataExpression="${#this.startedBy.emailAddress}"/>
+    <contextDataDef name="destination" dataType="String" defaultDataExpression="Local Download"/>
+    <contextDataDef name="userInputTemplateId"      dataType="String"       defaultDataExpression="${'proxy'.equals(exportFormat) ? 'createreachproxyvideoprod3mb' : 'mezzanine'.equals(exportFormat) ? 'nfl_8mb_mezz_v2' : null}"/>
+    
+    <contextDataDef name="tempDirectory" dataType="Directory" defaultDataExpression="/reachengine/temp/downloads/" />
+    <contextDataDef name="fileToDownload" dataType="File" />
+</workflow>

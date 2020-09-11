@@ -1,0 +1,111 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="
+	http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd
+	"
+	id="ingestPlaceholderAssetMaster"
+	name="Ingest Placeholder Asset Master"
+	executionLabelExpression="Ingest Placeholder Asset Master | asset: ${assetName}"
+	description=""
+	subjectDOClassName=""
+	showInUserInterface="false"
+	deadlineExpression=""
+	resultDataDef="parentAsset"
+		  sdkVersion=""
+	>
+	
+	
+	
+	<initialStepName>create temp file</initialStepName>
+
+
+
+	<!-- .................................................. Asset Steps ................................................... -->
+	<!-- create temp file. created with an extension that matches the requested extension. -->
+	<runCommandStep name="create temp file"
+		executablePathExpression="/bin/touch"
+		executionLabelExpression="Creating temp file: ${tempSourceFile.absolutePath}"
+		pctComplete="30"
+		nextStep="create asset"
+		>
+		
+		<arg>${tempSourceFile.absolutePath}</arg>
+	</runCommandStep>
+	
+	
+	
+	<!-- create asset. AssetVersion is returned. -->
+	<saveAssetStep name="create asset"
+		assetExpression="${assetVersion}"
+		contentExpression="${tempSourceFile}"
+		assetNameExpression="${assetName}"
+		contentUseExpression="|SOURCE|MEZZANINE|"
+		versionAssetExpression="false"
+		resultDataDef="assetVersion"
+		executionLabelExpression="Create asset with temp file ${tempSourceFile.name}"
+		searchableFlagExpression="true"
+		pctComplete="45"
+		nextStep="delete temp location file"
+		/>
+	
+	
+	
+	<!-- delete temp file from temp location. File was only needed to create the asset. -->
+	<deleteFileStep name="delete temp location file"
+		sourceFilesExpression="${tempSourceFile}"
+		executionLabelExpression="deleting temp file: ${tempSourceFile.absolutePath}"
+		pctComplete="50"
+		nextStep="delete source repo file"
+		/>
+	
+	
+	
+	<!-- delete temp file from source repo. File was only needed to create the asset. -->
+	<deleteFileStep name="delete source repo file"
+		sourceFilesExpression="${assetVersion.originalContent.file}"
+		executionLabelExpression="deleting temp file: ${assetVersion.originalContent.file.absolutePath}"
+		pctComplete="55"
+		nextStep="get asset master"
+		/>
+	
+	
+	
+	<!-- get AssetMaster from AssetVersion -->
+	<setContextData name="get asset master"
+		targetDataDef="parentAsset"
+		valueExpression="${assetVersion.masterAsset}"
+		executionLabelExpression="Getting the AssetMaster for ${assetVersion.name}"
+		pctComplete="65"
+		nextStep="end"
+		>
+	</setContextData>
+
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"	pctComplete="100"/>
+	
+	
+	
+	
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ............ Input ............. -->
+	<!-- name of the placeholder asset to find or create -->
+	<contextDataDef name="assetName" 				dataType="String"/>
+	
+	<!-- .......... Processing .......... -->
+	<!-- temp directory used to create placeholder file -->
+	<contextDataDef name="tempLocation" 			dataType="String"		defaultDataExpression="${#sysconfig('filesystem.root.temp')}"/>
+	<!-- temp file to create in order to ingest a placeholder asset. Deleted immidiately from the RE repo. -->
+	<contextDataDef name="tempSourceFile" 			dataType="File"			defaultDataExpression="${tempLocation.endsWith('/')? tempLocation : tempLocation + '/'}${assetName}"/>
+	
+	<!-- .......... Calculated .......... -->
+	<!-- AssetVersion object created -->
+	<contextDataDef name="assetVersion"     		dataType="Data Object"/>
+	<!-- Returned from this workflow. The parent object (AssetMaster) of the asset ingested. -->
+	<contextDataDef name="parentAsset" 				dataType="Data Object"/>
+	
+</workflow>

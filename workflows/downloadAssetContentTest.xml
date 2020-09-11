@@ -1,0 +1,54 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="downloadAssetContentTest"
+          name="Download Asset Content Test"
+          executionLabelExpression="Download Asset Content Test of ${subject.name}"
+          description="Download file"
+          hasDownload="true"
+          showInUserInterface="true"
+          subjectDOClassName="AssetMaster"
+          subjectQualifierExpression=""
+          sdkVersion="">
+
+    <initialStepName>check input</initialStepName>
+    
+    <noopStep name="check input">
+    	<transition condition="${quality.equals('Source')}">
+            <targetStepName>set source</targetStepName>
+        </transition>
+        <transition condition="${quality.equals('Proxy')}">
+            <targetStepName>set proxy</targetStepName>
+        </transition>
+    </noopStep>
+    
+    <setContextData name="set source"
+                    targetDataDef="downloadFile"
+                    valueExpression="${source}"
+                    nextStep="create download link"/>
+                    
+    <setContextData name="set proxy"
+                    targetDataDef="downloadFile"
+                    valueExpression="${proxy}"
+                    nextStep="create download link"/>
+
+    <setWorkflowDownloadStep
+        name="create download link"
+        sourceFileExpression="${downloadFile}"
+        nextStep="end"/>
+
+    <noopStep name="end"/>
+    
+    <contextDataDef name="quality" dataType="String" required="true" label="Download Quality" userInput="true">
+		<picklist>
+			<picklistItem value="Source"/>
+			<picklistItem value="Proxy"/>
+		</picklist>
+	</contextDataDef>
+	
+	<contextDataDef name="downloadFile" dataType="File"/>
+    <contextDataDef name="proxy" dataType="File" defaultDataExpression="${subject.getProxyContent().file}"/>
+    <contextDataDef name="source" dataType="File" defaultDataExpression="${subject.getOriginalContent().file}"/>
+
+</workflow>

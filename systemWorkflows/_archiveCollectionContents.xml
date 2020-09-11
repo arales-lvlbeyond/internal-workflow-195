@@ -1,0 +1,80 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"    
+    xsi:schemaLocation="
+        http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+        "
+        
+ id="_archiveCollectionContents"
+ name="Archive Collection Contents"
+ executionLabelExpression="Archive ${subject.name} contents to ${targetDirectory}"
+ description=""
+ subjectDOClassName="AssetCollection"
+ showInUserInterface="false"
+ subjectQualifierExpression="${contentsArchivedFlag != true}"
+ >
+    
+	<initialStepName>compress content files</initialStepName>
+	
+	<compressFileStep name="compress content files" 
+		sourceFilesExpression="${#cleanList(filesToArchive, true, true)}"
+		targetDirectoryExpression="${targetDirectory}"
+		targetFilenameExpression="${targetFilename}"
+		pctComplete="98"
+	>
+		
+		<transition condition="${true}">
+			<targetStepName>mark collection as archived</targetStepName>
+		</transition>		
+	</compressFileStep>
+	
+	<saveDataObjectStep name="mark collection as archived"
+		dataObjectExpression="${subject}"		
+	>
+		<transition condition="${true}">
+			<targetStepName>email</targetStepName>
+		</transition>
+		
+		<property name="contentsArchivedFlag">true</property>		
+	</saveDataObjectStep>
+	
+	<emailStep name="email" 
+		executionLabelExpression="Send email to ${emailAddresses}"
+		emailAddressesExpression="${emailAddresses}" 
+		subjectExpression="Collection ${subject.name} has been archived">
+		<body>
+	        <![CDATA[
+	        Hello--
+	        
+	        The contents of collection ${subject.name} have been archived.
+	        
+	        Sincerely,
+	        Your Friendly Neighborhood Reach Engine	        
+	        ]]>			
+		</body>
+	</emailStep>
+		
+	<noopStep name="end"></noopStep>		
+	
+	<contextDataDef name="filesToArchive" dataType="File" multiple="true" defaultDataExpression="${subject.items.![itemTarget.sourceFile]}"/>
+	<contextDataDef name="targetDirectory" dataType="Directory" userInput="true"/>
+	<contextDataDef name="targetFilename" dataType="String" userInput="true" defaultDataExpression="${subject.name}.zip"/>
+	<contextDataDef name="emailAddresses" dataType="String" defaultDataExpression="${#this.startedBy?.emailAddress}"></contextDataDef>
+</workflow>

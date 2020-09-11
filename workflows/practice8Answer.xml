@@ -1,0 +1,64 @@
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="practice8Answer"
+	name="Practice 8 Answer"
+	executionLabelExpression="Practice 8 Answer"
+	description="
+		Complete the workflow
+			Set up the workflow to be ran on a selected AssetMaster
+			Save the metadata field ‘findMe’ as true or false on the asset
+		Hint
+			Selection = subject of the workflow
+			Use the saveDataObjectStep to save metadata
+				Metabrowser will help get you the right object
+				The step reference will also help
+	
+	"
+	subjectDOClassName="AssetMaster"
+	resultDataDef=""
+	deadlineExpression=""
+	showInUserInterface="true"
+	sdkVersion=""
+	>
+	
+	
+	<initialStepName>set findMe</initialStepName>
+	
+	
+	<!-- save 'findMe' to the user input on the selected asset -->
+	<saveDataObjectStep name="set findMe"
+		dataObjectExpression="${subject.metadata}"
+		executionLabelExpression="saving 'findMe' as ${newValue} on ${subject.name}"
+		pctComplete="66"
+		nextStep="reindex"
+		>
+		<property name="findMe">${newValue}</property>
+	</saveDataObjectStep>
+	
+	
+	<!-- reindex the found asset in elasticsearch -->
+	<raiseWorkflowEventStep name="reindex"
+		eventTypeExpression="ensureIndexed"
+		executionLabelExpression="Ensure Asset Indexed" 
+		pctComplete="99"
+		nextStep="end"
+		>
+		
+		<property name="indexTargetRef">${subject}</property>   
+	</raiseWorkflowEventStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ..... inputs ..... -->
+	<!-- value to set the metadata field 'findMe' to -->
+	<contextDataDef name="newValue" 	dataType="Boolean"	userInput="true"	label="New Value For findMe"	defaultDataExpression="false"/>
+	
+</workflow>

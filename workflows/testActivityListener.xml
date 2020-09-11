@@ -1,0 +1,23 @@
+<workflow xmlns="http://levelsbeyond.com/schema/workflow"
+          id="testActivityListener"
+          name="Test Collaborate Sync"
+          executionLabelExpression="Test activity listener"
+          subjectDOClassName=""
+          sdkVersion="">
+    <initialStepName>do something</initialStepName>
+
+    <groovyStep name="do something"
+                resultDataDef="soGroovy"
+                nextStep="end">
+        <script>
+            <![CDATA[
+            return "boom"
+            ]]>
+        </script>
+    </groovyStep>
+
+    <noopStep name="end" />
+
+    <contextDataDef name="activity" dataType="JSON" />
+    <contextDataDef name="soGroovy" dataType="String" />
+</workflow>

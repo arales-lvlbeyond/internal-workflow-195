@@ -1,0 +1,60 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://levelsbeyond.com/schema/workflow/nimbus "
+          id="_addSearchAssetsToCollection"
+          name="Add Search Assets to Collection"
+          executionLabelExpression="Add Search Assets to Collection"
+          subjectDOClassName=""
+          showInUserInterface="false"
+          sdkVersion="4.2">
+
+    <initialStepName>add_search_assets_to_collection</initialStepName>
+
+    <nimbus:addAssetsToCollectionStep name="add_search_assets_to_collection"
+                                      search="${search}"
+                                      collectionId="${collectionId}">
+        <transition condition="=true">
+            <targetStepName>success notification</targetStepName>
+        </transition>
+        <exception-transition type="WorkflowException">
+            <targetStepName>failure notification</targetStepName>
+        </exception-transition>
+    </nimbus:addAssetsToCollectionStep>
+
+    <createSuccessNotificationStep name="success notification"
+                                   notificationTypeExpression="success"
+                                   notificationBodyExpression="${addedAssets} assets have been added to collection ${collectionName}"
+                                   nextStep="end"
+    />
+    <createFailureNotificationStep name="failure notification"
+                                   notificationTypeExpression="failure"
+                                   notificationBodyExpression="Error adding search assets to collection ${collectionName}"
+                                   nextStep="end"
+    />
+
+    <noopStep name="end"/>
+
+    <!-- Data Defs -->
+    <contextDataDef name="collectionId" dataType="String" userInput="true" required="true"/>
+    <contextDataDef name="search" dataType="String" userInput="true" required="true"/>
+    <contextDataDef name="addedAssets" dataType="Integer"/>
+    <contextDataDef name="collectionName" dataType="String"/>
+
+</workflow>

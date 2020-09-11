@@ -1,0 +1,136 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+	http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd
+	"
+	id="cronDailyArchive"
+	name="(Cron) Archive Assets - Daily"
+	description="Archives assets to S3 to be put into Glacier"
+	executionLabelExpression="Daily Automatic Archive"
+	showInUserInterface="true"
+	subjectDOClassName=""
+	resultDataDef=""
+	deadlineExpression=""
+	sdkVersion="">
+
+	<initialStepName>query existing execution</initialStepName>
+
+	<queryStep name="query existing execution"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="existingExecution"
+		executionLabelExpression="Checking for existing workflow execution with uuid ${ #this.workflow.uuid }, workflow key ${ #this.workflow.workflowVersion?.workflow?.key }">
+		<transition condition="${ existingExecution == null }">
+			<targetStepName>query asset masters</targetStepName>
+		</transition>
+		<transition condition="${ true }">
+			<targetStepName>end</targetStepName>
+		</transition>
+
+		<criteria>
+			<![CDATA[
+				<criteria>
+					<and>
+						<condition property="status" op="eq">
+							<test value="EXECUTING" />
+						</condition>
+						<condition property="workflowVersion.workflow.key" op="eq">
+							<test value="${ #this.workflow.workflowVersion.workflow.key }" />
+						</condition>
+						<condition property="uuid" op="noteq">
+							<test value="${ #this.workflow.uuid }" />
+						</condition>
+					</and>
+				</criteria>
+			]]>
+		</criteria>
+	</queryStep>
+
+	<!-- ........................................... Query for Valid Assets .......................................... -->
+	<queryStep name="query asset masters"
+		executionLabelExpression="Assets Found: ${unfilteredAssetMasters.size()}"
+		targetDataObjectClass="AssetMaster"
+		resultDataDef="unfilteredAssetMasters"
+		pctCompleteExpression="10"
+		fetchLimitExpression="${assetsToExecute}"
+		fetchOffsetExpression="${queryOffset}"
+		>
+		<transition condition="${ unfilteredAssetMasters.size() gt 0 }">
+			<targetStepName>increment offset</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<criteria>
+			<![CDATA[
+				<criteria>
+					<and>
+						<condition property="contents.truncatedFlag" op="eq">
+                            <test value="false"/>
+                        </condition>
+                        <condition property="contents.contentUses" op="like">
+								<test value="%SOURCE%" />
+						</condition>
+						<condition property="dateUpdated" op="lt">
+                            <test value="${ #formatDate('w3c', targetTime) }"/>
+                        </condition>
+					</and>
+				</criteria>
+			]]>
+		</criteria>
+	</queryStep>
+	
+	<setContextData name="increment offset"
+		targetDataDef="queryOffset"
+		valueExpression="${queryOffset + assetsToExecute}"
+		nextStep="remove do not archive assets"
+		devStep="true"
+	/>
+	
+	<setContextData name="remove do not archive assets"
+		executionLabelExpression="Removing assets with 'Do Not Archive' flag. Removed ${unfilteredAssetMasters.size() - assetMasters.size()} assets with 'Do Not Archive' flag."
+		valueExpression="${unfilteredAssetMasters.?[metadata.doNotArchive != true]}"
+		targetDataDef="assetMasters"
+	>
+		<transition condition="${assetMasters.size() &gt; 0}">
+			<targetStepName>process next batch</targetStepName>
+		</transition>
+		<transition condition="{true}">
+			<targetStepName>query asset masters</targetStepName>
+		</transition>
+	</setContextData>
+	
+	<noopStep name="process next batch" nextStep="query asset masters" />
+	<!-- ........................................... Archive Assets .......................................... -->
+	<!--<executeSubflowStep name="archive asset masters"-->
+		<!--targetWorkflowId="filterDailyArchive"-->
+		<!--subjectChangePath="${ assetMasters }"-->
+		<!--subflowExecutionLimitExpression="${ subflowLimit }"-->
+		<!--continueOnException="true"-->
+		<!--executionLabelExpression="Archiving ${ assetMasters.size() } asset(s) to S3 with a maximum of ${subflowLimit} running at one time."-->
+		<!--nextStep="end" />-->
+	
+	<!-- ........................................... Ending Steps .......................................... -->
+	
+	<noopStep name="no assets found"
+		executionLabelExpression="No assets were found needing to be archived."
+		nextStep="end"/>
+
+	<noopStep name="end" />
+
+	<!-- ........................................... Context Data Defs .......................................... -->
+	<contextDataDef name="daysInterval" dataType="Integer" defaultDataExpression="${#sysconfig('workflows.cronDailyArchive.daysInterval') ?: 0}"/>
+	
+	<contextDataDef name="now" dataType="Date/Time" defaultDataExpression="${#newDate()}"/>
+	<contextDataDef name="targetTime" dataType="Date/Time" defaultDataExpression="${#addDays(now,-daysInterval)}"/>
+	
+	<contextDataDef name="assetMasters" 		dataType="Data Object" 	multiple="true" />
+	<contextDataDef name="unfilteredAssetMasters" 		dataType="Data Object" 	multiple="true" />
+
+	<contextDataDef name="assetsToExecute" 			dataType="Integer" defaultDataExpression="${#sysconfig('workflows.cronDailyArchive.queryLimit') ?: 100}"/>
+
+	<contextDataDef name="subflowLimit" 		dataType="Integer" 		defaultDataExpression="4" />
+	<contextDataDef name="existingExecution" 	dataType="Data Object" />
+	<contextDataDef name="groovyOutput"         dataType="Boolean"/>
+	
+	<contextDataDef name="queryOffset"          dataType="Integer"      defaultDataExpression="0"/>
+</workflow>

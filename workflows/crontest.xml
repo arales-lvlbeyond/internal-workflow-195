@@ -1,0 +1,106 @@
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="crontest"
+	name="Cron Test"
+	executionLabelExpression="Practice 7 Assignment - Cron test"
+	description="
+		Modify the workflow
+			The workflow already ingests a directory of files successfully with metadata.
+			Set up a cron in the properties file to run this workflow every 5 minutes
+			Modify the workflow to delete the files after ingest
+				This is so that the cron does not pick up the files again
+		Hint
+			Look for deleteFileStep in the function reference
+			Look in the properties file for comments about how to set up a cron for a workflow
+			Cron properties will require a restart of Reach Engine
+	"
+	subjectDOClassName=""
+	resultDataDef=""
+	deadlineExpression=""
+	showInUserInterface="true"
+	sdkVersion=""
+>
+	
+	
+	<initialStepName>get folder</initialStepName>
+	
+	
+	<!-- gather files in the directory -->
+	<!--<setContextData name="get files"-->
+		<!--executionLabelExpression="grabbing files from ${directoryToIngest.toString()}"-->
+		<!--nextStep="set metadata"-->
+	<!--&gt;-->
+		<!--<set targetDataDef="filesToIngest">${#walkDir(directoryToIngest, null)}</set>-->
+	<!--</setContextData>-->
+	
+	<setContextData name="get folder"
+		targetDataDef="filesToIngest"
+		executionLabelExpression="setting folder from ${folderToIngest.toString()}"
+		valueExpression="${#walkDir(directoryToIngest, null)}"
+		nextStep="set metadata"
+	/>
+	<!-- save user input data to the metadata json -->
+	<setContextData name="set metadata"
+		executionLabelExpression="testField = ${testField} | testCheckbox = ${testCheckbox != null? testCheckbox : 'null'}"
+		nextStep="ingest asset"
+	>
+		<set targetDataDef="jsonMetadata">
+			<![CDATA[
+				{
+					"testField":"${testField}",
+					"testCheckbox":${testCheckbox != null? testCheckbox : false}
+				}
+			]]>
+		</set>
+	</setContextData>
+	
+	
+	<!-- ingest the input file -->
+	<executeSubflowStep name="ingest asset"
+		targetWorkflowId="_anyAssetIngest"
+		subjectChangePath="${filesToIngest}"
+		subflowTargetDataDef="fileToIngest"
+		resultDataDef="assetVersions"
+		executionLabelExpression="ingest ${fileToIngest.name}"
+		pctComplete="99"
+		nextStep="delete file"
+	>
+		<subflowContextDataMapping parentDataDef="skipMezzanineFlag" 		subflowDataDef="skipMezzanineFlag"/>
+		<subflowContextDataMapping parentDataDef="allowDuplicateNamesFlag" 	subflowDataDef="allowDuplicateNamesFlag"/>
+		<subflowContextDataMapping parentDataDef="jsonMetadata" 			subflowDataDef="jsonMetadata"/>
+	</executeSubflowStep>
+	
+	<deleteFileStep name="delete file"
+		sourceFilesExpression="${filesToIngest}"
+		executionLabelExpression="deleting ${filesToIngest.size()} files in ${directoryToIngest.absolutePath}"
+		nextStep="end"
+	/>
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ..... inputs ..... -->
+	<!-- directory that contains the files to ingest -->
+	<contextDataDef name="directoryToIngest" 		dataType="Directory"	userInput="true"	label="01: Directory To Ingest"				required="true"/>
+	<!-- create or do not create a mezzanine -->
+	<contextDataDef name="skipMezzanineFlag" 		dataType="Boolean" 		userInput="true"	label="02: Use Source as Mezzanine?"		defaultDataExpression="true"/>
+	<!-- always ingest asset as a new asset, or if an asset is found use it instead -->
+	<contextDataDef name="allowDuplicateNamesFlag" 	dataType="Boolean" 		userInput="true"	label="03: Allow Duplicate File Names?"		defaultDataExpression="false"/>
+	<!-- metadata input -->
+	<contextDataDef name="testField" 				dataType="String"		userInput="true"	label="04: Metadata - testField"/>
+	<contextDataDef name="testCheckbox" 			dataType="Boolean"		userInput="true"	label="05: Metadata - testCheckbox"/>
+	
+	<!-- ... Calculated ... -->
+	<!-- files to ingest as assets -->
+	<contextDataDef name="filesToIngest" 			dataType="File"			multiple="true"/>
+	<!-- can be used to set metadata by default -->
+	<contextDataDef name="jsonMetadata" 			dataType="JSON"/>
+	<!-- Asset Version Data Objects returned from the ingest subflow -->
+	<contextDataDef name="assetVersions" 			dataType="Data Object"	multiple="true"/>
+
+</workflow>

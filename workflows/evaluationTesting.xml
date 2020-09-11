@@ -1,0 +1,232 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="evaluationTesting"
+	name="Evaluation Testing"
+	executionLabelExpression="Evaluation Testing | Start: ${startTime}"
+	subjectDOClassName=""
+	showInUserInterface="true"
+	sdkVersion=""
+	>
+	
+	<initialStepName>check additions to test</initialStepName>
+	
+	
+	<noopStep name="check additions to test"
+		executionLabelExpression="Additions to test: ${#joinElements(additionsToTest, ' ,')}"
+		>
+		<transition condition="${additionsToTest.contains('all')}">
+			<targetStepName>first addition</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('first')}">
+			<targetStepName>first addition</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('second')}">
+			<targetStepName>set second number to 7</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('third')}">
+			<targetStepName>third addition</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('fourth')}">
+			<targetStepName>fourth addition</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('fifth')}">
+			<targetStepName>set first number to 1</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('sixth')}">
+			<targetStepName>sixth addition</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- ................................................ First Addition .................................................. -->
+	<noopStep name="first addition"
+		executionLabelExpression="First Addition: ${firstNumber} + ${secondNumber} = ${firstAddition}"
+		>
+		<transition condition="${additionsToTest.contains('all')}">
+			<targetStepName>set second number to 7</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('second')}">
+			<targetStepName>set second number to 7</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('third')}">
+			<targetStepName>third addition</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('fourth')}">
+			<targetStepName>fourth addition</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('fifth')}">
+			<targetStepName>set first number to 1</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('sixth')}">
+			<targetStepName>sixth addition</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- ................................................ Second Addition ................................................. -->
+	<setContextData name="set second number to 7"
+		targetDataDef="secondNumber"
+		valueExpression="7"
+		nextStep="second addition"
+		/>
+	
+	
+	<noopStep name="second addition"
+		executionLabelExpression="Second Addition: ${firstNumber} + ${secondNumber} = ${secondAddition}"
+		>
+		<transition condition="${additionsToTest.contains('all')}">
+			<targetStepName>third addition</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('third')}">
+			<targetStepName>third addition</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('fourth')}">
+			<targetStepName>fourth addition</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('fifth')}">
+			<targetStepName>set first number to 1</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('sixth')}">
+			<targetStepName>sixth addition</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- ................................................ Third Addition .................................................. -->
+	<setContextData name="third addition"
+		executionLabelExpression="Third Addition: ${firstNumber} + ${secondNumber} = ${thirdAddition != null ? thirdAddition : 'calculating...'}"
+		targetDataDef="thirdAddition"
+		valueExpression="${firstNumber + secondNumber}"
+		>
+		<transition condition="${additionsToTest.contains('all')}">
+			<targetStepName>fourth addition</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('fourth')}">
+			<targetStepName>fourth addition</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('fifth')}">
+			<targetStepName>set first number to 1</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('sixth')}">
+			<targetStepName>sixth addition</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</setContextData>
+	
+	
+	<!-- ................................................ Fourth Addition ................................................. -->
+	<groovyStep name="fourth addition"
+		executionLabelExpression="Fourth Addition: ${firstNumber} + ${secondNumber} = ${fourthAddition != null ? fourthAddition : 'calculating...'}"
+		resultDataDef="fourthAddition"
+		>
+		<transition condition="${additionsToTest.contains('all')}">
+			<targetStepName>set first number to 1</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('fifth')}">
+			<targetStepName>set first number to 1</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('sixth')}">
+			<targetStepName>sixth addition</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		
+		<script>
+		<![CDATA[
+			return firstNumber + secondNumber
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<!-- ................................................ Fifth Addition .................................................. -->
+	<setContextData name="set first number to 1"
+		targetDataDef="firstNumber"
+		valueExpression="1"
+		nextStep="fifth addition"
+		/>
+	
+	
+	<noopStep name="fifth addition"
+		executionLabelExpression="Fifth Addition: ${firstNumber} + ${secondNumber} = ${fifthAddition}"
+		>
+		<transition condition="${additionsToTest.contains('all')}">
+			<targetStepName>sixth addition</targetStepName>
+		</transition>
+		<transition condition="${additionsToTest.contains('sixth')}">
+			<targetStepName>sixth addition</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>sixth addition</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- ................................................ Sixth Addition .................................................. -->
+	<noopStep name="sixth addition"
+		executionLabelExpression="Sixth Addition: ${firstNumber} + ${thirdAddition} = ${sixthAddition}"
+		nextStep="end"
+		/>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ........... INPUT .............. -->
+	<contextDataDef name="additionsToTest"  dataType="String"       multiple="true"     userInput="true">
+		<picklist>
+			<picklistItem value="all"       index="1"/>
+			<picklistItem value="first"     index="2"/>
+			<picklistItem value="second"    index="3"/>
+			<picklistItem value="third"     index="4"/>
+			<picklistItem value="fourth"    index="5"/>
+			<picklistItem value="fifth"     index="6"/>
+			<picklistItem value="sixth"     index="7"/>
+		</picklist>
+	</contextDataDef>
+	
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="startTime"        dataType="Date/Time"    defaultDataExpression="${#newDate()}"/>
+	<contextDataDef name="firstNumber"      dataType="Integer"      defaultDataExpression="5"/>
+	<contextDataDef name="secondNumber"     dataType="Integer"      defaultDataExpression="10"/>
+	<contextDataDef name="firstAddition"    dataType="Integer"      defaultDataExpression="${firstNumber + secondNumber}"/>
+	<contextDataDef name="secondAddition"   dataType="Integer"      defaultDataExpression="${firstNumber + secondNumber}"/>
+	<contextDataDef name="thirdAddition"    dataType="Integer"/>
+	<contextDataDef name="fourthAddition"   dataType="Integer"/>
+	<contextDataDef name="fifthAddition"    dataType="Integer"      defaultDataExpression="${firstNumber + secondNumber}"/>
+	<contextDataDef name="sixthAddition"    dataType="Integer"      defaultDataExpression="${firstNumber + thirdAddition}"/>
+
+</workflow>

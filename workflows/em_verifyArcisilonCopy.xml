@@ -1,0 +1,189 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="        
+    http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/studio1_7_17/studio.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-1.5.xsd        
+    "    
+    id="em_verifyArcisilonCopy"
+    name="em_Verify Arcisilon Copy"
+    executionLabelExpression="Updating Arcisilon Path on '${itemToUpdate.name}'"
+    description="Verify Arcisilon Copy"
+    showInUserInterface="false"
+    subjectDOClassName=""
+    sdkVersion="4.2"
+    devWorkflow="true">
+    
+    <initialStepName>Begin update item</initialStepName>
+        
+    <noopStep name="Begin update item" pctComplete="10"
+        executionLabelExpression="print ${itemToUpdate.name} and ${itemToUpdate.toString().startsWith('[Timeline')}">
+        <transition condition="${itemToUpdate.toString().startsWith('[Timeline')}">          
+            <targetStepName>find existing Timeline Asset path</targetStepName>
+        </transition>
+        <transition condition="${itemToUpdate.name == null}">          
+            <targetStepName>no record name</targetStepName>
+        </transition>
+        <transition condition="=true">          
+            <targetStepName>find existing asset path</targetStepName>
+        </transition>
+    </noopStep>    
+    
+    
+    <setContextData name="find existing Timeline Asset path" pctComplete="20"
+        targetDataDef="existingAssetPath" 
+        valueExpression="${itemToUpdate.mainMezzanineContent?.file?.absolutePath}"
+        executionLabelExpression="Finding existing assetMaster file path ${itemToUpdate.mainMezzanineContent?.file?.absolutePath}"
+        >
+        <transition condition="${existingAssetPath == null}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>find arcisilon file path</targetStepName>
+        </transition>
+    </setContextData>     
+    
+    
+    <setContextData name="find existing asset path" pctComplete="20"
+        targetDataDef="existingAssetPath" 
+        valueExpression="${itemToUpdate.filePath}"
+        executionLabelExpression="Finding existing assetMaster file path ${itemToUpdate.filePath}"
+        >
+        <transition condition="${true}">
+            <targetStepName>find arcisilon file path</targetStepName>
+        </transition>
+    </setContextData> 
+    
+    <setContextData name="find arcisilon file path" pctComplete="30"
+        executionLabelExpression="setting arcisilon file based on '${existingAssetPath}', '${mezzaninesRepoRoot}', and '${arcisilonRootDir}'" 
+        targetDataDef="arcisilonFilePath" 
+        valueExpression="${existingAssetPath.replaceFirst(mezzaninesRepoRoot,arcisilonRootDir)}" >
+        <transition condition="${true}">
+            <targetStepName>get basefilename</targetStepName>
+        </transition>
+    </setContextData>    
+    
+
+    <setContextData name="get basefilename" pctComplete="40"
+		targetDataDef="baseFileName" 
+		valueExpression="${#filename(existingAssetPath)}"
+		executionLabelExpression="baseFileName is '${baseFileName}'"
+	 >	
+		<transition condition="${true}">
+			<targetStepName>check file exists in location</targetStepName>
+		</transition>
+	</setContextData>
+
+    <noopStep name="check file exists in location" pctComplete="45"
+        executionLabelExpression="Checking file exists in the location '${arcisilonFilePath}'"
+       >
+		<transition condition="${#fileExists(arcisilonFilePath)}">
+    		<targetStepName>update metadata</targetStepName>
+    	</transition>        
+        <transition condition="=true">    
+            <targetStepName>copy source</targetStepName>
+        </transition>
+    </noopStep>
+
+    <copyFileStep name="copy source"
+        executionLabelExpression="Copy file from '${#filepath(existingAssetPath)}' to '${#filepath(arcisilonFilePath)}"
+        sourceFileExpression="${existingAssetPath}"
+        targetDirectoryExpression="${#filepath(arcisilonFilePath)}"
+        targetFilenameExpression="${baseFileName}"
+        createTargetDirectoryFlag="true"
+        pctComplete="50"
+        resultDataDef="arcisilonFilePath"
+        >
+        <transition condition="${#filepath(existingAssetPath).exists()}">
+            <targetStepName>send email</targetStepName>
+        </transition>
+        <transition condition="=true">
+            <targetStepName>fail email</targetStepName>
+        </transition>
+    </copyFileStep>
+   
+    <saveDataObjectStep name="update metadata" pctComplete="60"
+        dataObjectExpression="${itemToUpdate.metadata}" 
+        executionLabelExpression="Updating metadata with the arcisilon path"
+        >    
+        <transition condition="=true">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <property name="arcisilonPath">${#filepath(arcisilonFilePath)}</property>
+    </saveDataObjectStep>   
+
+    <emailStep name="send email" pctComplete="70"
+        emailAddressesExpression="${arcisilonFailureEmail}" 
+        subjectExpression="Updated Arcisilon Metadata ${itemToUpdate.name} "
+        >
+        <transition condition="=true">
+            <targetStepName>update metadata</targetStepName>
+        </transition>        
+        <body>
+            <![CDATA[
+	        Hello Admin
+	        
+	       The arcisilon file has been created and updated the metadata
+	        
+	        Sincerely,
+	        Reach Engine System
+	        ]]>			
+        </body>
+    </emailStep>
+
+    <emailStep name="fail email" pctComplete="70"
+               emailAddressesExpression="${arcisilonFailureEmail}"
+               subjectExpression="File did not exist for: ${itemToUpdate.name} "
+            >
+        <transition condition="=true">
+            <targetStepName>update metadata</targetStepName>
+        </transition>
+        <body>
+            <![CDATA[
+	        Hello Admin
+
+	       The arcisilon file was unable to be copied as ${#filepath(existingAssetPath)} could not be found on the filesystem.
+
+	        Sincerely,
+	        Reach Engine System
+	        ]]>
+        </body>
+    </emailStep>
+    
+    <emailStep name="no record name" pctComplete="70"
+        emailAddressesExpression="${arcisilonFailureEmail}"
+        subjectExpression="File did not exist for: ${itemToUpdate.name} "
+        continueOnException="true">
+        <transition condition="=true">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <body>
+            <![CDATA[
+	        Hello Admin
+	        
+	        The Reach Engine asset id:'${itemToUpdate.id}' does not have a valid name or is an invalid asset.  Please verify this assets' state and make any required adjustments.  I'll be searching for this ID again at 2:00am.
+	       
+	        Sincerely,
+	        Reach Engine
+	        ]]>
+        </body>
+    </emailStep>
+
+    <noopStep name="end" />
+
+    <contextDataDef name="itemToUpdate" dataType="Data Object"  userInput="true" required="true"/>
+
+    
+    <!-- System Variables from local.reachengine.properties (Box FileSystem Repo)    -->
+    
+    <contextDataDef name="mezzaninesRepoRoot"	   dataType="String"		defaultDataExpression="${#sysconfig('filesystem.root.emlibrary')}" />
+    <contextDataDef name="arcisilonRootDir"		   dataType="String"		defaultDataExpression="${#sysconfig('filesystem.root.arcisilonMedia')}" />		
+    <contextDataDef name="assets"           	   dataType="Data Object"   multiple="true"/>
+    <contextDataDef name="baseFileName"  		   dataType="String" />
+    <contextDataDef name="existingAssetPath"       dataType="String"/>
+    <contextDataDef name="arcisilonFilePath"       dataType="String"/>
+    <contextDataDef name="errorMakingDir" 		   dataType="String"/>
+    <contextDataDef name="arcisilonFailureEmail"   dataType="String" 	    defaultDataExpression="=#sysconfig('mail.arcisilon.failure')"/>  
+    <!-- must add the following to the local.reach-engine.properties, mail.arcisilon.failure=Brad.D.Anderson@abc.com, Curtis.Harlow@abc.com, Nathan.Ardoin@abc.com -->
+    
+</workflow>

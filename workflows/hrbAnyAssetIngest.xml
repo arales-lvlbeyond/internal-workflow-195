@@ -1,0 +1,487 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	sdkVersion="4.2"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow  http://www.levelsbeyond.com/schema/studio1_7_37/studio.xsd"
+	id="hrbAnyAssetIngest"
+	name="HERB Ingest Asset And Backup"
+	executionLabelExpression="Ingest file ${fileToIngest.name} into repository"
+	description=""
+	subjectDOClassName=""
+	group="Custom_Workflows"
+	showInUserInterface="true"
+	resultDataDef="assetVersion"
+	deadlineExpression="">
+	
+	<initialStepName>check for neew collection</initialStepName>
+	
+	<!--<noopStep name="show startedBy user"-->
+		<!--executionLabelExpression="flow started by ${userWhoStartedFlow.userName}"-->
+		<!--pctComplete="5"-->
+		<!--nextStep="search for user object"-->
+	<!--/>-->
+	<!---->
+	<!--<queryStep  name="search for user object"-->
+		<!--targetDataObjectClass="SecurityUser"-->
+		<!--resultDataDef="hotfolderUserObject"-->
+		<!--executionLabelExpression="Searching for hotfolderUser ${hotfolderUser}"-->
+		<!--pctComplete="10"-->
+	<!--&gt;-->
+		<!--<transition condition="${hotfolderUserObject != null}">-->
+			<!--<targetStepName>update userWhoStartedFlow</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>determine media type</targetStepName>-->
+		<!--</transition>-->
+		<!--<criteria>-->
+			<!--<![CDATA[-->
+				<!--<criteria>-->
+	            <!--<and>-->
+	                <!--<condition property="userName" op="eq"><test value="${hotfolderUser}"/></condition>-->
+	            <!--</and>-->
+				<!--</criteria>-->
+			<!--]]>-->
+		<!--</criteria>-->
+	<!--</queryStep>-->
+	<!---->
+	<!--<saveDataObjectStep name="update userWhoStartedFlow"-->
+		<!--dataObjectExpression="${#this.workflow}"-->
+		<!--pctComplete="15"-->
+	<!--&gt;-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>show startedBy user again</targetStepName>-->
+		<!--</transition>-->
+		<!--<property name="startedBy">${hotfolderUserObject}</property>-->
+	<!--</saveDataObjectStep>-->
+	<!---->
+	<!--<noopStep name="show startedBy user again"-->
+		<!--executionLabelExpression="startedBy firstName now is ${#this.workflow.startedBy.userName}"-->
+		<!--pctComplete="20"-->
+	<!--&gt;-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>determine media type</targetStepName>-->
+		<!--</transition>-->
+	<!--</noopStep>-->
+	
+	<!--<setContextData name="determine media type"-->
+		<!--targetDataDef="mediaType"-->
+		<!--valueExpression="${#mediaType(fileToIngest)}"-->
+		<!--executionLabelExpression="extension is ${#extension(fileToIngest)}"-->
+		<!--pctComplete="25"-->
+	<!--&gt;-->
+		<!--<transition condition="${mediaType == 'VIDEO'}">-->
+			<!--<targetStepName>verify video asset</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${mediaType == 'AUDIO'}">-->
+			<!--<targetStepName>ingest audio asset</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${mediaType == 'IMAGE'}">-->
+			<!--<targetStepName>ingest image asset</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${mediaType == 'DOCUMENT'}">-->
+			<!--<targetStepName>ingest document asset</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${true}">-->
+			<!--<targetStepName>ingest other asset</targetStepName>-->
+		<!--</transition>-->
+	<!---->
+	<!--</setContextData>-->
+	<!---->
+	<!--<runCommandStep name="verify video asset"-->
+		<!--executablePathExpression="${#sysconfig('mediaInfo.exePath')}"-->
+		<!--stdoutDataDef="movType"-->
+		<!--executionLabelExpression="/reachengine/utilities/mediainfo ${filePath} &#45;&#45;Output=XML"-->
+		<!--pctComplete="30"-->
+		<!--nextStep="set movTypeExtracted"-->
+	<!--&gt;-->
+		<!---->
+		<!--<arg>${filePath}</arg>-->
+		<!--<arg>&#45;&#45;Output=XML</arg>-->
+	<!---->
+	<!--</runCommandStep>-->
+	<!---->
+	<!--<setContextData name="set movTypeExtracted"-->
+		<!--targetDataDef="movTypeExtracted"-->
+		<!--valueExpression="${#xpath(movType,'//track/@type',true)}"-->
+		<!--pctComplete="35"-->
+	<!---->
+	<!--&gt;-->
+		<!---->
+		<!--<transition condition="${movTypeExtracted.contains('Video')}">-->
+			<!--<targetStepName>ingest video asset</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>ingest audio asset modified</targetStepName>-->
+		<!--</transition>-->
+	<!---->
+	<!--</setContextData>-->
+	
+	<!--<executeSubflowStep name="ingest video asset"-->
+		<!--targetWorkflowId="hrbIngestVideoAsset"-->
+		<!--pctComplete="99"-->
+		<!--displayName="Ingesting Video"-->
+		<!--subjectChangePath="${fileToIngest}"-->
+		<!--subflowTargetDataDef="fileToIngest"-->
+		<!--resultDataDef="assetVersion"-->
+		<!--executionLabelExpression="movType is ${movType} and archiveOnIngest is ${archiveOnIngest}"-->
+	<!--&gt;-->
+		<!---->
+		<!--<transition condition="${archiveOnIngest == 'yes'}">-->
+			<!--<targetStepName>archive video asset</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${newCategory != null}">-->
+			<!--<targetStepName>add category to assets</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${createdCollection != null}">-->
+			<!--<targetStepName>Add video or asset to collection</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>Mark Source On Disk Date</targetStepName>-->
+		<!--</transition>-->
+		<!--<subflowContextDataMapping subflowDataDef="skipMezzanineFlag" parentDataDef="skipMezzanineFlag"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="sourceCopyPath" parentDataDef="sourceCopyPath"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadataRootPath" parentDataDef="metadataRootPath"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadataPathProperties" parentDataDef="metadataPathProperties"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadata" parentDataDef="metadata"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="jsonMetadata" parentDataDef="jsonMetadata"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="emailAddresses" parentDataDef="emailAddresses"/>-->
+		<!--<subflowContextDataMapping parentDataDef="allowDuplicateNamesFlag" subflowDataDef="allowDuplicateNamesFlag"/>-->
+		<!--<subflowContextDataMapping parentDataDef="generateProxyLater" subflowDataDef="generateProxyLater"/>-->
+	<!--</executeSubflowStep>-->
+	
+	
+	<!--<executeSubflowStep name="ingest audio asset modified"-->
+		<!--targetWorkflowId="hrbAudioAssetIngestForVidContainers"-->
+		<!--pctComplete="99"-->
+		<!--displayName="Ingesting Audio"-->
+		<!--subjectChangePath="${fileToIngest}"-->
+		<!--subflowTargetDataDef="fileToIngest"-->
+		<!--resultDataDef="assetVersion"-->
+		<!--executionLabelExpression="movType is ${movType}"-->
+	<!---->
+	<!--&gt;-->
+		<!--<transition condition="${archiveOnIngest == 'yes'}">-->
+			<!--<targetStepName>archive video asset</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${newCategory != null}">-->
+			<!--<targetStepName>add category to assets</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${createdCollection != null}">-->
+			<!--<targetStepName>Add video or asset to collection</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>Mark Source On Disk Date</targetStepName>-->
+		<!--</transition>-->
+		<!--<subflowContextDataMapping subflowDataDef="skipAudioMezzanineFlag" parentDataDef="skipMezzanineFlag"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="sourceCopyPath" parentDataDef="sourceCopyPath"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadataRootPath" parentDataDef="metadataRootPath"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadataPathProperties" parentDataDef="metadataPathProperties"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadata" parentDataDef="metadata"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="jsonMetadata" parentDataDef="jsonMetadata"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="emailAddresses" parentDataDef="emailAddresses"/>-->
+		<!--<subflowContextDataMapping parentDataDef="allowDuplicateNamesFlag" subflowDataDef="allowDuplicateNamesFlag"/>-->
+	<!--</executeSubflowStep>-->
+	
+	<!--<executeSubflowStep name="ingest audio asset"-->
+		<!--targetWorkflowId="hrbAudioAssetIngest"-->
+		<!--pctComplete="99"-->
+		<!--displayName="Ingesting Audio"-->
+		<!--subjectChangePath="${fileToIngest}"-->
+		<!--subflowTargetDataDef="fileToIngest"-->
+		<!--resultDataDef="assetVersion"-->
+		<!--executionLabelExpression="movType is ${movType}"-->
+	<!--&gt;-->
+		<!--<transition condition="${archiveOnIngest == 'yes'}">-->
+			<!--<targetStepName>archive video asset</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${newCategory != null}">-->
+			<!--<targetStepName>add category to assets</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${createdCollection != null}">-->
+			<!--<targetStepName>Add video or asset to collection</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>Mark Source On Disk Date</targetStepName>-->
+		<!--</transition>-->
+		<!--<subflowContextDataMapping subflowDataDef="skipAudioMezzanineFlag" parentDataDef="skipMezzanineFlag"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="sourceCopyPath" parentDataDef="sourceCopyPath"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadataRootPath" parentDataDef="metadataRootPath"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadataPathProperties" parentDataDef="metadataPathProperties"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadata" parentDataDef="metadata"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="jsonMetadata" parentDataDef="jsonMetadata"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="emailAddresses" parentDataDef="emailAddresses"/>-->
+		<!--<subflowContextDataMapping parentDataDef="allowDuplicateNamesFlag" subflowDataDef="allowDuplicateNamesFlag"/>-->
+	<!--</executeSubflowStep>-->
+	
+	<!--<executeSubflowStep name="ingest image asset"-->
+		<!--targetWorkflowId="hrbIngestImageAsset"-->
+		<!--pctComplete="99"-->
+		<!--displayName="Ingesting Image"-->
+		<!--subjectChangePath="${fileToIngest}"-->
+		<!--subflowTargetDataDef="fileToIngest"-->
+		<!--resultDataDef="assetVersion"-->
+	<!--&gt;-->
+		<!---->
+		<!--<transition condition="${archiveOnIngest == 'yes'}">-->
+			<!--<targetStepName>archive other asset</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${newCategory != null}">-->
+			<!--<targetStepName>add category to assets</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${createdCollection != null}">-->
+			<!--<targetStepName>Add video or asset to collection</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>Mark Source On Disk Date</targetStepName>-->
+		<!--</transition>-->
+		<!--<subflowContextDataMapping subflowDataDef="skipMezzanineFlag" parentDataDef="skipMezzanineFlag"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadataRootPath" parentDataDef="metadataRootPath"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadataPathProperties" parentDataDef="metadataPathProperties"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadata" parentDataDef="metadata"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="jsonMetadata" parentDataDef="jsonMetadata"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="emailAddresses" parentDataDef="emailAddresses"/>-->
+		<!--<subflowContextDataMapping parentDataDef="allowDuplicateNamesFlag" subflowDataDef="allowDuplicateNamesFlag"/>-->
+	<!--</executeSubflowStep>-->
+	
+	<!--<executeSubflowStep name="ingest document asset"-->
+		<!--targetWorkflowId="hrbDocumentAssetIngest"-->
+		<!--pctComplete="99"-->
+		<!--displayName="Ingesting Asset"-->
+		<!--subjectChangePath="${fileToIngest}"-->
+		<!--subflowTargetDataDef="fileToIngest"-->
+		<!--resultDataDef="assetVersion"-->
+	<!--&gt;-->
+		<!---->
+		<!--<transition condition="${archiveOnIngest == 'yes'}">-->
+			<!--<targetStepName>archive video asset</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${newCategory != null}">-->
+			<!--<targetStepName>add category to assets</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${createdCollection != null}">-->
+			<!--<targetStepName>Add video or asset to collection</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>Mark Source On Disk Date</targetStepName>-->
+		<!--</transition>-->
+		<!---->
+		<!--<subflowContextDataMapping subflowDataDef="skipMezzanineFlag" parentDataDef="skipMezzanineFlag"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadataRootPath" parentDataDef="metadataRootPath"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadataPathProperties" parentDataDef="metadataPathProperties"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadata" parentDataDef="metadata"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="jsonMetadata" parentDataDef="jsonMetadata"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="emailAddresses" parentDataDef="emailAddresses"/>-->
+		<!--<subflowContextDataMapping parentDataDef="allowDuplicateNamesFlag" subflowDataDef="allowDuplicateNamesFlag"/>-->
+	<!--</executeSubflowStep>-->
+	
+	<!--<executeSubflowStep name="ingest other asset"-->
+		<!--targetWorkflowId="hrbOtherAssetIngest"-->
+		<!--pctComplete="99"-->
+		<!--displayName="Ingesting Asset"-->
+		<!--subjectChangePath="${fileToIngest}"-->
+		<!--subflowTargetDataDef="fileToIngest"-->
+		<!--resultDataDef="assetVersion"-->
+	<!--&gt;-->
+		<!---->
+		<!--<transition condition="${archiveOnIngest == 'yes'}">-->
+			<!--<targetStepName>archive video asset</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${newCategory != null}">-->
+			<!--<targetStepName>add category to assets</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${createdCollection != null}">-->
+			<!--<targetStepName>Add video or asset to collection</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>Mark Source On Disk Date</targetStepName>-->
+		<!--</transition>-->
+		<!---->
+		<!--<subflowContextDataMapping subflowDataDef="skipMezzanineFlag" parentDataDef="skipMezzanineFlag"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadataRootPath" parentDataDef="metadataRootPath"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadataPathProperties" parentDataDef="metadataPathProperties"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="metadata" parentDataDef="metadata"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="jsonMetadata" parentDataDef="jsonMetadata"/>-->
+		<!--<subflowContextDataMapping subflowDataDef="emailAddresses" parentDataDef="emailAddresses"/>-->
+	<!--</executeSubflowStep>-->
+	
+	<!--<executeSubflowStep name="archive video asset"-->
+		<!--targetWorkflowId="archiveTimelinePresStore"-->
+		<!--subjectChangePath="${assetVersion.masterAsset.timelineAssets.timeline}"-->
+		<!--executionLabelExpression="Archiving timeline"-->
+		<!--emptyTargetHandling="allow"-->
+	<!--&gt;-->
+		<!--<transition condition="${true}">-->
+			<!--<targetStepName>add category to assets</targetStepName>-->
+		<!--</transition>-->
+		<!--<subflowContextDataMapping parentDataDef="archiveOrBackup" subflowDataDef="archiveOrBackup"/>-->
+	<!--</executeSubflowStep>-->
+	<!---->
+	<!--<executeSubflowStep name="archive other asset"-->
+		<!--targetWorkflowId="archiveAssetMasterPresStore"-->
+		<!--subjectChangePath="${assetVersion.masterAsset}"-->
+		<!--emptyTargetHandling="allow"-->
+		<!--executionLabelExpression="Archiving Asset"-->
+	<!--&gt;-->
+		<!--<transition condition="${true}">-->
+			<!--<targetStepName>add category to assets</targetStepName>-->
+		<!--</transition>-->
+		<!--<subflowContextDataMapping parentDataDef="archiveOrBackup" subflowDataDef="archiveOrBackup"/>-->
+	<!--</executeSubflowStep>-->
+	<!---->
+	<!---->
+	<!--<executeSubflowStep name="add category to assets"-->
+		<!--targetWorkflowId="hrbAddCategory"-->
+		<!--subjectChangePath="${assetVersion}"-->
+		<!--subflowTargetDataDef="assetVersion"-->
+	<!--&gt;-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>check for neew collection</targetStepName>-->
+		<!--</transition>-->
+		<!--<subflowContextDataMapping parentDataDef="newCategory" subflowDataDef="newCategory"/>-->
+	<!--</executeSubflowStep>-->
+	
+	<noopStep name="check for neew collection">
+		<transition condition="${createdCollection == null or createdCollection.size() = 0}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>Add video or asset to collection</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<executeSubflowStep name="Add video or asset to collection"
+		targetWorkflowId="_addAnyAssetToCollection"
+		subjectChangePath="${fileToIngest}"
+		subflowTargetDataDef="asset"
+		executionLabelExpression="save asset to ${collection.name}"
+		nextStep="end"
+	>
+		<subflowContextDataMapping parentDataDef="createdCollection" subflowDataDef="collection"/>
+	</executeSubflowStep>
+	
+	<!--<saveDataObjectStep name="Mark Source On Disk Date"-->
+		<!--executionLabelExpression="Mark source on disk date"-->
+		<!--dataObjectExpression="${ assetVersion.originalContent }"-->
+	<!--&gt;-->
+		<!--<transition condition="${ true }">-->
+			<!--<targetStepName>Check for mezzanine content for archive</targetStepName>-->
+		<!--</transition>-->
+		<!---->
+		<!--<property name="truncateAfter">${ #newDate() }</property>-->
+	<!--</saveDataObjectStep>-->
+	<!---->
+	<!--<noopStep name="Check for mezzanine content for archive">-->
+		<!--<transition condition="${ assetVersion?.mezzanineContent != null }">-->
+			<!--<targetStepName>Mark Mezzanine On Disk Date</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="${ true }">-->
+			<!--<targetStepName>end</targetStepName>-->
+		<!--</transition>-->
+	<!--</noopStep>-->
+	<!---->
+	<!--<saveDataObjectStep name="Mark Mezzanine On Disk Date"-->
+		<!--executionLabelExpression="Mark mezzanine on disk date"-->
+		<!--dataObjectExpression="${ assetVersion.mezzanineContent}"-->
+	<!--&gt;-->
+		<!---->
+		<!--<transition condition="${ true }">-->
+			<!--<targetStepName>end</targetStepName>-->
+		<!--</transition>-->
+		<!---->
+		<!--<property name="truncateAfter">${ #newDate() }</property>-->
+	<!--</saveDataObjectStep>-->
+	
+	
+	<noopStep name="end"/>
+	
+	
+	
+	
+	
+	<!-- INPUT DATADEFS -->
+	<contextDataDef name="newCategory" dataType="Data Object" label="Category To Ingest To" required="true" userInput="true">
+		<picklist>
+			<dataObjectSearch dataObjectClass="AssetCategory">
+				<searchPath>name</searchPath>
+			</dataObjectSearch>
+		</picklist>
+	</contextDataDef>
+	
+	<contextDataDef name="allowDuplicateNamesFlag" label="Allow Duplicate File Names" dataType="Boolean" userInput="true"
+		defaultDataExpression="${false}">
+		<description>
+			Optionally, ignore name collisions with already ingested assets.
+			False by default.
+		</description>
+	</contextDataDef>
+	
+	<contextDataDef dataType="File" name="fileToIngest" label="File" required="true" userInput="true">
+		<description>
+			The file to ingest into the repository. Must be provided when starting the workflow.
+		</description>
+	</contextDataDef>
+	<contextDataDef name="filePath" dataType="String" defaultDataExpression="${#absPath(fileToIngest)}"></contextDataDef>
+	<contextDataDef name="skipMezzanineFlag" label="Use Source as Mezzanine" dataType="Boolean" userInput="true"
+		defaultDataExpression="${true}">
+		<description>
+			For video ingests, determines whether to create a separate mezzanine file or to use the source as the
+			mezzanine.
+			True by default.
+		</description>
+	</contextDataDef>
+	<contextDataDef dataType="Directory" name="sourceCopyPath">
+		<description>
+			Optional intermediary directory before transcode. Use this path if the transcoder does not have direct
+			access to the repository
+		</description>
+	</contextDataDef>
+	<contextDataDef name="sourceArchiveEnabled" dataType="Boolean"
+		defaultDataExpression="${ #sysconfig('archive.source.enabled') }"/>
+	<contextDataDef name="mezzArchiveEnabled" dataType="Boolean"
+		defaultDataExpression="${ #sysconfig('archive.mezzanine.enabled') }"/>
+	<contextDataDef name="createdCollection" dataType="Data Object" label="02. Collection" required="false" userInput="true">
+		<picklist>
+			<dataObjectSearch dataObjectClass="AssetCollection">
+				<searchPath>name</searchPath>
+			</dataObjectSearch>
+		</picklist>
+	</contextDataDef>
+	
+	<contextDataDef name="generateProxyLater" dataType="Boolean"	label="Generate Proxy Later?: "		userInput="true"/>
+	
+	<!-- metadata input defs -->
+	<contextDataDef name="metadataRootPath" dataType="Directory"/>
+	<contextDataDef name="metadataPathProperties" dataType="String" multiple="true"/>
+	<contextDataDef name="metadata" dataType="NameValuePair" multiple="true"/>
+	<contextDataDef name="jsonMetadata" dataType="JSON" multiple="false"/>
+	<contextDataDef name="archiveOnIngest" dataType="String" label="Archive/Backup After Ingest? " userInput="true" required="true">
+		<picklist>
+			<picklistItem value="yes"/>
+			<picklistItem value="no"/>
+		</picklist>
+	</contextDataDef>
+	<!-- Archive or Backup the asset when set to backup workflow -->
+	<contextDataDef name="archiveOrBackup" dataType="String"  userInput="true" label="Backup or Archive (truncate)?" defaultDataExpression="backup">
+		<picklist>
+			<picklistItem value="archive" label="Archive (Truncate)"/>
+			<picklistItem value="backup"  label="Backup"/>
+		</picklist>
+	</contextDataDef>
+	
+	<!-- notifaction emails -->
+	<contextDataDef name="emailAddresses" dataType="String" multiple="true"/>
+	
+	<!-- PROCESSING DATADEFS -->
+	<contextDataDef name="mediaType" dataType="String"/>
+	<contextDataDef dataType="Data Object" name="assetVersion"/>
+	<contextDataDef name="movType" dataType="XML"></contextDataDef>
+	<contextDataDef name="movTypeExtracted" dataType="String"></contextDataDef>
+	
+	<contextDataDef name="userWhoStartedFlow" dataType="Data Object" defaultDataExpression="${#this.startedBy}"></contextDataDef>
+	<contextDataDef name="hotfolderUser" dataType="String" userInput="false"  defaultDataExpression="${userWhoStartedFlow}"></contextDataDef>
+	<contextDataDef name="hotfolderUserObject" dataType="Data Object"></contextDataDef>
+	
+	<!-- DEFAULTS -->
+	<!-- TESTS -->
+
+</workflow>

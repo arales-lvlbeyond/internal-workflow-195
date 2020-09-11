@@ -1,0 +1,121 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+		http://levelsbeyond.com/schema/latest
+		https://s3-us-west-2.amazonaws.com/schema.levelsbeyond.com/2.3.16.17962/studio.xsd
+	"
+	id="checkIfFileExistsInS3"
+	name="checkIfFileExistsInS3"
+	executionLabelExpression="Checking if files exist in ${s3Bucket}"
+	subjectDOClassName=""
+	showInUserInterface="true"
+	group="csv processing"
+	devWorkflow="true"
+	sdkVersion="">
+
+	<initialStepName>convert csv to json</initialStepName>
+	
+	<setContextData name="convert csv to json"
+		targetDataDef="csvJsons"
+		valueExpression="${#convertCsvToJson(csvFile.absolutePath)}"
+		nextStep="build list of asset ids and files missing"
+	/>
+	
+	<groovyStep name="build list of asset ids and files missing"
+		executionLabelExpression="${missingFilesJSON.size() found missing}"
+		resultDataDef="missingFilesJSON"
+	>
+		<transition condition="${missingFilesJSON.size() &gt; 0}">
+			<targetStepName>set missing files</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>none found</targetStepName>
+		</transition>
+		
+		<script>
+			<![CDATA[
+				import groovy.json.JsonSlurper
+				
+				def missingItems = []
+				
+				csvJsons.each { row ->
+					def assetID = row.get('Asset ID').asText()
+					def filePath = row.get('Source File Path').asText()
+					
+					// check if file exists is bucket
+					
+					// add entry to missingItems list
+					def missingItem = new JsonSlurper().parseText('{}')
+					missingItem.put('assetID', assetID)
+					missingItem.put('filePath', filePath)
+					
+					missingItems.add(missingItem)
+				}
+				
+				return missingItems
+			]]>
+		</script>
+	</groovyStep>
+	
+	<setContextData name="set missing files"
+		targetDataDef="allFiles"
+		valueExpression="${missingFilesJSON.![get('filePath').asText()]}"
+	>
+		<transition condition="${allFiles.size() &gt; 0}">
+			<targetStepName>filter for missing files</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>none found</targetStepName>
+		</transition>
+	</setContextData>
+	
+	<setContextData name="filter for missing files"
+		targetDataDef="missingFiles"
+		valueExpression="${allFiles.?[exists()]}"
+	>
+		<transition condition="${missingFiles.size() &gt; 0}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>none found</targetStepName>
+		</transition>
+	</setContextData>
+	
+	
+	<noopStep name="none found"
+		executionLabelExpression="No missing assets found"
+		nextStep="end"
+	/>
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end" />
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<contextDataDef name="csvFile"                  dataType="File"     userInput="true" />
+	<contextDataDef name="s3Bucket"                 dataType="String" />
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="csvJsons"                 dataType="JSON"     multiple="true" />
+	<contextDataDef name="missingFilesJSON"         dataType="JSON"     multiple="true" />
+	<contextDataDef name="allFiles"                 dataType="File"     multiple="true" />
+	<contextDataDef name="missingFiles"             dataType="File"     multiple="true" />
+ 
+	<contextDataDef name="testVal"                  dataType="Integer"  />
+    
+</workflow>

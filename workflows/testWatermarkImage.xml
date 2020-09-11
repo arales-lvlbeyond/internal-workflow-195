@@ -1,0 +1,147 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="testWatermarkImage"
+	name="Test Watermark Image"
+	executionLabelExpression="Test Watermark Image | ${fileToWatermark?.absolutePath}"
+	subjectDOClassName=""
+	resultDataDef="watermarkedFile"
+	showInUserInterface="false"
+	devWorkflow="true"
+	sdkVersion=""
+>
+	
+	<initialStepName>set file to watermark</initialStepName>
+	
+	<!-- make test file-->
+	
+	<noopStep name="set file to watermark"
+		executionLabelExpression="setting file to watermark"
+		>
+		<transition condition="${assetMezz != null}">
+			<targetStepName>make temp file</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>watermark file</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<!--<runCommandStep name="make temp file"-->
+		<!--executablePathExpression="usr/bin/"-->
+		<!--executionLabelExpression="copying ${assetMezz.absolutePath} to ${tempDir}${tempFilename} using run command"-->
+		<!--nextStep="set temp file"-->
+		<!--&gt;-->
+		<!--<arg>cp</arg>-->
+		<!--<arg>${assetMezz.absolutePath}</arg>-->
+		<!--<arg>${tempDir}${tempFilename}</arg>-->
+	<!--</runCommandStep>-->
+	<!---->
+	<!--<setContextData name="set temp file"-->
+		<!--executionLabelExpression="setting temp file"-->
+		<!--targetDataDef="fileToWatermark"-->
+		<!--valueExpression="${tempDir}${tempFilename}"-->
+		<!--&gt;-->
+		<!--<transition condition="${!#fileExists(fileToWatermark)}">-->
+			<!--<targetStepName>fail to make temp</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>watermark file</targetStepName>-->
+		<!--</transition>-->
+	<!--</setContextData>-->
+	
+	<copyFileStep name="make temp file"
+		executionLabelExpression="copying ${assetMezz.absolutePath} to ${tempDir}${tempFilename} using copyFileStep"
+		sourceFileExpression="${assetMezz.absolutePath}"
+		targetDirectoryExpression="${tempDir}"
+		createTargetDirectoryFlag="true"
+		targetFilenameExpression="${tempFilename}"
+		resultDataDef="fileToWatermark">
+		<transition condition="${!#fileExists(fileToWatermark.absolutePath)}">
+			<targetStepName>fail to make temp</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>watermark file</targetStepName>
+		</transition>
+	</copyFileStep>
+	
+	<runCommandStep name="watermark file"
+		executablePathExpression="${imageMagickCommand}/convert"
+		executionLabelExpression="watermarking the image ${fileToWatermark.absolutePath}"
+		stderrDataDef="commandError"
+		pctCompleteExpression="81"
+		continueOnException="true"
+	>
+		<transition condition="${commandError != null AND commandError.size() != 0}">
+			<targetStepName>watermark fail</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>watermark success</targetStepName>
+		</transition>
+		<arg>${fileToWatermark.absolutePath}</arg>
+		<arg>-pointsize</arg>
+		<arg>16</arg>
+		<arg>-gravity</arg>
+		<arg>south</arg>
+		<arg>-draw</arg>
+		<arg>fill black text 0,12 '${watermarkString}' fill white text 1,11 '${watermarkString}'</arg>
+		<arg>${fileToWatermark.absolutePath}</arg>
+	</runCommandStep>
+	
+	<noopStep name="watermark success"
+		executionLabelExpression="file successfully watermarked"
+		nextStep="set watermarked file"
+		/>
+	
+	<setContextData name="set watermarked file"
+		executionLabelExpression="setting watermarked file"
+		targetDataDef="watermarkedFile"
+		valueExpression="${fileToWatermark}"
+		nextStep="end"
+		/>
+	
+	<noopStep name="watermark fail"
+		executionLabelExpression="there was an error watermarking image"
+		nextStep="end"
+	/>
+	<noopStep name="fail to make temp"
+		executionLabelExpression="there was an error creating a temp file"
+		nextStep="end"
+	/>
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	
+	<contextDataDef name="watermarkString"          dataType="String"       defaultDataExpression="This is a watermark." />
+	<contextDataDef name="assetMezz"                dataType="File"         defaultDataExpression="${subject?.mezzanine.file}" />
+	<contextDataDef name="fileToWatermark"          dataType="File"  />
+	<contextDataDef name="watermarkedFile"          dataType="File"  />
+	<contextDataDef name="tempDir"                  dataType="String"       defaultDataExpression="/reachengine/media/watermarkTest/" />
+	<contextDataDef name="tempFilename"             dataType="String"       defaultDataExpression="${#baseFilename(assetMezz)}-watermarked.jpg" />
+	<contextDataDef name="commandError"             dataType="String"       multiple="true"/>
+	<contextDataDef name="watermarkString"          dataType="String"       defaultDataExpression="Watermark Text"  />
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="imageMagickCommand"       dataType="String"       defaultDataExpression="${#sysconfig('imagemagick.path')}"/>
+	<contextDataDef name="testString"               dataType="String" />
+</workflow>

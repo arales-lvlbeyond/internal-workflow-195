@@ -1,0 +1,114 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_getOrCreateWorkspace"
+	name="Get Or Create Workspace"
+	executionLabelExpression="Get Or Create Workspace | Workspace Name: ${workspaceName}"
+	description=""
+	subjectDOClassName=""
+	showInUserInterface="false"
+	resultDataDef="workspaceId"
+	deadlineExpression=""
+	sdkVersion="5.4"
+	>
+
+	
+	<initialStepName>search_for_workspace</initialStepName>
+
+	
+	<submitHttpStep name="search_for_workspace"
+		urlExpression="${securityServiceUrl}/workspaces"
+		requestMethodExpression="GET"
+		responseCodeDataDef="findWorkspaceCode"
+		responsePayloadDataDef="findWorkspaceResponse"
+		continueOnException="true"
+		executionLabelExpression="looking for workspace with name: ${workspaceName}"
+		pctComplete="45"
+		>
+		<transition condition="${findWorkspaceCode != 200}">
+			<targetStepName>workspace error</targetStepName>
+		</transition>
+		<transition condition="${findWorkspaceResponse != null AND findWorkspaceResponse.size() &gt; 0}">
+			<targetStepName>get workspace id</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>create workspace</targetStepName>
+		</transition>
+
+		<param name="filter">${workspaceName}</param>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+	
+	
+	<submitHttpStep name="create workspace"
+		urlExpression="${securityServiceUrl}/workspaces"
+		requestMethodExpression="POST"
+		responseCodeDataDef="createWorkspaceCode"
+		responsePayloadDataDef="createWorkspaceResponse"
+		executionLabelExpression="creating workspace: ${workspaceName}"
+		pctComplete="90"
+		>
+		<transition condition="${createWorkspaceCode != 200}">
+			<targetStepName>workspace error</targetStepName>
+		</transition>
+		<transition condition="${createWorkspaceResponse != null AND !createWorkspaceResponse.toString().equals('{}')}">
+			<targetStepName>get workspace id</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>workspace error</targetStepName>
+		</transition>
+		
+		<requestPayloadItem name="body">{"name":"${workspaceName}"}</requestPayloadItem>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+
+	
+	<setContextData name="get workspace id"
+		targetDataDef="workspaceId"
+		valueExpression="${createWorkspaceResponse != null? createWorkspaceResponse.id : findWorkspaceResponse.get(0).id}"
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<failWorkflowStep name="workspace error"
+		reasonExpression="There was an error finding or creating the workspace"
+		executionLabelExpression="There was an error finding or creating the workspace"
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="securityServiceUrl"       dataType="String"       defaultDataExpression="${#sysconfig('cloudform.securityService.url')}"/>
+	<contextDataDef name="cloudformApiKey"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.apiKey')}"/>
+	<contextDataDef name="workspaceName"            dataType="String"       defaultDataExpression="${#uuid().toString()}"/>
+	<contextDataDef name="findWorkspaceCode"        dataType="Integer"/>
+	<contextDataDef name="findWorkspaceResponse"    dataType="JSON"         multiple="true"/>
+	<contextDataDef name="createWorkspaceCode"      dataType="Integer"/>
+	<contextDataDef name="createWorkspaceResponse"  dataType="JSON"/>
+	<contextDataDef name="workspaceId"              dataType="Integer"/>
+</workflow>

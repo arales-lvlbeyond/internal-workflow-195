@@ -1,0 +1,34 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns="http://levelsbeyond.com/schema/workflow"
+xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+id="gabeTest"
+name="gabeTest"
+executionLabelExpression="Any Asset Ingest"
+description=""
+subjectDOClassName=""
+resultDataDef=""
+deadlineExpression=""
+showInUserInterface="true"
+sdkVersion="5.21">
+
+<initialStepName>gabe test</initialStepName>
+
+<groovyStep name="gabe test"
+    resultDataDef="val"
+    nextStep="end">
+    <script>
+            <![CDATA[
+        return true
+        ]]>
+        </script>
+</groovyStep>
+
+<noopStep name="end"/>
+
+<contextDataDef name="val" dataType="Boolean"/>
+<contextDataDef name="sys" dataType="String" defaultDataExpression="${#sysconfig('filesystem.root.')}"/>
+    <contextDataDef name="sys2" dataType="String" defaultDataExpression="${.![sys]}"/>
+
+
+</workflow>

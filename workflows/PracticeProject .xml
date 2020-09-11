@@ -1,0 +1,139 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          id="PracticeProject "
+          name="PracticeProject"
+          executionLabelExpression="PracticeProject"
+          subjectDOClassName=""
+          showInUserInterface="true"
+          sdkVersion="">
+
+    <initialStepName>parse csv and build jsonmap</initialStepName>
+    <!-- ________________________ 1) Parse CSV to MetaMap File_________________________________-->
+    <executeSubflowStep name="parse csv and build jsonmap"          targetWorkflowId="csvToMetaMapWithKey"
+                        resultDataDef="jsonKeyMap"
+                        nextStep="create results file"
+                        executionLabelExpression="Parsing CSV and Building JSON Mapping">
+            <subflowContextDataMapping parentDataDef="uniqueKey"    subflowDataDef="uniqueKey"/>
+            <subflowContextDataMapping parentDataDef="jsonMap"      subflowDataDef="jsonMappingFile"/>
+            <subflowContextDataMapping parentDataDef="csvFile"      subflowDataDef="csvFile"/>
+    </executeSubflowStep>
+
+    <executeSubflowStep name="create results file"
+                        targetWorkflowId="createAddToResultsFile"
+                        nextStep="custom_DirectoryWithMetaData" continueOnException="true">\
+        <subflowContextDataMapping parentDataDef="issueDescription" subflowDataDef="messageToWrite"/>
+    </executeSubflowStep>
+
+    <executeSubflowStep name="custom_DirectoryWithMetaData"
+                        targetWorkflowId="custom_IngestDirectoryWithMetaData"
+                        nextStep="email user finished workflow">
+        <subflowContextDataMapping parentDataDef="directoryToIngest" subflowDataDef="directoryToIngest"/>
+<!--        <subflowContextDataMapping parentDataDef="createMezz"        subflowDataDef="createMezz"/>-->
+<!--        <subflowContextDataMapping parentDataDef="createProxy"       subflowDataDef="createProxy"/>-->
+<!--        <subflowContextDataMapping parentDataDef="createThumb"       subflowDataDef="createThumb"/>-->
+<!--        <subflowContextDataMapping parentDataDef="createThumbVideo"  subflowDataDef="createThumbVideo"/>-->
+        <subflowContextDataMapping parentDataDef="jsonKeyMap"        subflowDataDef="jsonMap"/>
+    </executeSubflowStep>
+
+
+
+
+    <emailStep  name="email user finished workflow"
+                emailAddressesExpression="=T(java.util.Arrays).asList('gwohlford@levelsbeyond.com')"
+                subjectExpression="Workflow Finished"
+                nextStep="do issues exist">
+        <body>
+            <![CDATA[
+                 -- Practice Project Finished Running--
+            ]]>
+        </body>
+    </emailStep>
+
+    <groovyStep name="do issues exist"
+                resultDataDef="issueExist">
+        <transition condition="${issueExist}">
+            <targetStepName>email user results</targetStepName>
+        </transition>
+        <transition condition="{true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+
+        <script>
+            <![CDATA[
+            def fileData = new File(resultsURL).text
+            if(fileData.equals(issueDescription))
+                return false
+            return true
+            ]]>
+        </script>
+    </groovyStep>
+
+
+    <emailStep  name="email user results"
+                emailAddressesExpression="=T(java.util.Arrays).asList('gwohlford@levelsbeyond.com', 'gabrielwohlford@gmail.com')"
+                subjectExpression="Files flagged with issues during ingest"
+                attachmentsExpression="${resultsURL}"
+                nextStep="end">
+        <body>
+            <![CDATA[
+                'Orphaned' or 'No Department' files with issues
+            ]]>
+        </body>
+    </emailStep>
+
+
+    <!-- ____________________________end testing__________________________ -->
+
+    <!-- ................................................... End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end"/>
+    <!-- ................................................... Data Defs .................................................... -->
+    <!-- ............ INPUT ............. -->
+    <!--subflow:csvToMetaMapWithKey(params)-->
+    <contextDataDef name="uniqueKey"         dataType="String"       defaultDataExpression="fileName"/>
+    <contextDataDef name="jsonMap"           dataType="File"         userInput="true"       label="JSON Mapping File"/>
+    <contextDataDef name="csvFile"           dataType="File"         userInput="true"       label="CSV to Map to JSON"/>
+    <!--end Params-->
+
+
+    <!--customIngestDirectory(params) -->
+    <contextDataDef name="directoryToIngest" dataType="Directory"	 userInput="true"       label="1: Directory To Ingest"  required="true"/>
+<!--    <contextDataDef name="createMezz"        dataType="Boolean"      defaultDataExpression="true"/>-->
+<!--    <contextDataDef name="createProxy"       dataType="Boolean"      defaultDataExpression="true"/>-->
+<!--    <contextDataDef name="createThumb"       dataType="Boolean"      defaultDataExpression="true"/>-->
+<!--    <contextDataDef name="createThumbVideo"  dataType="Boolean"      defaultDataExpression="true"/>-->
+    <contextDataDef name="jsonKeyMap"        dataType="JSON"/>
+    <!--end Params-->
+
+    <contextDataDef name="issueExist"        dataType="Boolean"/>
+    <contextDataDef name="fileResults"       dataType="String"/>
+
+    <contextDataDef name="resultsURL"        dataType="String"       defaultDataExpression="/reachengine/media/tmpResults.txt"/>
+    <contextDataDef name="issueDescription"  dataType="String"       defaultDataExpression="${#formatDate('DD/MM/YYY', #newDate())} -- Practice Project"/>
+
+
+
+<!--    <contextDataDef name="fileToIngest" 		    dataType="File"				userInput="true"    label="1: File To Ingest"   required="true"/>-->
+
+    <!-- ......... PROCESSING ........... -->
+
+
+</workflow>

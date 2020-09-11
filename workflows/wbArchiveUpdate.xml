@@ -1,0 +1,405 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="        
+    http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd
+    "   
+    id="wbArchiveUpdate"
+    name="WB Archive Update"
+    executionLabelExpression="WB Archive Update | Server From: ${serverName} | Asset ID: ${assetIdWB} | Asset Name: ${assetName}"
+    description="
+     
+    "
+    subjectDOClassName=""
+    showInUserInterface="false"
+    resultDataDef=""
+    deadlineExpression="" 
+    >
+    
+    
+    
+	<initialStepName>check asset was passed</initialStepName>
+	
+	
+	
+	<!-- .................................................. Find Asset Steps ................................................... -->
+	<noopStep name="check asset was passed"
+		executionLabelExpression="asset passed in? >>> ${assetMaster != null} | if an asset was passed in, skip to cleanup check"
+		pctComplete="5"
+		>
+		<transition condition="${assetMaster != null}">
+			<targetStepName>set parent asset</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>check for existing asset</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	
+	<setContextData name="set parent asset"
+		targetDataDef="parentAsset"
+		valueExpression="${assetMaster.assetType.equals('Video')? assetMaster.timelineAssets[0].timeline : assetMaster}"
+		executionLabelExpression="getting parentAsset for ${assetMaster.name}"
+		pctComplete="10"
+		nextStep="archive check"
+		/>
+	
+	
+	
+	<!-- see if asset already exists -->
+	<queryStep name="check for existing asset"
+		targetDataObjectClass="AssetVersion"
+		resultDataDef="parentAsset"
+		executionLabelExpression="Does an asset with id ${assetIdWB} Exist? >>> ${parentAsset != null}"
+		pctComplete="20"
+		>
+		<transition condition="${parentAsset == null}">
+			<targetStepName>check for existing timeline</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>get asset master</targetStepName>
+		</transition>
+		<criteria>
+			<![CDATA[
+				<criteria>
+                    <and>
+                    	<condition property="name" op="eq">
+                            <test value="${assetName}"/>
+                        </condition>
+                        <condition property="masterAsset.id" op="eq">
+                            <test value="${assetIdWB}"/>
+                        </condition>
+                    </and>
+				</criteria>
+			]]>
+		</criteria>
+	</queryStep>
+	
+	
+	
+	<!-- get asset master from asset version -->
+	<setContextData name="get asset master"
+		executionLabelExpression="get parent object for ${parentAsset.name}"
+		pctComplete="40"
+		nextStep="set parent to asset master"
+		>
+		<set targetDataDef="assetMaster">${parentAsset.masterAsset}</set>
+	</setContextData>
+	
+	
+	
+	<!-- get asset master from asset version -->
+	<setContextData name="set parent to asset master"
+		executionLabelExpression="parent object = ${assetMaster.toString()}"
+		pctComplete="42"
+		nextStep="log metadata json"
+		>
+		<set targetDataDef="parentAsset">${assetMaster}</set>
+	</setContextData>
+	
+	
+	
+	<!-- see if timeline already exists -->
+	<queryStep name="check for existing timeline"
+		targetDataObjectClass="Timeline"
+		resultDataDef="parentAsset"
+		executionLabelExpression="Does a timeline with id ${assetIdWB} Exist? >>> ${parentAsset != null}"
+		pctComplete="30"
+		>
+		<transition condition="${parentAsset == null}">
+			<targetStepName>email not found error</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>get timeline asset master</targetStepName>
+		</transition>
+		<criteria>
+			<![CDATA[
+				<criteria>
+                    <and>
+                    	<condition property="name" op="eq">
+                            <test value="${assetName}"/>
+                        </condition>
+                        <condition property="id" op="eq">
+                            <test value="${assetIdWB}"/>
+                        </condition>
+                    </and>
+				</criteria>
+			]]>
+		</criteria>
+	</queryStep>
+	
+	
+	
+	<!-- get asset master from asset version -->
+	<setContextData name="get timeline asset master"
+		executionLabelExpression="get assetMaster for ${parentAsset.name}"
+		pctComplete="40"
+		nextStep="log metadata json"
+		>
+		<set targetDataDef="assetMaster">${parentAsset.mainVideoAsset}</set>
+	</setContextData>
+
+	
+	
+	
+	
+
+	<!-- ................................................. Update Asset Steps .................................................. -->
+	<!-- log metadata being passed in to save-->
+	<testStep name="log metadata json"
+		outputExpression="Metadata to set where assetIdWB = ${assetIdWB} >>> ${metadata.toString()}"
+		executionLabelExpression="metadata being saved logged in the RE log. look for 'assetIdWB = ${assetIdWB}'"
+		pctComplete="50"
+		nextStep="update asset metadata"
+		/>
+	
+	
+	
+	<!-- save metadata on the asset -->
+	<saveDataObjectStep name="update asset metadata"
+		dataObjectExpression="${parentAsset.metadata}"
+		jsonValuesDataDef="metadata"
+		executionLabelExpression="updating metadata on ${parentAsset.name}"
+		pctComplete="52"
+		nextStep="archive check"
+		/>
+	
+	
+	
+	
+	
+
+	<!-- ................................................... Cleanup Steps ..................................................... -->
+	<!-- ready for cleanup? -->
+	<noopStep name="archive check"
+		executionLabelExpression="Is the asset archived on ${serverName}? >>> ${(parentAsset.metadata.assetIdUSC != null AND parentAsset.metadata.assetIdUSC != '' AND serverName.equals('USC')) OR (parentAsset.metadata.assetIdClemson != null AND parentAsset.metadata.assetIdClemson != '' AND serverName.equals('Clemson'))}"
+		pctComplete="54"
+		>
+		<transition condition="${(parentAsset.metadata.assetIdUSC != null AND parentAsset.metadata.assetIdUSC != '' AND serverName.equals('USC')) OR (parentAsset.metadata.assetIdClemson != null AND parentAsset.metadata.assetIdClemson != '' AND serverName.equals('Clemson'))}">
+			<targetStepName>calculate staging location</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>reindex</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	
+	<!-- get staging locations for cleanup -->
+	<setContextData name="calculate staging location"
+		executionLabelExpression="calculating staging file location >>> ${localRootLocation}${serverName}/${collectionName}/${assetMaster.currentVersion.originalContent.file.name}"
+		pctComplete="60"
+		nextStep="check for staging file"
+		>
+		<set targetDataDef="asperaStagingFile">${localRootLocation}${serverName}/${collectionName}/${assetMaster.currentVersion.originalContent.file.name}</set>
+	</setContextData>
+	
+	
+	
+	<!-- check if the matching aspera staging file exists -->
+	<noopStep name="check for staging file"
+		executionLabelExpression="Staging File Exist? >>> ${asperaStagingFile.exists()} | File: ${asperaStagingFile.absolutePath}"
+		pctComplete="62"
+		>
+		<transition condition="${asperaStagingFile.exists()}">
+			<targetStepName>delete staging file</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>is the asset archived</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	
+	<!-- deleting the matching aspera staging file -->
+	<deleteFileStep name="delete staging file"
+		sourceFilesExpression="${asperaStagingFile}"
+		executionLabelExpression="deleting ${asperaStagingFile.absolutePath}"
+		recurseSubfoldersExpression="false"
+		continueOnException="true"
+		pctComplete="70"
+		nextStep="is the asset archived"
+		/>
+	
+	
+	
+	
+
+
+	<!-- .............................................. Ready For Truncate Steps ............................................... -->
+	<!-- check if the asset is fully archived (Archived at USC and Clemson) -->
+	<noopStep name="is the asset archived"
+		executionLabelExpression="archived at USC? >>> ${parentAsset.metadata.assetIdUSC != null AND parentAsset.metadata.assetIdUSC != ''} | archived at Clemson? >>> ${parentAsset.metadata.assetIdClemson != null AND parentAsset.metadata.assetIdClemson != ''}"
+		pctComplete="82"
+		>
+		<transition condition="${(parentAsset.metadata.assetIdUSC != null AND parentAsset.metadata.assetIdUSC != '') AND (parentAsset.metadata.assetIdClemson != null AND parentAsset.metadata.assetIdClemson != '') }">
+			<targetStepName>set archived</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>reindex</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	
+	<!-- save link to USC and Clemson and mark as archived -->
+	<saveDataObjectStep name="set archived"
+		dataObjectExpression="${assetMaster.originalContent}"
+		executionLabelExpression="saving truncatedFlag restoreKey as [{'name':'${parentAsset.name}','uscId':'${parentAsset.metadata.assetIdUSC}','clemsonId':'${parentAsset.metadata.assetIdClemson}'}]"
+		pctComplete="85"
+		nextStep="save archive status"
+		>
+		<property name="restoreKey">[{"name":"${parentAsset.name}","uscId":"${parentAsset.metadata.assetIdUSC}","clemsonId":"${parentAsset.metadata.assetIdClemson}"}]</property>
+	</saveDataObjectStep>
+	
+	
+	
+	<!-- save archive status -->
+	<saveDataObjectStep name="save archive status"
+		dataObjectExpression="${parentAsset.metadata}"
+		executionLabelExpression="saving archiveStatus to 'Restore Key Set at WB'"
+		pctComplete="90"
+		nextStep="extract collection items"
+		>
+		<property name="setRestoreKeyatWB">${#newDate()}</property>
+		<property name="archiveStatus">Restore Key Set at WB</property>
+	</saveDataObjectStep>
+	
+	<setContextData name="extract collection items"
+		executionLabelExpression="extracting collection items..."
+		>
+		<set targetDataDef="timelineAssetMasters">${parentAsset.collectionMemberships.collection.timelineItems.![timeline].![mainVideoAsset]</set>
+		<set targetDataDef="assetMasters">${parentAsset.collectionMemberships.collection.assetItems.![asset].?[(timelineAssets.size() &lt; 1)]}</set>
+	</setContextData>
+	
+	<!-- gathering collection assets -->
+	<groovyStep name="check collection assets have restore key"
+		resultDataDef="collectionAssetsHaveRestoreKey"
+		executionLabelExpression="check collection assets have restore key"
+		pctComplete="95"
+	>
+		<transition condition="${collectionAssetsHaveRestoreKey}">
+			<targetStepName>set package status</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>reindex</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+			
+			def collectionAssets = new ArrayList()
+			
+			if(assetMasters.size() > 0)
+			{collectionAssets.addAll(assetMasters)}
+			if(timelineAssetMasters.size() > 0)
+			{collectionAssets.addAll(timelineAssetMasters)}
+			
+			for (asset in collectionAssets) {
+				if (asset.originalContent.restoreKey == null || asset.originalContent.restoreKey == '') {
+					return false
+				}
+			}
+			
+			return true
+			]]>
+		</script>
+	</groovyStep>
+	
+	<saveDataObjectStep name="set package status"
+		dataObjectExpression="${parentAsset.collectionMemberships.collection.metadata}"
+		executionLabelExpression="saving archiveStatus of package to 'Archived Pending Truncation'"
+		pctComplete="97"
+		nextStep="reindex"
+	>
+		<property name="archiveStatus">Archived Pending Truncation</property>
+	</saveDataObjectStep>
+	
+	
+	<!-- .................................................. Email Error Steps .................................................. -->
+	<!-- failure email -->
+	<emailStep name="email not found error"
+		emailAddressesExpression="${emailAddress}"
+		subjectExpression="Asset Not Found"
+		pctComplete="10"
+		nextStep="not found error"
+		>
+		<body>
+Server: WB
+Workflow that errored: wbArchiveUpdate
+Asset Name: ${assetName}
+Asset Id: ${assetIdWB}
+			
+Description: 
+No asset was found with name (${assetName}) and ID (${assetIdWB}). 
+Archive is out of sync with WB.
+		</body>
+	</emailStep>
+	
+	
+	
+	
+    
+    
+    <!-- ...................................................... End Steps ...................................................... -->
+	<!-- update ElasticSearch -->
+	<raiseWorkflowEventStep name="reindex"
+		eventTypeExpression="ensureIndexed"
+		executionLabelExpression="Ensure Asset Indexed" 
+		pctComplete="99"
+		nextStep="end"
+		>
+		
+		<property name="indexTargetRef">${parentAsset}</property>   
+	</raiseWorkflowEventStep>
+	
+	
+	
+    <!-- success -->
+    <noopStep name="end" pctComplete="100"/>
+	
+	
+	
+	<!-- error, problem with sha1 -->
+	<failWorkflowStep name="not found error"
+		reasonExpression="No asset was found with name (${assetName}) and ID (${assetIdWB})."
+		executionLabelExpression="No asset was found with name (${assetName}) and ID (${assetIdWB})."
+		/>
+        
+    
+     
+     
+     
+    
+    <!-- .................................................. Context Data Defs .................................................. -->
+	<!-- .......... Input Variables .......... -->
+	<!-- metadata sent from WB. -->
+	<contextDataDef name="assetName" 				dataType="String"/>
+	<!-- asset id from WB -->
+	<contextDataDef name="assetIdWB" 				dataType="String"/>
+	<!-- metadata json already ready to set as metadata -->
+	<contextDataDef name="metadata" 				dataType="JSON"/>
+	<!-- name of the server sending the update -->
+	<contextDataDef name="serverName" 				dataType="String"/>
+	<!-- collection name of the collection the asset is being archived under -->
+	<contextDataDef name="collectionName" 			dataType="String"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<!-- parent asset (AssetMaster or Timeline) returned from query or ingest -->
+	<contextDataDef name="parentAsset" 				dataType="Data Object"/>
+	<!-- AssetMaster is always needed for a common point to set restoreKey from -->
+	<contextDataDef name="assetMaster" 				dataType="Data Object"/>
+	<!-- email configured for error notifications -->
+	<contextDataDef name="emailAddress" 			dataType="String" 		defaultDataExpression="${#sysconfig('archive.email')}"/>
+	<!-- root aspera location that everything needs to be nested under -->
+	<contextDataDef name="localRootLocation" 		dataType="String"		defaultDataExpression="${#sysconfig('aspera.archive.directory').endsWith('/')? #sysconfig('aspera.archive.directory') : #sysconfig('aspera.archive.directory') + '/'}"/>
+	<!-- aspera staging file -->
+	<contextDataDef name="asperaStagingFile"		dataType="File"/>
+	<!-- AssetMaster collection contents -->
+	<contextDataDef name="assetMasters" 				dataType="Data Object"  multiple="true"/>
+	<!-- Timeline collection contents ('AssetMasters' of the timelines) -->
+	<contextDataDef name="timelineAssetMasters" 		dataType="Data Object"  multiple="true"/>
+	<!-- Flag indicating if all of collection's assets have a restore key -->
+	<contextDataDef name="collectionAssetsHaveRestoreKey" dataType="Boolean" defaultDataExpression="false" />
+	
+</workflow>

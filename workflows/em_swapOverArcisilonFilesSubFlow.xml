@@ -1,0 +1,127 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="        
+    http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-1.2.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-1.1.xsd        
+    "
+    
+    id="em_swapOverArcisilonFilesSubFlow"
+    name="em_SwapOver Arcisilon Files SubFlow"
+    executionLabelExpression="Updating '${itemToUpdate.name}' to source from Arcisilon"
+    description="SwapOver Arcisilon Files SubFlow"
+    showInUserInterface="false"
+    subjectDOClassName=""
+    devWorkflow="true">
+    
+    <initialStepName>begin process</initialStepName>
+    
+    <noopStep name="begin process"  pctComplete="10"
+        executionLabelExpression="print '${itemToUpdate.name}'  and '${itemToUpdate.toString().startsWith('[Timeline')}'">
+        <transition condition="=true">          
+            <targetStepName>find arcisilon file path</targetStepName>
+        </transition>
+    </noopStep>    
+    
+    <setContextData name="find arcisilon file path" pctComplete="20"
+        executionLabelExpression="looking for expected file path: '${arcisilonFilePath}'" 
+        targetDataDef="arcisilonFilePath" 
+        valueExpression="${itemToUpdate.metadata.arcisilonPath}" >
+        <transition condition="${true}">
+            <targetStepName>check arcisilon file exists</targetStepName>
+        </transition>
+    </setContextData>    
+
+    <noopStep name="check arcisilon file exists" pctComplete="30"
+        executionLabelExpression="Verifying ${itemToUpdate.name} exists at ${arcisilonFilePath}"
+       >
+		<transition condition="${!#fileExists(arcisilonFilePath)}">
+    		<targetStepName>send email</targetStepName>
+    	</transition>
+        <transition condition="=true">          
+            <targetStepName>set asset master</targetStepName>
+        </transition>
+    </noopStep>
+    
+    <setContextData name="set asset master" pctComplete="40"
+        devStep="false"
+        executionLabelExpression="asset to be updated - ${arcisilonAsset.name}"
+        targetDataDef="arcisilonAsset" 
+        valueExpression="${itemToUpdate}" >
+        <transition condition="${true}">
+            <targetStepName>set arcisolon file asset</targetStepName>
+        </transition>
+    </setContextData> 
+    
+    <setContextData name="set arcisolon file asset"
+        targetDataDef="filename" 
+        valueExpression="${itemToUpdate.mezzanine.file.name}" >
+        <transition condition="${true}">
+            <targetStepName>set content uses</targetStepName>
+        </transition>
+    </setContextData>
+    
+    <setContextData name="set content uses" pctComplete="60"
+        targetDataDef="contentUses" 
+        valueExpression="${ arcisilonAsset.mezzanine.contentUses.size() == 1 ? 'SOURCE' : '|SOURCE|MEZZANINE|' }" 
+        executionLabelExpression="${contentUses}, ${arcisilonFilePath.concat('/').concat(filename)}">
+        <transition condition="${!#fileExists(arcisilonFilePath.concat('/').concat(filename))}">
+            <targetStepName>send email</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>save asset</targetStepName>
+        </transition>
+    </setContextData>
+    
+    <saveAssetStep name="save asset" 
+        executionLabelExpression="Save asset to repository"
+        assetExpression="${ arcisilonAsset.currentVersion }"
+        contentExpression="${arcisilonFilePath}/${filename}"
+        contentTemplateExpression="${ arcisilonAsset.mezzanine.contentTemplate }"        
+        contentUseExpression="${ contentUses }"
+        pctComplete="75"
+        versionAssetExpression="=false">
+        <transition condition="=true">
+                 <targetStepName>update metadata</targetStepName>
+        </transition>
+    </saveAssetStep>
+    
+    <saveDataObjectStep name="update metadata" pctComplete="85"
+        dataObjectExpression="${itemToUpdate.metadata}" 
+        executionLabelExpression="Updating metadata with the repoOnArcilion = true"
+        >    
+        <transition condition="=true">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <property name="repoOnArcisilon">1</property>
+    </saveDataObjectStep>
+   
+    <emailStep name="send email" pctComplete="95"
+        emailAddressesExpression="${arcisilonFailureEmail}" 
+        subjectExpression="Arcisilon File ${itemToUpdate.name} missing "
+        >
+        <transition condition="=true">
+            <targetStepName>end</targetStepName>
+        </transition>        
+        <body>
+            <![CDATA[
+	        Hello Admin
+	        
+	        The arcisilon file has been missing in the arcisilon file path location, the item can not be swapped.
+	        ${arcisilonFilePath}
+	        
+	        Sincerely,
+	        Reach Engine System
+	        ]]>			
+        </body>
+    </emailStep>    
+    
+    <noopStep name="end" />
+
+    <contextDataDef name="itemToUpdate" 		 		dataType="Data Object"  userInput="true" 	required="true"/>
+    <contextDataDef name="arcisilonAsset"               dataType="Data Object"/>
+    <contextDataDef name="contentUses"                  dataType="String" />
+    <contextDataDef name="arcisilonFilePath"           	dataType="String"/>
+    <contextDataDef name="arcisilonFailureEmail"        dataType="String" 	defaultDataExpression="=#sysconfig('mail.arcisilon.failure')"/>  
+    <contextDataDef name="filename"                     dataType="String"/>
+</workflow>

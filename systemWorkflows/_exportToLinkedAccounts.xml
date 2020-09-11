@@ -1,0 +1,212 @@
+<!--
+~ Levels Beyond CONFIDENTIAL
+~
+~ Copyright 2003 - 2018 Levels Beyond Incorporated
+~ All Rights Reserved.
+~
+~ NOTICE:  All information contained herein is, and remains
+~ the property of Levels Beyond Incorporated and its suppliers,
+~ if any.  The intellectual and technical concepts contained
+~ herein are proprietary to Levels Beyond Incorporated
+~ and its suppliers and may be covered by U.S. and Foreign Patents,
+~ patents in process, and are protected by trade secret or copyright law.
+~ Dissemination of this information or reproduction of this material
+~ is unlawful and strictly forbidden unless prior written permission is obtained
+~ from Levels Beyond Incorporated.
+-->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="_exportToLinkedAccounts"
+          name="Export To Linked Accounts"
+          executionLabelExpression="Export To Linked Accounts | Asset: ${asset.name}"
+          deadlineExpression=""
+          subjectDOClassName=""
+          showInUserInterface="false"
+          resultDataDef=""
+          sdkVersion="5.4">
+
+    <initialStepName>check if live event</initialStepName>
+
+    <!-- ............................................... Pre Delivery Steps ................................................ -->
+    <!-- determine source file to use -->
+    <noopStep name="check if live event"
+              executionLabelExpression="Is the asset part of a live event? >>> ${isLiveEvent}"
+              pctComplete="5">
+        <transition condition="${isLiveEvent}">
+            <targetStepName>get event file</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>get source file</targetStepName>
+        </transition>
+    </noopStep>
+
+    <!-- ............................................... Get Source File ................................................ -->
+    <setContextData name="get source file"
+                    executionLabelExpression="grab source file for ${asset.name}"
+                    pctComplete="10">
+        <transition condition="${sourceFile == null OR !sourceFile.exists()}">
+            <targetStepName>error getting source file</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>separate linked accounts</targetStepName>
+        </transition>
+
+        <set targetDataDef="sourceFile">${parentAsset.originalContent?.file}</set>
+    </setContextData>
+
+    <!-- figure out the list of files -->
+    <groovyStep name="get event file"
+                resultDataDef="sourceFile"
+                continueOnException="true"
+                executionLabelExpression="Grabbing source file from the live event for ${asset.name}"
+                pctComplete="10">
+        <transition condition="${sourceFile == null OR !sourceFile.exists()}">
+            <targetStepName>error getting source file</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>separate linked accounts</targetStepName>
+        </transition>
+
+        <script>
+            <![CDATA[
+				import com.routeto1.spring.ApplicationContextHolder
+				import com.routeto1.data.impl.DynamicDataObjectDAO
+				import com.levelsbeyond.service.liveevent.LiveEventService
+				import com.levelsbeyond.persistence.domain.liveevent.LiveEvent
+				import org.slf4j.Logger
+ 				import org.slf4j.LoggerFactory
+ 				
+ 				Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+        		
+        		// get live event using the video asset's id
+				def service = ApplicationContextHolder.getApplicationContext().getBean(LiveEventService.class)
+        		def wrapper = service.getLiveEventByAssetId(parentAsset.id)
+        		def liveEvent = wrapper.get()
+        		
+        		// get file from the live event
+        		def eventFile = liveEvent.sourceFilePath
+        		log.debug("Event file extracted for videoAssetId ${parentAsset.id} >>> ${eventFile}")
+        		
+        		// return the file path to the workflow
+        		return eventFile
+			]]>
+        </script>
+    </groovyStep>
+
+    <!-- ........................................... Organize Linked Accounts ................................... -->
+    <!-- take all linked accoounts and split into each product group -->
+    <setContextData name="separate linked accounts"
+                    executionLabelExpression="Youtube Accounts = ${youtubeAccounts != null ? youtubeAccounts.size() : 'Calculating'} | Facebook Accounts = ${facebookAccounts != null ? facebookAccounts.size() : 'Calculating'} | Twitter Accounts = ${twitterAccounts != null ? twitterAccounts.size() : 'Calculating'}"
+                    pctComplete="15">
+        <transition condition="${youtubeAccounts != null AND youtubeAccounts.size() &gt; 0}">
+            <targetStepName>deliver to youtube</targetStepName>
+        </transition>
+        <transition condition="${facebookAccounts != null AND facebookAccounts.size() &gt; 0}">
+            <targetStepName>deliver to facebook</targetStepName>
+        </transition>
+        <transition condition="${twitterAccounts != null AND twitterAccounts.size() &gt; 0}">
+            <targetStepName>deliver to twitter</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>no accounts to post to</targetStepName>
+        </transition>
+
+        <set targetDataDef="youtubeAccounts">${linkedAccounts.?[type.equals('YOUTUBE')]}</set>
+        <set targetDataDef="facebookAccounts">${linkedAccounts.?[type.equals('FACEBOOK')]}</set>
+        <set targetDataDef="twitterAccounts">${linkedAccounts.?[type.equals('TWITTER')]}</set>
+    </setContextData>
+
+    <!-- .......................................... Deliver to Social Media Steps ................................... -->
+    <!-- upload to all youtube accounts -->
+    <executeSubflowStep name="deliver to youtube"
+                        targetWorkflowId="_uploadVideoOrClipYoutube"
+                        subjectChangePath="${youtubeAccounts}"
+                        subflowTargetDataDef="linkedAccount"
+                        waitForCompletionExpression="false"
+                        executionLabelExpression="Deliver to ${youtubeAccounts.size()} YouTube Accounts"
+                        pctComplete="40">
+        <transition condition="${facebookAccounts != null AND facebookAccounts.size() &gt; 0}">
+            <targetStepName>deliver to facebook</targetStepName>
+        </transition>
+        <transition condition="${twitterAccounts != null AND twitterAccounts.size() &gt; 0}">
+            <targetStepName>deliver to twitter</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+
+        <subflowContextDataMapping parentDataDef="asset" subflowDataDef="clipOrVideo"/>
+        <subflowContextDataMapping parentDataDef="sourceFile" subflowDataDef="sourceFile"/>
+    </executeSubflowStep>
+
+    <!-- upload to all facebook accounts -->
+    <executeSubflowStep name="deliver to facebook"
+                        targetWorkflowId="_uploadVideoOrClipFacebook"
+                        subjectChangePath="${facebookAccounts}"
+                        subflowTargetDataDef="linkedAccount"
+                        waitForCompletionExpression="false"
+                        executionLabelExpression="Deliver to ${facebookAccounts.size()} YouTube Accounts"
+                        pctComplete="70">
+        <transition condition="${twitterAccounts != null AND twitterAccounts.size() &gt; 0}">
+            <targetStepName>deliver to twitter</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+
+        <subflowContextDataMapping parentDataDef="asset" subflowDataDef="clipOrVideo"/>
+        <subflowContextDataMapping parentDataDef="sourceFile" subflowDataDef="sourceFile"/>
+    </executeSubflowStep>
+
+    <!-- upload to all twitter accounts -->
+    <executeSubflowStep name="deliver to twitter"
+                        targetWorkflowId="_uploadVideoOrClipTwitter"
+                        subjectChangePath="${twitterAccounts}"
+                        subflowTargetDataDef="linkedAccount"
+                        waitForCompletionExpression="false"
+                        executionLabelExpression="Deliver to ${twitterAccounts.size()} Twitter Accounts"
+                        pctComplete="99"
+                        nextStep="end">
+        <subflowContextDataMapping parentDataDef="asset" subflowDataDef="clipOrVideo"/>
+        <subflowContextDataMapping parentDataDef="sourceFile" subflowDataDef="sourceFile"/>
+    </executeSubflowStep>
+
+    <!--........................................... Error Handling ................................................ -->
+    <!-- no accounts found that this workflow can process -->
+    <failWorkflowStep name="no accounts to post to"
+                      reasonExpression="no accounts match to post to youtube, facebook, or twitter"
+                      executionLabelExpression="no accounts match to post to youtube, facebook, or twitter"/>
+
+    <!-- could not get the source file for the live event -->
+    <failWorkflowStep name="error getting source file"
+                      reasonExpression="unable to find the live event file"
+                      executionLabelExpression="unable to find the live event file for ${asset.name}"/>
+
+    <!-- .......................................... Ending Steps .................................................. -->
+    <!-- success -->
+    <noopStep name="end" pctComplete="100"/>
+
+    <!-- .......................................... Context Data Defs ............................................. -->
+    <!-- ........... User Input ........... -->
+    <!-- asset to upload to social media -->
+    <contextDataDef name="asset" dataType="Data Object"/>
+    <!-- accounts to upload to -->
+    <contextDataDef name="linkedAccounts" dataType="JSON" multiple="true"/>
+    <!-- used to determine which sourceFile to grab (live event or normal) -->
+    <contextDataDef name="isLiveEvent" dataType="Boolean" defaultDataExpression="false"/>
+
+    <!-- ........... Processing ........... -->
+    <!-- resolves to an AssetMaster, used to get the source file, even if the asst is a clip -->
+    <contextDataDef name="parentAsset" dataType="Data Object" defaultDataExpression="${asset.toString().toLowerCase().contains('videoclip') ? asset.assetMaster : asset}"/>
+    <!-- the archive file from the live event object tied to the given asset -->
+    <contextDataDef name="sourceFile" dataType="File"/>
+    <!-- only youtube accounts from linkedAccounts -->
+    <contextDataDef name="youtubeAccounts" dataType="JSON" multiple="true"/>
+    <!-- only facebook accounts from linkedAccounts -->
+    <contextDataDef name="facebookAccounts" dataType="JSON" multiple="true"/>
+    <!-- only twitter accounts from linkedAccounts -->
+    <contextDataDef name="twitterAccounts" dataType="JSON" multiple="true"/>
+</workflow>

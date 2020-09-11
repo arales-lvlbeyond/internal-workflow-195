@@ -1,0 +1,92 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="practice3Answer"
+    name="Practice 3 Answer"
+    executionLabelExpression="Practice 3 Answer"
+    description="
+    	Complete the workflow
+    		make dataDef2 a picklist
+    		transition from print data def 2 based on its value
+    		set result to a different value based on dataDef2
+    "
+    subjectDOClassName=""
+    resultDataDef=""
+    deadlineExpression=""
+    showInUserInterface="true"
+    sdkVersion=""
+    >
+	
+    
+	<initialStepName>print data def 1</initialStepName>
+    
+	
+    <!-- display data def value to the user -->
+	<noopStep name="print data def 1"
+		executionLabelExpression="${dataDef1}"
+		nextStep="print data def 2"
+		/>
+	
+    
+	<!-- display data def value to the user and transition based on its value -->
+	<noopStep name="print data def 2"
+		executionLabelExpression="${dataDef2}"
+		pctComplete="99"
+		>
+		<transition condition="${dataDef2.equals('testValue1')}">
+			<targetStepName>first set result</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>second set result</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- set result based on dataDef2 -->
+	<setContextData name="first set result"
+		valueExpression="condition met"
+		targetDataDef="result"
+		executionLabelExpression="setting result to 'condition met'"
+		nextStep="print result"
+		/>
+	
+	
+	<!-- set result based on dataDef2 -->
+	<setContextData name="second set result"
+		valueExpression="catch all"
+		targetDataDef="result"
+		executionLabelExpression="setting result to 'catch all'"
+		nextStep="print result"
+		/>
+	
+	
+	<!-- display data def value to the user -->
+	<noopStep name="print result"
+		executionLabelExpression="${result}"
+		nextStep="end"
+		/>
+	
+
+    <!-- ................................................... End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end"/>
+
+
+    <!-- ............................................... Context Data Defs ................................................ -->
+    <!-- ..... inputs ..... -->
+	<contextDataDef name="dataDef1" 	dataType="String"	userInput="true"/>
+	<!-- used to determine result -->
+	<contextDataDef name="dataDef2" 	dataType="String"	userInput="true">
+		<picklist>
+			<picklistItem value="testValue1"/>
+			<picklistItem value="testValue2"/>
+			<picklistItem value="testValue3"/>
+		</picklist>
+	</contextDataDef>
+	
+	<!-- ... Calculated ... -->
+	<!-- based on what value dataDef2 is -->
+	<contextDataDef name="result" 		dataType="String"/>
+	
+</workflow>

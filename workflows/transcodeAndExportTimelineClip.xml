@@ -1,0 +1,104 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="transcodeAndExportTimelineClip"
+    name="Transcode And Export Timeline Clip"
+    executionLabelExpression="Export ${subject.name} to ${outputDir} as ${targetTemplateName}"
+    description=""
+    subjectDOClassName="Clip"
+    deadlineExpression=""
+    showInUserInterface="true"
+    resultDataDef="exportedFile"
+    sdkVersion="4.2">
+
+    <initialStepName>set video asset</initialStepName>
+
+    <queryStep name="set video asset"
+        targetDataObjectClass="TimelineVideo"
+        resultDataDef="videos"
+    >
+        <transition condition="${videos != null}">
+            <targetStepName>export video clips</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="timeline.id" op="eq">
+                            <test value="${timeline.id}"/>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+
+
+    <executeSubflowStep name="export video clips"
+        targetWorkflowId="exportTimelineClipSubflow"
+        subjectChangePath="${videos}"
+        subflowTargetDataDef="timelineVideo"
+        resultDataDef="clipFiles">
+        <transition condition="${collaborate}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>yay</targetStepName>
+        </transition>
+        <subflowContextDataMapping parentDataDef="clip" subflowDataDef="clip" />
+        <subflowContextDataMapping parentDataDef="outputDir" subflowDataDef="outputDir" />
+        <subflowContextDataMapping parentDataDef="targetTemplateName" subflowDataDef="targetTemplateName" />
+        <subflowContextDataMapping parentDataDef="priority" subflowDataDef="priority" />
+    </executeSubflowStep>
+
+
+    <!--executeSubflowStep name="send via collaborate"
+        executionLabelExpression="Sending clip file to external user"
+        targetWorkflowId="createDownloadTaskWithVideoFile"
+        nextStep="end">
+        <subflowContextDataMapping parentDataDef="clipFiles" subflowDataDef="filesToUpload"/>
+        <subflowContextDataMapping parentDataDef="emailAddress" subflowDataDef="userEmailsToAdd"/>
+    </executeSubflowStep>
+
+    <emailStep name="email user"
+        executionLabelExpression="Send email to ${emailAddress}"
+        emailAddressesExpression="${emailAddress}"
+        subjectExpression="Your ReachEngine clip has been transcoded and exported"
+        nextStep="end">
+        <body>Please find your newly transcoded clip from Reach Engine here: ${clipFiles.absolutePath}</body>
+    </emailStep-->
+
+    <noopStep name="yay"
+        nextStep="end"/>
+
+
+    <noopStep name="end" />
+
+    <!-- taken from input JSON object -->
+    <contextDataDef name="assets" dataType="JSON" defaultDataExpression="${}" multiple="true" />
+    <contextDataDef name="videos" dataType="Data Object" multiple="true"/>
+
+    <!-- used locally for computation -->
+    <contextDataDef name="assetObjs" dataType="JSON" defaultDataExpression="{}"/>
+    <contextDataDef name="videoList" dataType="Data Object" multiple="true" />
+    <contextDataDef name="audioList" dataType="Data Object" multiple="true" />
+
+    <!-- Passed to subflows -->
+    <contextDataDef name="clip" dataType="Data Object" defaultDataExpression="${subject}" />
+    <contextDataDef name="clipFiles" dataType="File" multiple="true"/>
+    <contextDataDef name="targetTemplateName" dataType="Data Object" userInput="true" label="2. Vantage Template:">
+        <picklist>
+            <dataObjectSearch dataObjectClass="VideoContentTemplate">
+                <searchPath>name</searchPath>
+            </dataObjectSearch>
+        </picklist>
+    </contextDataDef>
+    <contextDataDef name="outputDir" dataType="Directory" userInput="true" label="3. Output Directory:"/>
+    <contextDataDef name="collaborate" dataType="Boolean" userInput="true" label="4. Send via Colllaborate: " defaultDataExpression="false"/>
+    <contextDataDef name="emailAddress" dataType="Email" userInput="true" label="5. Enter email: "/>
+    <contextDataDef name="priority" dataType="Integer" defaultDataExpression="85"/>
+    <contextDataDef name="timeline" dataType="Data Object" defaultDataExpression="${clip.Timeline}"/>
+</workflow>

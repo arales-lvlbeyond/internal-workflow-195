@@ -1,0 +1,29 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:signiant="http://levelsbeyond.com/schema/workflow/signiant"
+	xsi:schemaLocation="
+    	http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-1.2.xsd
+    	http://levelsbeyond.com/schema/workflow/signiant http://www.levelsbeyond.com/schema/signiant/workflow-plugin-signiant.xsd"
+	id="testSig"
+	name="Signiant test"
+	description="Test sending files via Signiant"
+	subjectDOClassName=""
+	deadlineExpression=""
+	sdkVersion=""
+>
+	
+	<initialStepName>signiant</initialStepName>
+	
+	<signiant:signiantTransferFilesStep
+		name="signiant"
+		sourceAgent="localhost.localdomain"
+		targetAgent="localhost.localdomain"
+		sourceDirectory="/home/reachengine/file-transfer-test/source"
+		sourceFile="*"
+		targetDirectory="/home/reachengine/file-transfer-test/target"/>
+	
+	<!--<contextDataDef name="sourceSigniantAgent" dataType="String" defaultDataExpression="${#sysconfig('signiant.sourceAgent')}"/>-->
+	<!--<contextDataDef name="targetSigniantAgent" dataType="String" defaultDataExpression="${#sysconfig('signiant.targetAgent')}"/>-->
+	<!--<contextDataDef name="sourceFile" dataType="File" required="true" userInput="true"/>-->
+	<!--<contextDataDef name="targetDirectory" dataType="String" userInput="true" defaultDataExpression="bar"/>-->
+</workflow>

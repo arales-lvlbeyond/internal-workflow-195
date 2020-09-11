@@ -1,0 +1,150 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+	http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd
+	"
+	id="testContextDataDefUserInput"
+	name="Test ContextDataDef UserInput"
+	description="
+	"
+	executionLabelExpression="Test ContextDataDef UserInput"
+	resultDataDef=""
+	deadlineExpression=""
+	subjectDOClassName=""
+	showInUserInterface="true"
+	sdkVersion=""
+	>
+	
+	<initialStepName>print simple input</initialStepName>
+	
+	
+	
+	<noopStep name="print simple input"
+		executionLabelExpression="boolean = ${boolean} | date = ${date.toString()} | dateAndTime = ${dateAndTime.toString()} | directory = ${directory.toString()} | file = ${file.toString()} | double = ${double.toString()} | integer = ${integer.toString()} | string = ${string}"
+		nextStep="print emails"
+		/>
+	
+	
+	
+	<noopStep name="print emails"
+		executionLabelExpression="email = ${email} | multipleEmail = ${multipleEmail.toString()}"
+		nextStep="print single lists"
+		/>
+	
+	
+	
+	<noopStep name="print single lists"
+		executionLabelExpression="hardcodeSingleList = ${hardcodeSingleList} | metadataSingleList = ${metadataSingleList}"
+		nextStep="print multi lists"
+		/>
+	
+	
+	
+	<noopStep name="print multi lists"
+		executionLabelExpression="hardcodeMultiList = ${hardcodeMultiList.toString()} | metadataMultiList = ${metadataMultiList.toString()}"
+		nextStep="print single data objects"
+		/>
+	
+	
+	
+	<noopStep name="print single data objects"
+		executionLabelExpression="collection = ${collection.toString()} | category = ${category.toString()}"
+		nextStep="print multi data objects"
+		/>
+	
+	
+	
+	<noopStep name="print multi data objects"
+		executionLabelExpression="collectionMultiple = ${collectionMultiple.toString()} | categoryMultiple = ${categoryMultiple.toString()}"
+		nextStep="end"
+		/>
+	
+	
+	
+	<noopStep name="end"/>
+	
+	
+	
+	
+	
+	
+	<!-- .......... No RE Config .......... -->
+	<!-- simple inputs -->
+	<contextDataDef name="boolean" 				dataType="Boolean"		userInput="true"	label="01: boolean"/>
+	<contextDataDef name="date" 				dataType="Date"			userInput="true"	label="02: date"/>
+	<contextDataDef name="dateAndTime" 			dataType="Date/Time"	userInput="true"	label="03: dateAndTime"/>
+	<contextDataDef name="double" 				dataType="Double"		userInput="true"	label="04: double"/>
+	<contextDataDef name="integer" 				dataType="Integer"		userInput="true"	label="05: integer"/>
+	<contextDataDef name="string" 				dataType="String"		userInput="true"	label="06: string"/>
+	
+	<!-- email -->
+	<contextDataDef name="email" 				dataType="Email"		userInput="true"	label="07: email"/>
+	<contextDataDef name="multipleEmail" 		dataType="Email"		userInput="true"	label="08: multipleEmail"		multiple="true"/>
+	
+	<!-- filesystem -->
+	<contextDataDef name="directory" 			dataType="Directory"	userInput="true"	label="09: directoy"/>
+	<contextDataDef name="file" 				dataType="File"			userInput="true"	label="10: file"/>
+	
+	<!-- hardcoded lists -->
+	<contextDataDef name="hardcodeSingleList" 	dataType="String"		userInput="true"	label="11: hardcodeSingleList">
+		<picklist>
+			<picklistItem value="testValue1"	label="Test Value 1"/>
+			<picklistItem value="testValue2"	label="Test Value 2"/>
+			<picklistItem value="testValue3"	label="Test Value 3"/>
+			<picklistItem value="testValue4"	label="Test Value 4"/>
+			<picklistItem value="testValue5"	label="Test Value 5"/>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="hardcodeMultiList" 	dataType="String"		userInput="true"	label="12: hardcodeMultiList">
+		<picklist>
+			<picklistItem value="testValue1"	label="Test Value 1"/>
+			<picklistItem value="testValue2"	label="Test Value 2"/>
+			<picklistItem value="testValue3"	label="Test Value 3"/>
+			<picklistItem value="testValue4"	label="Test Value 4"/>
+			<picklistItem value="testValue5"	label="Test Value 5"/>
+		</picklist>
+	</contextDataDef>
+
+	<!-- ....... Requires RE Config ....... -->
+	<!-- metadata lists -->
+	<contextDataDef name="metadataSingleList" 	dataType="String"		userInput="true"	label="13: metadataSingleList">
+		<picklist>
+			<metadataProperty>picklist1</metadataProperty>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="metadataMultiList" 	dataType="String"		userInput="true"	label="14: metadataMultiList"	multiple="true">
+		<picklist>
+			<metadataProperty>testMultiList</metadataProperty>
+		</picklist>
+	</contextDataDef>
+	
+	<!-- data objects -->
+	<contextDataDef name="collection" 			dataType="Data Object"	userInput="true"	label="15: collection">
+		<picklist>
+			<dataObjectSearch dataObjectClass="AssetCollection">
+				<searchPath>id</searchPath>
+			</dataObjectSearch>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="collectionMultiple" 	dataType="Data Object"	userInput="true"	label="16: collectionMultiple"	multiple="true">
+		<picklist>
+			<dataObjectSearch dataObjectClass="AssetCollection">
+				<searchPath>name</searchPath>
+			</dataObjectSearch>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="category" 			dataType="Data Object"	userInput="true"	label="17: category">
+		<picklist>
+			<dataObjectSearch dataObjectClass="AssetCategory">
+				<searchPath>name</searchPath>
+			</dataObjectSearch>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="categoryMultiple" 	dataType="Data Object"	userInput="true"	label="18: categoryMultiple"	multiple="true">
+		<picklist>
+			<dataObjectSearch dataObjectClass="AssetCategory">
+				<searchPath>name</searchPath>
+			</dataObjectSearch>
+		</picklist>
+	</contextDataDef>
+</workflow>

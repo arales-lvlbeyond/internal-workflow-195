@@ -1,0 +1,38 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xsi:schemaLocation="
+    http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-1.2.xsd
+    "
+          id="picklistTest"
+          name="Workflow Forms - Picklist Test"
+          description=""
+          executionLabelExpression="Workflow Forms - Picklist Test"
+          deadlineExpression=""
+          subjectDOClassName=""
+          showInUserInterface="true"
+          resultDataDef=""
+
+>
+
+    <initialStepName>no operation</initialStepName>
+
+    <noopStep name="no operation"/>
+
+    
+
+    <contextDataDef name="someAssets" dataType="Data Object" userInput="true" displayIndex="1">
+		<picklist>
+			<dataObjectSearch dataObjectClass="VideoAssetMaster">
+				<searchPath>name</searchPath>
+				<criteria>
+					<and xmlns="http://levelsbeyond.com/schema/criteria">
+						<condition property="originalContent" op="eq">
+							<value>1152</value>
+						</condition>
+					</and>
+				</criteria>
+			</dataObjectSearch>
+		</picklist>
+	</contextDataDef>
+
+</workflow>

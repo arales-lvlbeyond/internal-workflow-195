@@ -1,0 +1,51 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="testcopy"
+    name="testcopy"
+    executionLabelExpression="testCopy"
+    description=""
+    subjectDOClassName="AssetCollection"
+    resultDataDef=""
+    deadlineExpression=""
+    showInUserInterface="true"
+    sdkVersion="5.21"
+>
+
+
+<initialStepName>show limit</initialStepName>
+
+    <!-- Want to do 2 queries, 1 for video and 1 for other than subflow into the archive steps for each so they happen in parralel -->
+<noopStep name="show limit"
+executionLabelExpression=""
+>
+<transition condition="true">
+    <targetStepName>Get files from collection</targetStepName>
+</transition>
+</noopStep>
+
+<queryStep name="Get files from collection"
+targetDataObjectClass="AssetCollectionItem"
+resultDataDef="assetListDO"
+>
+<transition condition="true">
+    <targetStepName>end</targetStepName>
+</transition>
+<criteria>
+    <![CDATA[
+            <criteria>
+            <and>
+                <condition property="collection" op="eq"><test value="${subject.id}"/></condition>
+                <condition property="asset" op="notnull"></condition>
+            </and>
+            </criteria>
+            ]]>
+</criteria>
+</queryStep>
+
+    <noopStep name="end"/>
+
+    <contextDataDef name="assetListDO" dataType="Data Object" multiple="true"/>
+
+</workflow>

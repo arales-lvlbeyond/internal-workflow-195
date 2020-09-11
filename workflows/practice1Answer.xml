@@ -1,0 +1,37 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="practice1Answer"
+    name="Practice 1 Answer"
+    executionLabelExpression="Practice 1 Answer"
+    description="
+    	Display Hello World
+    "
+    subjectDOClassName=""
+    resultDataDef=""
+    deadlineExpression=""
+    showInUserInterface="true"
+    sdkVersion=""
+    >
+    
+    
+    
+	<initialStepName>display</initialStepName>
+
+	
+	
+	<!-- display Hello World -->
+	<noopStep name="display"
+		executionLabelExpression="This test should appear in the UI"
+		nextStep="end"
+		/>
+
+
+
+    <!-- success -->
+    <noopStep name="end"/>
+
+	
+
+</workflow>

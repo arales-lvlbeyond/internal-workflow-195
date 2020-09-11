@@ -1,0 +1,69 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="checkForDuplicateFiles"
+	name="Filter Existing Files"
+	executionLabelExpression="Filter Existing Files"
+	showInUserInterface="true"
+	subjectDOClassName=""
+	sdkVersion=""
+	>
+
+    <initialStepName>query existing assets</initialStepName>
+
+	<executeSubflowStep name="query existing assets"
+	targetWorkflowId="getAssetsByRQL"
+	resultDataDef="foundAssets" 
+	nextStep="set foundAssetPaths">
+		<subflowContextDataMapping parentDataDef="rqlString" subflowDataDef="rqlString"/>
+	</executeSubflowStep>
+	
+	<setContextData name="set foundAssetPaths"
+					targetDataDef="foundAssetPaths"
+					valueExpression="${foundAssets.![file].![absolutePath]}"
+					nextStep="remove duplicate paths"/>
+	
+	<groovyStep name="remove duplicate paths"
+				resultDataDef="targetPaths"
+                nextStep="end">
+        <script>
+            <![CDATA[
+            def success = targetPaths.removeAll(foundAssetPaths)
+
+            if(success)
+            {return targetPaths}
+            else
+            {return null}
+	     ]]>
+        </script>
+    </groovyStep>
+
+	<noopStep name="end"/>
+
+	<contextDataDef name="directoryToIngest" 		dataType="Directory"	userInput="true"    label="Directory To Ingest"  required="true" displayIndex="1"/>
+	<contextDataDef name="targetFiles" 		    dataType="File"		    multiple="true"     defaultDataExpression="${#walkDir(directoryToIngest, null)}"/>
+	<contextDataDef name="targetPaths" dataType="String" multiple="true" defaultDataExpression="${targetFiles.![absolutePath]}"/>
+	<contextDataDef name="foundAssets" dataType="Data Object" multiple="true"/>
+	<contextDataDef name="foundAssetPaths" dataType="String" multiple="true"/>
+	<contextDataDef name="rqlString" dataType="String" defaultDataExpression="${'sourceFilePath = &quot;' + #joinElements(targetFiles, '&quot; or sourceFilePath = &quot;') + '&quot;'}"/>
+	
+</workflow>

@@ -1,0 +1,25 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="setMarkerThumbnailOffset"
+    name="Set Marker Thumb Offset"
+    executionLabelExpression="Setting Marker Thumb Offset ${subject.name}"
+    subjectDOClassName="Marker"
+    showInUserInterface="true"
+    resultDataDef=""
+	sdkVersion=""
+    >
+
+
+    <initialStepName>set offset</initialStepName>
+
+	<saveDataObjectStep name="set offset"
+		dataObjectExpression="${subject}"
+		executionLabelExpression="setting offset"
+		>
+		<property name="markerThumbnail">724</property>
+	</saveDataObjectStep>
+
+   <contextDataDef name="offset" dataType="Integer" userInput="true" required="true"/>
+</workflow>

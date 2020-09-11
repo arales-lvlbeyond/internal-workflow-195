@@ -1,0 +1,161 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns="http://levelsbeyond.com/schema/workflow"
+xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+id="storageManagerArchiveAssetMaster"
+name="Archive Asset to Storage Manager"
+executionLabelExpression="${archiveOrBackup} ${subject.name} to Storage Manager"
+description=""
+subjectDOClassName="AssetMaster"
+resultDataDef=""
+deadlineExpression=""
+showInUserInterface="true"
+sdkVersion="5.21">
+
+
+
+    <initialStepName>check for content uses</initialStepName>
+
+    <noopStep name="check for content uses"
+        devStep="true">
+        <transition condition="${includeSource AND includeMezz}">
+            <targetStepName>query source and mezz</targetStepName>
+        </transition>
+        <transition condition="${includeSource}">
+            <targetStepName>query source</targetStepName>
+        </transition>
+        <transition condition="${includeMezz}">
+            <targetStepName>query mezzanine</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>fail content</targetStepName>
+        </transition>
+    </noopStep>
+
+
+    <queryStep name="query source and mezz"
+        executionLabelExpression="Querying for all source and mezzanine content"
+        targetDataObjectClass="AssetContent"
+        resultDataDef="contentToArchive"
+        pctComplete="10">
+        <transition condition="${contentToArchive != null}">
+            <targetStepName>archive content</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>no content found</targetStepName>
+        </transition>
+        <criteria>
+            <![CDATA[
+                    <criteria>
+	                    <and>
+		                        <condition property="asset.id" op="eq"><test value="${assetMaster.id}"/></condition>
+		                    <or>
+			                    <condition property="contentUses" op="like"><test value="%SOURCE%"/></condition>
+			                    <condition property="contentUses" op="like"><test value="%MEZZANINE%"/></condition>
+		                    </or>
+	                    </and>
+                </criteria>
+			    ]]>
+        </criteria>
+    </queryStep>
+
+    <queryStep name="query source"
+        executionLabelExpression="Querying for source content"
+        targetDataObjectClass="AssetContent"
+        resultDataDef="contentToArchive"
+        pctComplete="10">
+        <transition condition="${contentToArchive != null}">
+            <targetStepName>archive content</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>no content found</targetStepName>
+        </transition>
+        <criteria>
+            <![CDATA[
+                    <criteria>
+	                    <and>
+		                    <condition property="asset.id" op="eq"><test value="${assetMaster.id}"/></condition>
+		                    <condition property="contentUses" op="like"><test value="%SOURCE%"/></condition>
+	                    </and>
+                    </criteria>
+			    ]]>
+        </criteria>
+    </queryStep>
+
+    <queryStep name="query mezzanine"
+        executionLabelExpression="Querying for mezzanine content"
+        targetDataObjectClass="AssetContent"
+        resultDataDef="contentToArchive"
+        pctComplete="10">
+        <transition condition="${contentToArchive != null}">
+            <targetStepName>archive content</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>no content found</targetStepName>
+        </transition>
+        <criteria>
+            <![CDATA[
+                    <criteria>
+	                    <and>
+		                    <condition property="asset.id" op="eq"><test value="${assetMaster.id}"/></condition>
+		                    <condition property="contentUses" op="like"><test value="%MEZZANINE%"/></condition>
+	                    </and>
+                    </criteria>
+			    ]]>
+        </criteria>
+    </queryStep>
+
+
+    <executeSubflowStep name="archive content"
+        targetWorkflowId="storageManagerArchiveAssetContent"
+        subjectChangePath="${contentToArchive}"
+        executionLabelExpression="archive options >>> ${archiveOrBackup} | Include Source: ${includeSource} | Include Mezzanine: ${includeMezzanine}"
+        pctComplete="90"
+        nextStep="end">
+        <subflowContextDataMapping parentDataDef="archiveOrBackup" subflowDataDef="archiveOrBackup"/>
+    </executeSubflowStep>
+
+    <!--...................failure steps.......................-->
+    <createFailureNotificationStep name="no content found"
+        notificationTypeExpression="Approving Error"
+        notificationBodyExpression="No content was found for this asset."
+        devStep="true"
+        nextStep="fail no content"/>
+
+
+    <failWorkflowStep name="fail no content"
+        reasonExpression="fail no content"
+        executionLabelExpression="No archive eligible content was found for this asset."/>
+
+
+
+    <createFailureNotificationStep name="fail content"
+        notificationTypeExpression="Approving Error"
+        notificationBodyExpression="No content was selected for this asset."
+        devStep="true"
+        nextStep="fail no content chosen"/>
+
+
+    <failWorkflowStep name="fail no content chosen"
+        reasonExpression="fail no content chosen"
+        executionLabelExpression="Please specify if you would like to archive Source content, Mezzanine content, or both."/>
+
+
+    <!--..........................end.........................-->
+    <noopStep name="end" pctComplete="100"/>
+
+
+    <!-- .................................................. Context Data Defs .................................................. -->
+    <contextDataDef name="archiveOrBackup"   dataType="String"      label="1: Archive or backup?" userInput="true" required="true">
+        <picklist>
+            <picklistItem label="Archive"						value="archive"/>
+            <picklistItem label="Archive (Retain on Tier 2)"	value="retainArchive"/>
+            <picklistItem label="Backup"						value="backup"/>
+        </picklist>
+    </contextDataDef>
+    <contextDataDef name="includeSource"	 dataType="Boolean"	       userInput="true"	label="Include Source?"		defaultDataExpression="${assetMaster.originalContent.file.exists() ? true : false}"/>
+    <contextDataDef name="includeMezzanine"	 dataType="Boolean"	       userInput="true"	label="Include Mezzanine?"	defaultDataExpression="${assetMaster.mezzanineContent == null ? false : !assetMaster.mezzanineContent.contentUses.contains('SOURCE')}"/>
+    <contextDataDef name="assetMaster"       dataType="Data Object"    defaultDataExpression="${subject}" />
+    <contextDataDef name="contentToArchive"  dataType="Data Object"    multiple="true"/>
+    <contextDataDef name="contentUses"       dataType="String"         multiple="true"                              defaultDataExpression="${assetMaster.mezzanineContent?.contentUses}" />
+</workflow>

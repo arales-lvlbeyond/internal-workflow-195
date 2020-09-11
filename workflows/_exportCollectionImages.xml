@@ -1,0 +1,87 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_exportCollectionImages"
+	name="Export Collection Images"
+	executionLabelExpression="Export Collection Images | Collection: ${subject.name} | Export Location: ${exportDirectory.name}"
+	subjectDOClassName="AssetCollection"
+	resultDataDef="exportedFiles"
+	showInUserInterface="true"
+	sdkVersion=""
+	>
+	
+	<initialStepName>check for images</initialStepName>
+	
+	
+	<noopStep name="check for images"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		executionLabelExpression="Images exist in collection? ${collectionImageAssets != null AND collectionImageAssets.size() &gt; 0}"
+		>
+		<transition condition="${collectionImageAssets == null OR collectionImageAssets.size() == 0}">
+			<targetStepName>no images in collection</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>export images</targetStepName>
+		</transition>
+	</noopStep>
+	
+
+	<executeSubflowStep name="export images"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		executionLabelExpression="exporting ${collectionImageAssets.size()} Images"
+		targetWorkflowId="_exportImage"
+		subjectChangePath="${collectionImageAssets}"
+		resultDataDef="exportedFiles"
+		nextStep="end"
+		>
+		<subflowContextDataMapping parentDataDef="exportDirectory"  subflowDataDef="exportDirectory"/>
+		<subflowContextDataMapping parentDataDef="customHeight"     subflowDataDef="customHeight"/>
+		<subflowContextDataMapping parentDataDef="customWidth"      subflowDataDef="customWidth"/>
+		<subflowContextDataMapping parentDataDef="exportPriority"   subflowDataDef="exportPriority"/>
+	</executeSubflowStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="no images in collection"
+		executionLabelExpression="${subject.name} has no image assets"
+		reasonExpression="${subject.name} has no image assets"
+		/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<contextDataDef name="exportDirectory"          dataType="Directory"    userInput="true"    required="true" label="Export Location"     displayIndex="1"/>
+	<contextDataDef name="customHeight"             dataType="Integer"      userInput="true"                    label="Height to Export"    displayIndex="2"/>
+	<contextDataDef name="customWidth"              dataType="Integer"      userInput="true"                    label="Width to Export"     displayIndex="3"/>
+	<contextDataDef name="exportPriority"           dataType="Integer"      defaultDataExpression="0"/>
+	
+	<!-- ........... OUTPUT ............. -->
+	<contextDataDef name="exportedFiles"            dataType="File"         multiple="true"/>
+	
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="collectionImageAssets"    dataType="Data Object"  multiple="true"     defaultDataExpression="${subject?.assetItems?.![asset]?.?[assetType.equals('Image')]}"/>
+	<contextDataDef name="wfExe"                    dataType="Data Object"  defaultDataExpression="${#this}"/>
+	
+</workflow>

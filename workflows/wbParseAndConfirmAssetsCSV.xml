@@ -1,0 +1,262 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="wbParseAndConfirmAssetsCSV"
+	name="WB Confirm Assets from CSV"
+	executionLabelExpression="WB Confirm Assets from CSV | Execution: ${#this.id}"
+	subjectDOClassName=""
+	showInUserInterface="true"
+	sdkVersion=""
+	>
+	
+	<initialStepName>is workflow executing</initialStepName>
+	
+	
+	<queryStep name="is workflow executing"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="currentExecutions"
+		executionLabelExpression="Check to see if this workflow is currently executing"
+		>
+		<transition condition="${currentExecutions.size() == 0}">
+			<targetStepName>parse csv</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>workflow is running</targetStepName>
+		</transition>
+		
+		<criteria>
+		<![CDATA[
+            <criteria>
+                <and>
+                    <condition property="workflowVersion.workflow.key" op="eq">
+                        <test value="${ #this.workflow.workflowVersion.workflow.key }" />
+                    </condition>
+                    <condition property="uuid" op="noteq">
+                        <test value="${ #this.workflow.uuid }" />
+                    </condition>
+                    <condition property="status" op="in">
+                        <tests>
+                            <test value="CREATED" />
+                            <test value="QUEUED" />
+                            <test value="EXECUTING" />
+                        </tests>
+                    </condition>
+                </and>
+            </criteria>
+        ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<!-- ................................................. Initial Steps .................................................. -->
+	<groovyStep name="parse csv"
+		resultDataDef="filenamesToConfirm"
+		executionLabelExpression="asset confirmation csv: ${csvFile.name}"
+		nextStep="check if filenamesToConfirm is empty"
+		>
+		<script>
+		<![CDATA[
+			import com.csvreader.CsvReader
+			import java.nio.charset.Charset
+			
+			ArrayList<String> filesToBeDuplicated = new ArrayList<String>()
+			char delimiter = ','
+			CsvReader csvData = new CsvReader(csvFilePath, delimiter, Charset.forName("UTF-8"))
+			while (csvData.readRecord()) {
+				String csvValue = csvData.get(0)
+				filesToBeDuplicated.add(csvValue)
+			}
+			return filesToBeDuplicated
+			]]>
+		</script>
+	</groovyStep>
+	
+	
+	<noopStep name="check if filenamesToConfirm is empty"
+		executionLabelExpression="are there Filenames in filenamesToConfirm? ${filenamesToConfirm != null AND filenamesToConfirm.size() &gt; 0}"
+		>
+		<transition condition="${filenamesToConfirm != null AND filenamesToConfirm.size() &gt; 0}">
+			<targetStepName>query for running subflows</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>no Filenames to process</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- ................................................... Queue Loop ................................................... -->
+	<queryStep name="query for running subflows"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="executingSubflows"
+		executionLabelExpression="checking for workflows (with id = ${subflowId}) that are also not in a finished state"
+		devStep="true"
+		nextStep="ready next Filenames"
+		>
+		<criteria>
+		<![CDATA[
+            <criteria>
+                <and>
+                    <condition property="workflowVersion.workflow.key" op="eq">
+                        <test value="${subflowId}"/>
+                    </condition>
+                    <condition property="status" op="in">
+                        <tests>
+                            <test value="CREATED" />
+                            <test value="QUEUED" />
+                            <test value="EXECUTING" />
+                         </tests>
+                    </condition>
+                </and>
+            </criteria>
+        ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<setContextData name="ready next Filenames"
+		targetDataDef="nextFilenames"
+		valueExpression="${filenamesToConfirm.size() &gt; batchSize ? filenamesToConfirm.subList(0, batchSize) : filenamesToConfirm.subList(0, filenamesToConfirm.size()) }"
+		executionLabelExpression="got ${nextFilenames.size()} Filenames to process"
+		nextStep="remove Filenames from main list"
+		devStep="true"
+		/>
+	
+	
+	<groovyStep name="remove Filenames from main list"
+		resultDataDef="filenamesToConfirm"
+		executionLabelExpression="remove ${nextFilenames.size()} Filenames from the main list"
+		nextStep="process Filenames"
+		devStep="true"
+		>
+		<script>
+		<![CDATA[
+			filenamesToConfirm.removeAll(nextFilenames)
+			return filenamesToConfirm
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<executeSubflowStep name="process Filenames"
+		executionLabelExpression="Preparing ${nextFilenames.size()} Filenames. | ${filenamesToConfirm.size()} Filenames remaining | Subflows running: ${executingSubflows.size()}/${queueLimit}"
+		targetWorkflowId="${subflowId}"
+		resultDataDef="batchFilenamesNotFound"
+		subjectChangePath="${nextFilenames}"
+		subflowTargetDataDef="targetFilename"
+		nextStep="append batchFilenamesNotFound"
+		/>
+
+	<groovyStep name="append batchFilenamesNotFound"
+		resultDataDef="filenamesNotFound"
+		executionLabelExpression="append batch of filenames to full list"
+		nextStep="check for more filenames"
+		>
+		<script>
+		<![CDATA[
+			if (filenamesNotFound == null) {
+				return batchFilenamesNotFound;
+			} else {
+				filenamesNotFound.addAll(batchFilenamesNotFound);
+				return filenamesNotFound;
+			}
+		]]>
+		</script>
+	</groovyStep>
+	
+	<noopStep name="check for more filenames"
+		executionLabelExpression="number of Filenames remaining >>> ${filenamesToConfirm.size()}"
+		devStep="true"
+		>
+		<transition condition="${filenamesToConfirm.size() &gt; 0}">
+			<targetStepName>ready next Filenames</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>output missing files</targetStepName>
+		</transition>
+	</noopStep>
+
+	<groovyStep
+            name="output missing files"
+            executionLabelExpression="Write output to ${groovyResult}"
+            resultDataDef="groovyResult"
+            nextStep="end">
+        <script>
+            <![CDATA[
+            import java.io.FileWriter
+            import com.csvreader.CsvWriter
+
+
+            char delimiter = ','
+            try {
+                CsvWriter csvOutput = new CsvWriter(new FileWriter(newCSVPath, true), delimiter)
+				filenamesNotFound.each { filename ->
+					csvOutput.write(filename)
+					csvOutput.endRecord()
+				}
+
+                csvOutput.close()
+                return 'success'
+            } catch (IOException e) {
+                return 'failed'
+            }
+            ]]>
+        </script>
+    </groovyStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="no Filenames to process"
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+	<noopStep name="end" pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="workflow is running"
+		executionLabelExpression="Workflow already executing on the directory"
+		reasonExpression="Workflow already executing on the directory"
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input Variables .......... -->
+	<contextDataDef name="csvFile" label="01. Duplication CSV" dataType="File" userInput="true" required="true" />
+
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="newCSVPath" dataType="String" defaultDataExpression="temp/missingFiles.csv"/>
+	<contextDataDef name="currentExecutions" dataType="Data Object" multiple="true"/>
+	<contextDataDef name="csvFilePath" dataType="String" defaultDataExpression="${csvFile.absolutePath}"/>
+	<contextDataDef name="filenamesToConfirm" dataType="String" multiple="true"/>
+	<contextDataDef name="filenamesNotFound" dataType="String" multiple="true"/>
+	<contextDataDef name="batchFilenamesNotFound" dataType="String" multiple="true"/>
+	<contextDataDef name="groovyResult" dataType="String" />
+	<!-- queue loop variables -->
+	<contextDataDef name="nextFilenames" dataType="String" multiple="true"/>
+	<contextDataDef name="executingSubflows" dataType="Data Object" multiple="true"/>
+	<contextDataDef name="batchSize" dataType="Integer" defaultDataExpression="${150}"/>
+	<contextDataDef name="subflowId" dataType="String" defaultDataExpression="wbConfirmFileExistence"/>
+
+</workflow>

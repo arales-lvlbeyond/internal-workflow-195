@@ -1,0 +1,36 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:grayMeta="http://levelsbeyond.com/schema/workflow/graymeta"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd http://levelsbeyond.com/schema/workflow/graymeta"
+          id="_enrichAssetMetadata"
+          name="Enrich Asset Metadata"
+          executionLabelExpression="Enriching asset '${subject.name}' metadata"
+          subjectDOClassName="Asset"
+          showInUserInterface="false"
+          sdkVersion="5.13">
+
+    <initialStepName>enrich metadata</initialStepName>
+
+    <grayMeta:enrichMetadataStep name="enrich metadata"
+                        executionLabelExpression="Calling GrayMeta service for asset '${subject.name}'"
+                        assetExpression="${assetMaster}" />
+
+    <contextDataDef dataType="Data Object" name="assetMaster" defaultDataExpression="${subject.masterAsset}" required="true"/>
+</workflow>

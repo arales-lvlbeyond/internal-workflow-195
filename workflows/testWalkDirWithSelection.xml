@@ -1,0 +1,64 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="testWalkDirWithSelection"
+	name="testWalkDirWithSelection"
+	executionLabelExpression="Test Walk Dir With Selection | Directory: ${directory.name}"
+	description="
+		Create a directory with 5 files in it.
+			- 2 files with a 'r3d' extension
+			- 1 file with a 'R3D' extension
+			- 2 files with any other extension
+		Expected outcome is to have 2 files in the 'files' array
+	"
+	subjectDOClassName=""
+	showInUserInterface="true"
+	resultDataDef="files"
+	sdkVersion=""
+	>
+	
+	<initialStepName>check files result</initialStepName>
+	
+	
+	<noopStep name="check files result"
+		executionLabelExpression="${files.size()} files returned"
+		>
+		<transition condition="${files.size() == 2}">
+			<targetStepName>success</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>error</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<noopStep name="success"/>
+	
+	
+	<failWorkflowStep name="error"
+		reasonExpression="error"
+		/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<contextDataDef name="directory"        dataType="Directory"                        userInput="true"    displayIndex="1"    required="true"/>
+	<contextDataDef name="files"            dataType="File"         multiple="true"     defaultDataExpression="${#walkDir(directory, null).?[!#extension(#this).toLowerCase().equals('r3d')]}"/>
+
+</workflow>

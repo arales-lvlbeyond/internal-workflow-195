@@ -1,0 +1,37 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="test2"
+    name="test2"
+    executionLabelExpression="test2"
+    description=""
+    showInUserInterface="true"
+    subjectDOClassName=""
+    subjectQualifierExpression=""
+    sdkVersion="5.23">
+
+
+
+    <initialStepName>migrate csv data</initialStepName>
+
+
+    <executeSubflowStep name="migrate csv data"
+        executionLabelExpression="Migrating ${csvFiles.size()} CSVs"
+        targetWorkflowId="${migrationSubflow}"
+        subjectChangePath="${csvFiles}"
+        subflowTargetDataDef="csvFile"
+        subflowExecutionLimitExpression="1"
+        nextStep="end"/>
+
+
+    <noopStep name="end"/>
+
+
+    <contextDataDef name="migrationDirectory"     dataType="String"                               defaultDataExpression="${#sysconfig('workflow.migration.directory')}"/>
+    <!--contextDataDef name="csvFiles"            dataType="File"         multiple="true"         defaultDataExpression="${#walkDir(migrationDirectory, 'csv')}"/-->
+    <!--for testing purposes-->
+    <contextDataDef name="csvFiles"               dataType="File"       multiple="true" userInput="true"/>
+
+    <contextDataDef name="migrationSubflow"       dataType="String"                               defaultDataExpression="migrateDAMAssetsMagic"/>
+</workflow>

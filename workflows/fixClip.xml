@@ -1,0 +1,99 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="fixClip"
+	name="Fix Clip"
+	executionLabelExpression="Fix Clip ${subject.name} | Video: ${video.name}"
+	description=""
+	subjectDOClassName="VideoClip"
+	showInUserInterface="true"
+	deadlineExpression=""
+	resultDataDef=""
+	sdkVersion=""
+	>
+	
+	
+	<initialStepName>check if thumbnail exists</initialStepName>
+	
+	<noopStep name="check if thumbnail exists">
+		<transition condition="${resultImage.exists()}">
+			<targetStepName>ingest thumbnail</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>create ffmpeg thumbnail</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<runCommandStep name="create ffmpeg thumbnail"
+		executablePathExpression="/usr/local/bin/ffmpeg"
+		pctComplete="80"
+		nextStep="ingest thumbnail"
+		>
+		<arg>-i</arg>
+		<arg>${absolutePath}</arg>
+		<arg>-ss</arg>
+		<arg>${startTime}</arg>
+		<arg>-frames:v</arg>
+		<arg>1</arg>
+		<arg>${resultImage.absolutePath}</arg>
+	</runCommandStep>
+	
+	<saveAssetStep name="ingest thumbnail"
+		contentExpression="${resultImage}"
+		contentUseExpression="|SOURCE|MEZZANINE|PROXY|THUMBNAIL|"
+		searchableFlagExpression="false"
+		resultDataDef="resultAssetVersion"
+		nextStep="update clip"
+		/>
+	
+	<saveDataObjectStep name="update clip"
+		dataObjectExpression="${subject}"
+		pctComplete="30"
+		nextStep="cleanup thumbnail"
+		>
+		<property name="thumbnail">${resultAssetVersion.masterAsset}</property>
+	</saveDataObjectStep>
+	
+	<deleteFileStep name="cleanup thumbnail"
+		sourceFilesExpression="${resultImage}"
+		nextStep="end"
+		/>
+	
+	
+	<!-- ...................................................... End ....................................................... -->
+	<noopStep name="end"	pctComplete="100"/>
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input Variables .......... -->
+	<contextDataDef name="video" 	      		dataType="Data Object"      defaultDataExpression="${subject.assetMaster}"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="clipId" 	  		    dataType="String" 			defaultDataExpression="${subject.id}"/>
+	<contextDataDef name="startTime" 	  		dataType="Double"			defaultDataExpression="${subject.assetClipStartOffset}"/>
+	<contextDataDef name="endTime" 				dataType="Double"			defaultDataExpression="${subject.assetClipEndOffset}"/>
+	<contextDataDef name="resultAssetVersion"   dataType="Data Object"/>
+	
+	<contextDataDef name="tempPath"             dataType="String"           defaultDataExpression="${#sysconfig('filesystem.root.temp')}" />
+	<contextDataDef name="absolutePath"         dataType="String"           defaultDataExpression="${video.originalContent.file.absolutePath}" />
+	<contextDataDef name="resultImage"          dataType="File"             defaultDataExpression="${tempPath}/${clipId}-THUMB.jpg" />
+	<contextDataDef name="testingDogs" 	        dataType="Data Object"/>
+	
+</workflow>

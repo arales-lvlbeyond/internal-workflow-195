@@ -1,0 +1,325 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="syncMetadata"
+          name="Sync Metadata"
+          executionLabelExpression="Sync Metadata"
+          description=""
+          showInUserInterface="true"
+          subjectDOClassName=""
+          subjectQualifierExpression=""
+          sdkVersion="">
+
+    <initialStepName>get source categories</initialStepName>
+
+    <submitHttpStep
+            name="get source categories"
+            executionLabelExpression="Get source categories.. Found ${categories.size()} categories."
+            urlExpression="${sourceUrl}/reachengine/api/categories"
+            requestMethodExpression="GET"
+            responsePayloadDataDef="categories">
+        <transition condition="${categories.size() > 0}">
+            <targetStepName>create destination category</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>get source metadata groups</targetStepName>
+        </transition>
+        <requestHeader name="auth_user">${sourceUsername}</requestHeader>
+        <requestHeader name="auth_password">${sourcePassword}</requestHeader>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+    </submitHttpStep>
+
+    <submitHttpStep
+            name="create destination category"
+            urlExpression="${destinationUrl}/reachengine/api/categories"
+            requestMethodExpression="POST"
+            responsePayloadDataDef="newCategory"
+            nextStep="update categories map">
+        <requestPayloadItem name="body">{"name":"${categories[categoryCounter].name}"}</requestPayloadItem>
+        <requestHeader name="auth_user">${destinationUsername}</requestHeader>
+        <requestHeader name="auth_password">${destinationPassword}</requestHeader>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="api-version">2.0</requestHeader>
+    </submitHttpStep>
+
+    <!-- For metadata groups later -->
+    <setContextData
+            name="update categories map"
+            targetDataDef="categoriesMap"
+            valueExpression="${categoriesMap.put(categories[categoryCounter].id,newCategory.id)}"
+            nextStep="update category counter"/>
+
+    <setContextData
+            name="update category counter"
+            executionLabelExpression="Update counter = ${categoryCounter} and size = ${categories.size()}"
+            targetDataDef="categoryCounter"
+            valueExpression="${categoryCounter + 1}">
+        <transition condition="${categoryCounter &lt; categories.size()}">
+            <targetStepName>create destination category</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>get source metadata groups</targetStepName>
+        </transition>
+    </setContextData>
+
+    <submitHttpStep
+            name="get source metadata groups"
+            executionLabelExpression="Get source metadata groups.. Found ${metadataGroups.size()} categories."
+            urlExpression="${sourceUrl}/reachengine/api/metadata/groups"
+            requestMethodExpression="GET"
+            responsePayloadDataDef="metadataGroups">
+        <transition condition="${metadataGroups.size() > 0}">
+            <targetStepName>create destination metadata group</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>get source metadata fields</targetStepName>
+        </transition>
+        <requestHeader name="auth_user">${sourceUsername}</requestHeader>
+        <requestHeader name="auth_password">${sourcePassword}</requestHeader>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="api-version">2.0</requestHeader>
+    </submitHttpStep>
+
+    <submitHttpStep
+            name="create destination metadata group"
+            urlExpression="${destinationUrl}/reachengine/api/metadata/groups"
+            requestMethodExpression="POST"
+            responsePayloadDataDef="newMetadataGroup"
+            nextStep="update metadata groups map">
+        <requestPayloadItem name="body">{"name":"${metadataGroups[metadataGroupsCounter].name}"}</requestPayloadItem>
+        <requestHeader name="auth_user">${destinationUsername}</requestHeader>
+        <requestHeader name="auth_password">${destinationPassword}</requestHeader>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="api-version">2.0</requestHeader>
+    </submitHttpStep>
+
+    <!-- For metadata fields later -->
+    <setContextData
+            name="update metadata groups map"
+            targetDataDef="metadataGroupsMap"
+            valueExpression="${metadataGroupsMap.put(metadataGroups[metadataGroupsCounter].id,newMetadataGroup.id)}">
+        <transition condition="${metadataGroups[metadataGroupsCounter].categories.size() > 0}">
+            <targetStepName>add category to metadata group</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>update metadata group counter</targetStepName>
+        </transition>
+    </setContextData>
+
+    <submitHttpStep
+            name="add category to metadata group"
+            executionLabelExpression="The source category id is ${metadataGroups[metadataGroupsCounter].categories.get(0).name}"
+            urlExpression="${destinationUrl}/reachengine/api/metadata/groups/${newMetadataGroup.id}/categories/${categoriesMap.findValue(metadataGroups[metadataGroupsCounter].categories.get(metadataGroupCategoriesCounter.intValue()).id).asText()}"
+            requestMethodExpression="PUT"
+            nextStep="update metadata group categories counter">
+        <requestHeader name="auth_user">${destinationUsername}</requestHeader>
+        <requestHeader name="auth_password">${destinationPassword}</requestHeader>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="api-version">2.0</requestHeader>
+    </submitHttpStep>
+
+    <setContextData
+            name="update metadata group categories counter"
+            executionLabelExpression="Update counter = ${metadataGroupCategoriesCounter} and size = ${metadataGroups[metadataGroupsCounter].categories.size()}"
+            targetDataDef="metadataGroupCategoriesCounter"
+            valueExpression="${metadataGroupCategoriesCounter + 1}">
+        <transition condition="${metadataGroupCategoriesCounter &lt; metadataGroups[metadataGroupsCounter].categories.size()}">
+            <targetStepName>add category to metadata group</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>update metadata group counter</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData
+            name="update metadata group counter"
+            executionLabelExpression="Update counter = ${metadataGroupsCounter} and size = ${metadataGroups.size()}"
+            targetDataDef="metadataGroupsCounter"
+            valueExpression="${metadataGroupsCounter + 1}">
+        <transition condition="${metadataGroupsCounter &lt; metadataGroups.size()}">
+            <targetStepName>create destination metadata group</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>get source metadata fields</targetStepName>
+        </transition>
+        <set targetDataDef="metadataGroupCategoriesCounter" valueExpression="0"/>
+    </setContextData>
+
+    <!-- BEGIN Metadata Fields -->
+    <submitHttpStep
+            name="get source metadata fields"
+            executionLabelExpression="Get source metadata fields.. Found ${metadataFields.size()} categories."
+            urlExpression="${sourceUrl}/reachengine/api/metadata-properties?fetchLimit=300"
+            requestMethodExpression="GET"
+            responsePayloadDataDef="metadataFields">
+        <transition condition="${restrictedList.contains(metadataFields.rows.get(metadataFieldsCounter.intValue()).name)}">
+            <targetStepName>notify restricted metadata field</targetStepName>
+        </transition>
+        <transition condition="${metadataFields.rows.size() > 0}">
+            <targetStepName>create destination metadata field</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <requestHeader name="auth_user">${sourceUsername}</requestHeader>
+        <requestHeader name="auth_password">${sourcePassword}</requestHeader>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="api-version">2.0</requestHeader>
+    </submitHttpStep>
+
+    <createFailureNotificationStep
+            name="notify restricted metadata field"
+            notificationTypeExpression="error"
+            notificationBodyExpression="Could not migrate '${metadataFields.rows.get(metadataFieldsCounter.intValue()).name}' since it's a restricted property name. Skipping it!!"
+            nextStep="update metadata fields counter"/>
+
+    <submitHttpStep
+            name="create destination metadata field"
+            urlExpression="${destinationUrl}/reachengine/api/metadata-properties"
+            requestMethodExpression="POST"
+            responsePayloadDataDef="newMetadataField">
+        <transition condition="${metadataFields.rows.get(metadataFieldsCounter.intValue()).type == 'picklist' or metadataFields.rows.get(metadataFieldsCounter.intValue()).type == 'lookup'}">
+            <targetStepName>get source picklist items</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>get source metadata groups for field</targetStepName>
+        </transition>
+        <requestPayloadItem name="body">{"name":"${metadataFields.rows.get(metadataFieldsCounter.intValue()).name}","displayName":"${metadataFields.rows.get(metadataFieldsCounter.intValue()).displayName}","type":"${metadataFields.rows.get(metadataFieldsCounter.intValue()).type}","multiple":${metadataFields.rows.get(metadataFieldsCounter.intValue()).multiple},"showInInspector":${metadataFields.rows.get(metadataFieldsCounter.intValue()).showInInspector}}</requestPayloadItem>
+        <requestHeader name="auth_user">${destinationUsername}</requestHeader>
+        <requestHeader name="auth_password">${destinationPassword}</requestHeader>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="api-version">2.0</requestHeader>
+    </submitHttpStep>
+
+    <!-- Process picklist items -->
+    <submitHttpStep
+            name="get source picklist items"
+            urlExpression="${sourceUrl}/reachengine/api/metadata-properties/${metadataFields.rows.get(metadataFieldsCounter.intValue()).id}/picklist-items?filter=&amp;limit=60&amp;offset=0"
+            requestMethodExpression="GET"
+            responsePayloadDataDef="picklistItems">
+        <transition condition="${picklistItems.size() > 0}">
+            <targetStepName>add destination picklist items</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>get source metadata groups for field</targetStepName>
+        </transition>
+        <requestHeader name="auth_user">${sourceUsername}</requestHeader>
+        <requestHeader name="auth_password">${sourcePassword}</requestHeader>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="api-version">2.0</requestHeader>
+    </submitHttpStep>
+
+    <submitHttpStep
+            name="add destination picklist items"
+            urlExpression="${destinationUrl}/reachengine/api/metadata-properties/${newMetadataField.id}/add-picklist-items"
+            requestMethodExpression="PUT"
+            nextStep="get source metadata groups for field">
+        <requestPayloadItem name="body">${picklistItems.toString()}</requestPayloadItem>
+        <requestHeader name="auth_user">${destinationUsername}</requestHeader>
+        <requestHeader name="auth_password">${destinationPassword}</requestHeader>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="api-version">2.0</requestHeader>
+    </submitHttpStep>
+
+    <!-- Process field groups -->
+    <submitHttpStep
+            name="get source metadata groups for field"
+            executionLabelExpression="Get source metadata field groups.. Found ${metadataFieldGroups.size()} groups for ${metadataFields.rows.get(metadataFieldsCounter.intValue()).name}."
+            urlExpression="${sourceUrl}/reachengine/api/metadata-properties/${metadataFields.rows.get(metadataFieldsCounter.intValue()).id}/groups"
+            requestMethodExpression="GET"
+            responsePayloadDataDef="metadataFieldGroups">
+        <transition condition="${metadataFieldGroups.size() > 0}">
+            <targetStepName>add metadata group to field</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>update metadata fields counter</targetStepName>
+        </transition>
+        <requestHeader name="auth_user">${sourceUsername}</requestHeader>
+        <requestHeader name="auth_password">${sourcePassword}</requestHeader>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="api-version">2.0</requestHeader>
+    </submitHttpStep>
+
+    <submitHttpStep
+            name="add metadata group to field"
+            urlExpression="${destinationUrl}/reachengine/api/metadata-properties/${newMetadataField.id}/add-groups"
+            requestMethodExpression="PUT"
+            nextStep="update metadata field groups counter">
+        <requestPayloadItem name="body">[${metadataGroupsMap.findValue(metadataFieldGroups[metadataFieldGroupsCounter].id)}]</requestPayloadItem>
+        <requestHeader name="auth_user">${destinationUsername}</requestHeader>
+        <requestHeader name="auth_password">${destinationPassword}</requestHeader>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="api-version">2.0</requestHeader>
+    </submitHttpStep>
+
+    <setContextData
+            name="update metadata field groups counter"
+            executionLabelExpression="Update counter = ${metadataFieldGroupsCounter} and size = ${metadataFieldGroups.size()}"
+            targetDataDef="metadataFieldGroupsCounter"
+            valueExpression="${metadataFieldGroupsCounter + 1}">
+        <transition condition="${metadataFieldGroupsCounter &lt; metadataFieldGroups.size()}">
+            <targetStepName>add metadata group to field</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>update metadata fields counter</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData
+            name="update metadata fields counter"
+            executionLabelExpression="Update counter = ${metadataFieldsCounter} and size = ${metadataFields.rows.size()}"
+            targetDataDef="metadataFieldsCounter"
+            valueExpression="${metadataFieldsCounter + 1}">
+        <transition condition="${restrictedList.contains(metadataFields.rows.get(metadataFieldsCounter.intValue()).name)}">
+            <targetStepName>notify restricted metadata field</targetStepName>
+        </transition>
+        <transition condition="${metadataFieldsCounter &lt; metadataFields.rows.size()}">
+            <targetStepName>create destination metadata field</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <set targetDataDef="metadataFieldGroupsCounter" valueExpression="0"/>
+    </setContextData>
+
+
+    <noopStep name="end"/>
+
+    <!-- Input -->
+    <contextDataDef label="1. Destination RE URL (include port but not the last backslash)" name="destinationUrl" dataType="String" userInput="true" required="true"/>
+    <contextDataDef label="2. Destination Username" name="destinationUsername" dataType="String" userInput="true" required="true"/>
+    <contextDataDef label="3. Destination Password" name="destinationPassword" dataType="String" userInput="true" required="true"/>
+    <contextDataDef label="4. Source RE URL (include port but not the last backslash)" name="sourceUrl" dataType="String" userInput="true" required="true"/>
+    <contextDataDef label="5. Source Username" name="sourceUsername" dataType="String" userInput="true" required="true"/>
+    <contextDataDef label="6. Source Password" name="sourcePassword" dataType="String" userInput="true" required="true"/>
+
+    <!-- Internal -->
+    <contextDataDef name="categories" dataType="JSON" multiple="true"/>
+    <contextDataDef name="metadataGroups" dataType="JSON" multiple="true"/>
+    <contextDataDef name="metadataFields" dataType="JSON"/>
+
+    <contextDataDef name="categoriesMap" dataType="JSON" defaultDataExpression="{}"/>
+    <contextDataDef name="newCategory" dataType="JSON"/>
+
+    <contextDataDef name="metadataGroupsMap" dataType="JSON" defaultDataExpression="{}"/>
+    <contextDataDef name="newMetadataGroup" dataType="JSON" defaultDataExpression="{}"/>
+    <contextDataDef name="metadataGroupCategoriesCounter" dataType="Integer" defaultDataExpression="0"/>
+
+    <contextDataDef name="newMetadataField" dataType="JSON"/>
+    <contextDataDef name="picklistItems" dataType="JSON" multiple="true"/>
+    <contextDataDef name="metadataFieldGroups" dataType="JSON" multiple="true"/>
+    <contextDataDef name="metadataFieldGroupsCounter" dataType="Integer" defaultDataExpression="0"/>
+
+    <contextDataDef name="categoryCounter" dataType="Integer" defaultDataExpression="0"/>
+    <contextDataDef name="metadataGroupsCounter" dataType="Integer" defaultDataExpression="0"/>
+    <contextDataDef name="metadataFieldsCounter" dataType="Integer" defaultDataExpression="0"/>
+
+    <contextDataDef name="restrictedList" dataType="String" multiple="true">
+        <defaultDataExpression>
+            <![CDATA[
+            assetType
+            ]]>
+        </defaultDataExpression>
+    </contextDataDef>
+</workflow>

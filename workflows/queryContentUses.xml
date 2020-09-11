@@ -1,0 +1,71 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+		http://levelsbeyond.com/schema/latest
+		https://s3-us-west-2.amazonaws.com/schema.levelsbeyond.com/2.3.16.17962/studio.xsd
+	"
+	id="queryContentUses"
+	name="Query Content Uses"
+	executionLabelExpression="Query Content Uses | "
+	subjectDOClassName=""
+	showInUserInterface="true"
+	sdkVersion="">
+
+	<initialStepName>query asset masters</initialStepName>
+	
+	<queryStep name="query asset masters"
+		targetDataObjectClass="AssetMaster"
+		resultDataDef="assetMasters"
+		pctCompleteExpression="10"
+		fetchLimitExpression="10"
+		fetchOffsetExpression="10"
+		nextStep="end">
+		
+        <criteria>
+            <![CDATA[
+
+				<criteria>
+					<and>
+						<condition property="contents.contentUses" op="like">
+						    <test value="%MEZZANINE%" />
+						</condition>
+						<!--<condition property="metadata.cabbageID" op="eq">-->
+								<!--<test value="1" />-->
+						<!--</condition>-->
+						<condition property="contents.truncatedFlag" op="noteq">
+						    <test value="true" />
+						</condition>
+					</and>
+				</criteria>
+			]]>
+        </criteria>
+		<sortOrder sortPropertyExpression="id" sortDirectionExpression="ASC" />
+		
+	</queryStep>
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end" />
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="assetMasters"         dataType="Data Object" multiple="true" />
+
+ 
+ 
+</workflow>

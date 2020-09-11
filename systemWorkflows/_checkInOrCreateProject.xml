@@ -1,0 +1,240 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	id="_checkInOrCreateProject"
+	name="Check In Or Create Project"
+	executionLabelExpression="Check In Or Create Project | File: ${fileToIngest.name}"
+	subjectDOClassName=""
+	resultDataDef="projectID"
+	showInUserInterface="false"
+	sdkVersion=""
+	>
+
+	
+	<initialStepName>does file exist</initialStepName>
+	
+
+	<!-- ............................................... File Check Steps ................................................. -->
+	<noopStep name="does file exist"
+		executionLabelExpression="fileToIngest exists? ${fileToIngest.exists()} | metadataFile exists? ${metadataFile.exists()}"
+		pctComplete="5"
+		>
+		<transition condition="${!fileToIngest.exists() OR !metadataFile.exists()}">
+			<targetStepName>no file error</targetStepName>
+		</transition>
+		<transition condition="${projectID != null}">
+			<targetStepName>find existing project</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>create project asset</targetStepName>
+		</transition>
+	</noopStep>
+	
+
+	<!-- ........................................... Get/Create Project Steps ............................................. -->
+	<queryStep name="find existing project"
+		targetDataObjectClass="Project"
+		resultDataDef="project"
+		executionLabelExpression="find Project with id = ${projectID}"
+		pctComplete="20"
+		>
+		<transition condition="${project?.projectAsset?.lockedBy != workflow.startedBy}">
+			<targetStepName>project locked error</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>create project asset</targetStepName>
+		</transition>
+
+		<criteria>
+        <![CDATA[
+			<criteria>
+				<and>
+					<condition property="id" op="eq">
+						<test value="${projectID}"/>
+					</condition>
+				</and>
+			</criteria>
+		]]>
+        </criteria>
+	</queryStep>
+
+	
+	<checkinAsset name="create project asset"
+		assetExpression="${project?.projectAsset}"
+		contentExpression="${fileToIngest}"
+		contentTemplateExpression="projectSource"
+		checkinDescriptionExpression="${checkinDescription}"
+		keepLockedExpression="${keepLocked}"
+		pctComplete="30"
+		resultDataDef="projectAsset"
+		>
+		<transition condition="${project == null}">
+			<targetStepName>create new project</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>add asset to project</targetStepName>
+		</transition>
+	</checkinAsset>
+
+	
+	<saveDataObjectStep name="create new project"
+        targetDataObjectClass="Project"
+        dataObjectExpression="${project}"
+        resultDataDef="project"
+		pctComplete="40"
+		nextStep="add asset to project"
+		>
+		<property name="name">${fileName}</property>
+	</saveDataObjectStep>
+
+	
+	<saveDataObjectStep name="add asset to project"
+        targetDataObjectClass="Project"
+        dataObjectExpression="${project}"
+        resultDataDef="project"
+		pctComplete="40"
+		nextStep="extract metadata from sidecar"
+		>
+		<property name="projectAsset">${projectAsset.masterAsset}</property>
+		<property name="bins">${createdBin}</property>
+		<property name="nleType">${nleType}</property>
+	</saveDataObjectStep>
+	
+
+	<!-- ................................................ Metadata Steps .................................................. -->
+	<executeSubflowStep name="extract metadata from sidecar"
+		targetWorkflowId="panelExtractMetadataFromSidecar"
+		subjectChangePath="${metadataFile}"
+		subflowTargetDataDef="metadataFile"
+		resultDataDef="metadataForm"
+		pctComplete="50"
+		nextStep="set metadata"
+		/>
+	
+	
+	<executeSubflowStep name="set metadata"
+		targetWorkflowId="_saveAnyAssetMetadata"
+		subjectChangePath="${project}"
+		subflowTargetDataDef="asset"
+		executionLabelExpression="Add any collections and metadata"
+		pctComplete="70"
+		>
+		<transition condition="${ collections != null and isNewProject }">
+			<targetStepName>format project collections metadata</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>set projectId</targetStepName>
+		</transition>
+		
+		<subflowContextDataMapping parentDataDef="collections"              subflowDataDef="collections"/>
+		<subflowContextDataMapping parentDataDef="metadataForm"             subflowDataDef="metadataForm"/>
+		<subflowContextDataMapping parentDataDef="metadataFormType"         subflowDataDef="metadataFormType"/>
+	</executeSubflowStep>
+
+	
+	<groovyStep name="format project collections metadata"
+        resultDataDef="collectionsMetadata"
+		pctComplete="80"
+		devStep="true"
+        nextStep="save project collections"
+		>
+		<script>
+		<![CDATA[
+			return '{"premiereProjectCollections":"' + collections.collect { 'collection.' + it.id }.join('|') + '"}'
+		]]>
+		</script>
+	</groovyStep>
+
+	
+	<nimbus:setMetadataValuesStep name="save project collections"
+		targetExpression="${ project }"
+		propertyPrefixExpression="lb"
+		metadataPairsExpression="${ collectionsMetadata }"
+		createIfNotFoundExpression="${ true }"
+		pctComplete="90"
+		nextStep="set projectId"
+		/>
+	
+
+	<!-- ................................................. Cleanup Steps .................................................. -->
+	<setContextData name="set projectId"
+        executionLabelExpression="Project Id = ${project.id}"
+        targetDataDef="projectID"
+        valueExpression="${project.id}"
+		pctComplete="95"
+		>
+		<transition condition="${keepLocked}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>delete check in file</targetStepName>
+		</transition>
+	</setContextData>
+
+	
+	<deleteFileStep name="delete check in file" 
+		sourceFilesExpression="${fileToIngest}"
+		executionLabelExpression="deleting: ${fileToIngest.absolutePath}"
+		pctComplete="99"
+		continueOnException="true"
+		nextStep="end"
+		/>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- Success -->
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<!-- Fail -->
+	<failWorkflowStep name="no file error"
+		reasonExpression="source file or metadata file not found"
+		executionLabelExpression="source file or metadata file not found"
+		/>
+	
+	
+	<failWorkflowStep name="project locked error"
+		reasonExpression="checkout not owned by user"
+		executionLabelExpression="checkout not owned by user"
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input Variables .......... -->
+	<contextDataDef name="fileName" 			dataType="String"/>
+	<contextDataDef name="path" 				dataType="String"/>
+	<contextDataDef name="projectID" 			dataType="Integer"/>
+	<contextDataDef name="targetOS" 			dataType="String"           defaultDataExpression="mac"/>
+	<contextDataDef name="collections" 			dataType="Data Object" 		multiple="true"/>
+	<contextDataDef name="createdBin"           dataType="Data Object"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<!-- asset data -->
+	<contextDataDef name="checkOutRoot"         dataType="String"           defaultDataExpression="${#sysconfig('filesystem.root.checkOutRoot')}"/>
+	<contextDataDef name="fileToIngest"         dataType="File"             defaultDataExpression="${path != null? #mapPathReverse(path, targetOS) : checkOutRoot + '/' + workflow.startedBy.username + '/' + fileName}"/>
+	<contextDataDef name="isNewProject"         dataType="Boolean"          defaultDataExpression="${projectID == null}"/>
+	<contextDataDef name="checkinDescription"   dataType="String"           defaultDataExpression="Automated Checkin"/>
+	<contextDataDef name="keepLocked"           dataType="Boolean"          defaultDataExpression="false"/>
+	<contextDataDef name="nleType"              dataType="String"           defaultDataExpression="PREMIERE"/>
+	<contextDataDef name="projectAsset"         dataType="Data Object"/>
+	<contextDataDef name="project"              dataType="Data Object"/>
+	<contextDataDef name="collectionsMetadata"  dataType="NameValuePair"/>
+	<!-- sidecar data -->
+	<contextDataDef name="metadataFile" 		dataType="File"	            defaultDataExpression="${filepathFunc}${baseFilenameFunc}.json"/>
+	<contextDataDef name="metadataForm"         dataType="MetadataForm"/>
+	<contextDataDef name="metadataFormType"     dataType="String"           defaultDataExpression="panel">
+		<description>
+			TEMPORARY!!! (Forms will be standardized to the same format in the future)
+			Valid types = "access" or "panel"
+		</description>
+	</contextDataDef>
+	<!-- s3 -->
+	<!--
+		TEMPORARY!!! (use functions when updated for S3)
+		replacement for WF fucntions to work with S3 paths 
+	-->
+	<contextDataDef name="baseFilenameFunc" 	dataType="String"           defaultDataExpression="${fileToIngest.absolutePath.contains('/')? fileToIngest.absolutePath.substring(fileToIngest.absolutePath.lastIndexOf('/') + 1 ,fileToIngest.absolutePath.lastIndexOf('.')) : fileToIngest.absolutePath.substring(fileToIngest.absolutePath.lastIndexOf('\') + 1 ,fileToIngest.absolutePath.lastIndexOf('.')) }"/>
+	<contextDataDef name="filepathFunc" 		dataType="String"           defaultDataExpression="${fileToIngest.absolutePath.contains('/')? fileToIngest.absolutePath.substring(0,fileToIngest.absolutePath.lastIndexOf('/'))+ '/' : fileToIngest.absolutePath.substring(0,fileToIngest.absolutePath.lastIndexOf('\'))+ '\'  }"/>
+	
+</workflow>

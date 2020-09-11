@@ -1,0 +1,111 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="
+	http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd
+	"
+          id="wbConfirmFileExistence"
+          name="WB Confirm FileName exists"
+          executionLabelExpression="WB Confirm FileName exists | File: ${fileToCopy.name} | Execution: ${#this.id}"
+          description="
+
+	"
+          subjectDOClassName=""
+          showInUserInterface="false"
+          resultDataDef="fileNotFoundName"
+          deadlineExpression=""
+          sdkVersion=""
+>
+
+
+    <initialStepName>find Asset</initialStepName>
+
+    <queryStep name="find Asset"
+		targetDataObjectClass="AssetMaster"
+		resultDataDef="targetAsset"
+		executionLabelExpression="Finding AssetMaster: ${targetFilename}"
+		pctComplete="24"
+		>
+		<transition condition="${targetAsset == null}">
+			<targetStepName>find Timeline</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>asset found</targetStepName>
+		</transition>
+		<criteria>
+			<![CDATA[
+                <criteria>
+                    <and>
+                    <condition property="versions.name" op="eq">
+                            <test value="${targetFilename}"/>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+		</criteria>
+	</queryStep>
+
+    <queryStep name="find Timeline"
+		targetDataObjectClass="Timeline"
+		resultDataDef="targetAsset"
+		executionLabelExpression="Finding Timeline: ${targetFilename}"
+		pctComplete="24"
+		>
+		<transition condition="${targetAsset == null}">
+			<targetStepName>set fileNotFoundName</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>asset found</targetStepName>
+		</transition>
+		<criteria>
+			<![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="name" op="eq">
+                            <test value="${targetFilename}"/>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+		</criteria>
+	</queryStep>
+
+    <setContextData name="set fileNotFoundName"
+		targetDataDef="fileNotFoundName"
+		valueExpression="${targetFilename}"
+		executionLabelExpression="${fileNotFoundName} not found"
+		nextStep="asset not found"
+		/>
+
+
+    <!-- success -->
+    <noopStep name="asset found" pctComplete="100"/>
+
+    <noopStep name="asset not found" pctComplete="100"/>
+
+
+    <!-- .................................................. Context Data Defs .................................................. -->
+    <!-- ............... Input ............... -->
+    <contextDataDef name="targetFilename" dataType="String"/>
+
+    <contextDataDef name="targetAsset" dataType="Data Object"/>
+    <contextDataDef name="fileNotFoundName" dataType="String"/>
+</workflow>

@@ -1,0 +1,162 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="processResponseFromOoyala"
+    name="Process Response From Ooyala"
+    executionLabelExpression="Process Response from Ooyala on ${#newDate()}"
+    description=""
+    subjectDOClassName=""
+    subjectQualifierExpression=""
+    resultDataDef=""
+    showInUserInterface="true"
+    sdkVersion="5.21">
+
+    <initialStepName>is workflow executing</initialStepName>
+
+
+    <queryStep name="is workflow executing"
+        targetDataObjectClass="WorkflowExecution"
+        resultDataDef="currentExecutions"
+        executionLabelExpression="Check to see if this workflow is currently executing on this collection"
+        devStep="true">
+        <transition condition="${currentExecutions.size() == 0}">
+            <targetStepName>query for collection</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>workflow is running</targetStepName>
+        </transition>
+
+        <criteria>
+            <![CDATA[
+				<criteria>
+					<and>
+						<condition property="workflowVersion.workflow.key" op="eq">
+							<test value="${ #this.workflow.workflowVersion.workflow.key }" />
+						</condition>
+						<condition property="uuid" op="noteq">
+							<test value="${ #this.workflow.uuid }" />
+						</condition>
+						<condition property="status" op="in">
+							<tests>
+								<test value="CREATED" />
+								<test value="QUEUED" />
+								<test value="EXECUTING" />
+							</tests>
+						</condition>
+					</and>
+				</criteria>
+			]]>
+        </criteria>
+    </queryStep>
+
+
+    <queryStep name="query for collection"
+        targetDataObjectClass="AssetCollection"
+        resultDataDef="collection">
+        <transition condition="${collection != null and jsonResponse?.get('publishStatus')?.asText().equals('success')}">
+            <targetStepName>notify success</targetStepName>
+        </transition>
+        <transition condition="${collection != null and !jsonResponse?.get('publishStatus')?.asText().equals('success')}">
+            <targetStepName>send publish failure email</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>no collectionId found</targetStepName>
+        </transition>
+        <criteria>
+            <![CDATA[
+				<criteria>
+					<and>
+						<condition property="id" op="eq">
+							<test value="${collectionId}" />
+						</condition>
+					</and>
+				</criteria>
+			]]>
+        </criteria>
+    </queryStep>
+
+
+    <createSuccessNotificationStep name="notify success"
+        notificationTypeExpression="success"
+        notificationBodyExpression="${collection.name} published successfully to Ooyala."
+        nextStep="save ooyala metadata">
+    </createSuccessNotificationStep>
+
+
+
+    <saveDataObjectStep name="save ooyala metadata"
+        dataObjectExpression="${collection.metadata}"
+        executionLabelExpression="Saving Ooyala publishing response"
+        nextStep="end">
+        <property name="publishStatus">${jsonResponse.hasNonNull('publishStatus') ? jsonResponse.get('publishStatus').asText().equals('success') ? 'Published ${#newDate()}': jsonResponse.get('publishStatus').asText() : null}</property>
+        <property name="publishDate">${jsonResponse.hasNonNull('publishDate') ? #formatDate('yyyy-MM-dd', jsonResponse.get('publishDate').asText()) : null}</property>
+        <property name="publishDetails">${jsonResponse.hasNonNull('publishDetails') ? jsonResponse.get('publishDetails').asText() : null}</property>
+    </saveDataObjectStep>
+
+
+    <noopStep name="end"/>
+
+
+    <!--............................failure steps..........................-->
+    <noopStep name="workflow is running"
+        executionLabelExpression="Workflow is already running"
+        nextStep="end"/>
+
+    <!--..........................Collection Id Failure....................-->
+
+    <emailStep name="no collectionId found"
+        emailAddressesExpression="${emailUser}"
+        subjectExpression="Collection identification error"
+        nextStep="collection failure notification">
+        <body>
+            <![CDATA[
+	        Hello Admin,
+	        Reach Engine was unable to parse a valid collection name from the Ooyala JSON body ingested on ${currentDate}. Please, check Ooyala for details.
+	        Sincerely,
+	        Reach Engine System
+        ]]>
+        </body>
+    </emailStep>
+
+    <createFailureNotificationStep name="collection failure notification"
+        executionLabelExpression="Ooyala collection information not found"
+        notificationTypeExpression="failure"
+        notificationBodyExpression="Ooyala collection ${collectionId} was not found in Reach Engine."
+        nextStep="collection Id not found"/>
+
+
+    <failWorkflowStep name="collection Id not found"
+        reasonExpression="The collection id sent via ooyala did not find a corresponding collection in reach."
+        executionLabelExpression="The collection ID sent by Ooyala did not find a corresponding collection in reach."/>
+
+    <!--.........................Publishing Failuire........................-->
+    <emailStep name="send publish failure email"
+        emailAddressesExpression="${emailUsers}"
+        subjectExpression="Ooyala Publishing Failure"
+        nextStep="failure notification">
+        <body>
+            <![CDATA[
+	        Hello Admin,
+	        The ReachEngine Collection ${collection.name} failed to publish to Ooyala successfully. Please, check your Ooyala account for more information.
+	        Sincerely,
+	        Reach Engine System
+            ]]>
+        </body>
+    </emailStep>
+
+    <createFailureNotificationStep name="failure notification"
+        executionLabelExpression="${collection.name} Ooyala publish Failure"
+        notificationTypeExpression="failure"
+        notificationBodyExpression="${collection.name} with the Id of ${collectionId} did not successfully publish to Ooyala. Please check Ooyala for more information."
+        nextStep="save ooyala metadata"/>
+
+
+    <!-- ......................... Processing Variables ....................... -->
+    <contextDataDef name="collection"        dataType="Data Object"/>
+    <contextDataDef name="emailUsers"        dataType="String"           defaultDataExpression="${#sysconfig('workflow.admin.email.addresses')}"/>
+    <contextDataDef name="jsonResponse"      dataType="JSON"             userInput="true"       required="true"/>
+    <contextDataDef name="collectionId"      dataType="String"           defaultDataExpression="${jsonResponse.get('collectionId')?.asText() ?: null}"/>
+    <contextDataDef name="currentExecutions" dataType="Data Object" 	 multiple="true"/>
+    <contextDataDef name="currentDate"       dataType="Date"             defaultDataExpression="${#newDate()}"/>
+</workflow>

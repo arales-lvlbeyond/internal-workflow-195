@@ -1,0 +1,71 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	id="_premiere_ingestProjectBinAsset"
+	name="Ingest Project Bin Asset | File: ${fileToIngest.name}"
+	subjectDOClassName=""
+	showInUserInterface="false"
+	resultDataDef="assetPath"
+	sdkVersion="4.9"
+	>
+
+	
+	<initialStepName>Ingest File</initialStepName>
+
+
+	<executeSubflowStep name="Ingest File"
+        targetWorkflowId="_anyAssetIngest"
+        executionLabelExpression="Ingesting bin asset: ${ mappedFile.absolutePath }"
+        resultDataDef="assetMaster"
+		pctComplete="80"
+        nextStep="Apply Bin Asset Meta Flag"
+		>
+		<subflowContextDataMapping parentDataDef="mappedFile"   subflowDataDef="fileToIngest"/>
+		<subflowContextDataMapping parentDataDef="jsonMetadata" subflowDataDef="jsonMetadata"/>
+		<subflowContextDataMapping parentDataDef="collections"  subflowDataDef="collections"/>
+	</executeSubflowStep>
+
+
+	<nimbus:setMetadataValuesStep name="Apply Bin Asset Meta Flag"
+		targetExpression="${ assetMaster.metadata }"
+		propertyPrefixExpression="lb"
+		metadataPairsExpression="${ premiereBinMetadata }"
+		createIfNotFoundExpression="${ true }"
+		pctComplete="90"
+		nextStep="Map Asset Path"
+		/>
+
+	
+	<groovyStep name="Map Asset Path"
+        resultDataDef="assetPath"
+		pctComplete="99"
+        nextStep="end"
+		>
+		<script>
+		<![CDATA[
+			import com.routeto1.filesystem.PathMapper;
+
+			return (targetOS == null ? PathMapper.mapPath(assetMaster.getOriginalContent().file.getAbsolutePath()) : PathMapper.mapPath(assetMaster.getOriginalContent().file.getAbsolutePath(), targetOS))
+		]]>
+		</script>
+	</groovyStep>
+
+
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input Variables .......... -->
+	<contextDataDef name="fileToIngest"         dataType="String"/>
+	<contextDataDef name="collections"          dataType="Data Object"      multiple="true"/>
+	<contextDataDef name="jsonMetadata"         dataType="JSON"             defaultDataExpression="{}"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="targetOS"             dataType="String"           defaultDataExpression="mac"/>
+	<contextDataDef name="mappedFile"           dataType="File"             defaultDataExpression="${#mapPathReverse(fileToIngest, targetOS)}"/>
+	<contextDataDef name="premiereBinMetadata"  dataType="NameValuePair"    defaultDataExpression="{ premiereBinAsset: true }"/>
+	<contextDataDef name="assetMaster"          dataType="Data Object"/>
+	<contextDataDef name="assetPath"            dataType="String"/>
+
+</workflow>

@@ -1,0 +1,89 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="testGroovy"
+	name="Test Groovy"
+	executionLabelExpression="Test Groovy"
+	subjectDOClassName="AssetMaster"
+	showInUserInterface="true"
+	sdkVersion=""
+>
+	
+	<initialStepName>run groovy</initialStepName>
+	
+	<groovyStep name="run groovy"
+		continueOnException="true"
+		resultDataDef="groovyResult"
+		>
+		<transition condition="${groovyResult == null}">
+			<targetStepName>contextData error</targetStepName>
+		</transition>
+		<transition condition="${groovyResult.error != null AND !groovyResult.error.asText().equals('')}">
+			<targetStepName>groovy error</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		
+		<script>
+		<![CDATA[
+//			Map myInfo = [:]
+//
+//			try {
+//				myInfo.put('name', asset.getName())
+//				myInfo.put('filePath', asset.getOriginalContent().getFile().getAbsolutePath())
+//				myInfo.put('id', asset.getId())
+//
+//				//myInfo.put('nonsense', object.id)
+//			} catch (Exception ex){
+//				myInfo.put('error', ex.getMessage())
+//			}
+//
+//			return myInfo
+
+			def myError = null
+			if (errorString.contains("No such file or directory")) {
+				myError = "File does not exist."
+			}
+			
+			return [
+			        "result":false,
+					"error":myError
+			]
+		]]>
+		</script>
+	</groovyStep>
+
+	
+	<noopStep name="end"/>
+	
+	<failWorkflowStep name="contextData error" reasonExpression="contextData error"/>
+	<failWorkflowStep name="groovy error"      reasonExpression="groovy error"/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<contextDataDef name="groovyResult" dataType="JSON"/>
+	<contextDataDef name="errorString"  dataType="String"      defaultDataExpression="Some Error Text Here...... More Info.... No such file or directory. More Info...."/>
+	<contextDataDef name="asset"        dataType="Data Object" defaultDataExpression="${subject}"/>
+	<!--<contextDataDef name="someText"     dataType="String"      defaultDataExpression="blah"/>-->
+	<!--<contextDataDef name="someVariable" dataType="Data Object" defaultDataExpression="${someText.file.absolutePath}"/>-->
+
+	
+</workflow>

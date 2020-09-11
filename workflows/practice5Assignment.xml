@@ -1,0 +1,93 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="practice5Assignment"
+    name="Practice 5 Assignment"
+    executionLabelExpression="Practice 5 Assignment"
+    description="
+    	Modify the workflow
+    		The workflow already ingests an asset successfully. 
+    		Modify the workflow to set metadata with the json being passed to the subflow
+    			Set the following metadata fields
+    				testField (small text) (String)
+    				testCheckbox (Checkbox) (Boolean)
+    "
+    subjectDOClassName=""
+    resultDataDef=""
+    deadlineExpression=""
+    showInUserInterface="true"
+    sdkVersion=""
+    >
+    
+	
+    
+	<initialStepName>ingest asset</initialStepName>
+
+	
+	
+	<!-- save user input data to the metadata json -->
+	<setContextData name="set metadata"
+		executionLabelExpression="testField = ${testField} | testCheckbox = ${testCheckbox != null? testCheckbox : 'null'}"
+		nextStep="ingest asset"
+		>
+		<set targetDataDef="jsonMetadata">
+			<![CDATA[
+			{
+				"testField":"${testField}",
+				"testCheckbox":"${testCheckbox != null? testCheckbox : false}
+				}
+				]]>
+		</set>
+	</setContextData>
+	
+	
+	
+	<!-- ingest the input file -->
+	<executeSubflowStep name="ingest asset"
+		targetWorkflowId="_anyAssetIngest"
+		subjectChangePath="${fileToIngest}"
+		subflowTargetDataDef="fileToIngest"
+		resultDataDef="assetVersion"
+		executionLabelExpression="ingest ${fileToIngest.name}"
+		pctComplete="99"
+		nextStep="end"
+		>
+		<subflowContextDataMapping parentDataDef="skipMezzanineFlag" 		subflowDataDef="skipMezzanineFlag"/>
+		<subflowContextDataMapping parentDataDef="allowDuplicateNamesFlag" 	subflowDataDef="allowDuplicateNamesFlag"/>
+		<subflowContextDataMapping parentDataDef="jsonMetadata" 			subflowDataDef="jsonMetadata"/>
+	</executeSubflowStep>
+
+
+
+
+
+
+	<!-- ................................................... End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end"/>
+
+
+	
+
+
+
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ..... inputs ..... -->
+	<!-- file to ingest as an asset -->
+	<contextDataDef name="fileToIngest" 			dataType="File"			userInput="true"	label="01: File To Ingest"	required="true"/>
+	<!-- create or do not create a mezzanine -->
+	<contextDataDef name="skipMezzanineFlag" 		dataType="Boolean" 		userInput="true"	label="02: Use Source as Mezzanine?"		defaultDataExpression="true"/>
+	<!-- always ingest asset as a new asset, or if an asset is found use it instead -->
+	<contextDataDef name="allowDuplicateNamesFlag" 	dataType="Boolean" 		userInput="true"	label="03: Allow Duplicate File Names?"		defaultDataExpression="false"/>
+	<!-- metadata input -->
+	<contextDataDef name="testField" dataType="String" userInput="true" label="04: Metadata - testField" />
+	<contextDataDef name="testCheckbox" dataType="Boolean" userInput="true" label="05: Metadata - testCheckbox" />
+	
+	<!-- ... Calculated ... -->
+	<!-- can be used to set metadata by default -->
+	<contextDataDef name="jsonMetadata" 			dataType="JSON"/>
+	<!-- Asset Version Data Object returned from the ingest subflow -->
+	<contextDataDef name="assetVersion" 			dataType="Data Object"/>
+	
+</workflow>

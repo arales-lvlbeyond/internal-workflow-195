@@ -1,0 +1,52 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="fixStartTimcodesInCollection"
+	name="Fix Start Timecodes in Collection"
+	executionLabelExpression="Fix Start Timecodes in Collection ${subject.name}| "
+	subjectDOClassName="AssetCollection"
+	showInUserInterface="true"
+	sdkVersion="2.3.8"
+>
+	
+	<initialStepName>fix startTimecodes</initialStepName>
+	
+	
+	<executeSubflowStep name="fix startTimecodes"
+		executionLabelExpression="Regenerating metadata on problem assets in ${subject.name} to fix startTimecodes"
+		subjectChangePath="${assets}"
+		targetWorkflowId="regenerateMetadataSource"
+		nextStep="end"/>
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="no assets found" executionLabelExpression="no assets found that need to be fixed"/>
+	
+	<noopStep name="end"/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	
+	
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="assets" dataType="Data Object" multiple="true" defaultDataExpression="${subject.assetItems?.![asset].?[assetType == 'Video' AND originalContent != null AND proxy != null]}"/>
+
+</workflow>

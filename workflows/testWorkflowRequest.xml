@@ -1,0 +1,96 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="testWorkflowRequest"
+	name="Test Workflow Request"
+	executionLabelExpression="Test Workflow Request | "
+	subjectDOClassName=""
+	showInUserInterface="true"
+	sdkVersion=""
+>
+	
+	<initialStepName>get files</initialStepName>
+	
+	<!-- gather files in the directory -->
+	<setContextData name="get files"
+		executionLabelExpression="grabbing files from ${folderToIngest.toString()}"
+		nextStep="save files as data objects"
+	>
+		<set targetDataDef="allFiles">${#walkDir(folderToIngest, null)}</set>
+	</setContextData>
+	
+	<saveDataObjectStep name="save files as data objects"
+		executionLabelExpression="saving all files as data objects"
+		targetDataObjectClass="AssetMaster"
+		resultDataDef="filesToProcess"
+		nextStep="check metadata"
+		>
+		<property name="name">"test"</property>
+	</saveDataObjectStep>
+	
+	<executeSubflowStep name="check metadata"
+		targetWorkflowId="extractMetadataTest"
+		subjectChangePath="${filesToProcess}"
+		executionLabelExpression="executing metadata subflow on ${allFiles}"
+		nextStep="end"
+		>
+		
+	</executeSubflowStep>
+	
+	<!--<queryStep name="find files with metadata"-->
+		<!---->
+		<!--targetDataObjectClass="AssetMaster"-->
+		<!--resultDataDef="filesWithMetadata" >-->
+		<!--<transition condition="${filesWithMetadata != null AND filesWithMetadata.size() > 0}">-->
+			<!--<targetStepName>found files</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>end</targetStepName>-->
+		<!--</transition>-->
+		<!---->
+		<!--<criteria>-->
+			<!--<![CDATA[-->
+				<!--<and>-->
+					<!--<condition property="metadata" op="ne">-->
+						<!--<test value="null" />-->
+					<!--</condition>-->
+				<!--</and>-->
+			<!--]]>-->
+		<!--</criteria>-->
+	<!---->
+	<!--</queryStep>-->
+	
+	<!--<noopStep name="found files" executionLabelExpression="found files" nextStep="end" />-->
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<contextDataDef name="folderToIngest"    dataType="Directory"       required="true"    userInput="true" />
+	
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="filesToProcess"    dataType="Data Object"     multiple="true" />
+	<contextDataDef name="allFiles"          dataType="File"            multiple="true" />
+	<contextDataDef name="filesWithMetadata" dataType="Data Object"     multiple="true" />
+
+</workflow>

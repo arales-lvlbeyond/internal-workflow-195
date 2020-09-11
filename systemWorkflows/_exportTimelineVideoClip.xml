@@ -1,0 +1,214 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_exportTimelineVideoClip"
+	name="Export Timeline Video Clip"
+	executionLabelExpression="Export Timeline Video Clip | Clip: ${clip.name} | Video: ${subject.name}"
+	sdkVersion="4.2"
+	showInUserInterface="false"
+	subjectDOClassName="VideoAssetMaster"
+	resultDataDef="exportedFile"
+	>
+
+    <initialStepName>check for archived content</initialStepName>
+	
+	
+	<noopStep name="check for archived content"
+		pctComplete="5"
+		executionLabelExpression="Is the source archived? ${contentArchived}"
+		devStep="true"
+		>
+		<transition condition="${contentArchived}">
+			<targetStepName>content archived</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>get timeline video</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- ............................................ Calculate Offset Steps .............................................. -->
+	<queryStep name="get timeline video"
+		pctComplete="10"
+		executionLabelExpression="find the timeline video that matches the given clip and video (for calculating offsets)"
+		targetDataObjectClass="TimelineVideo"
+		resultDataDef="timelineVideo"
+		devStep="true"
+		>
+		<transition condition="${timelineVideo != null}">
+			<targetStepName>calculate timeline video clip start</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>no timeline video found</targetStepName>
+		</transition>
+		<criteria>
+		<![CDATA[
+            <criteria>
+				<and>
+                    <condition property="timelineAsset.asset.id" op="eq"><test value="${subject.id}"/></condition>
+                    <condition property="timeline.id" op="eq"><test value="${clip.timeline.id}"/></condition>
+                </and>
+            </criteria>
+        ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<setContextData name="calculate timeline video clip start"
+		pctComplete="13"
+        targetDataDef="timelineVideoClipStart"
+        valueExpression="${T(java.lang.Math).max(clip.timelineStartOffset, timelineVideo.timelineStartOffset)}"
+		devStep="true"
+		nextStep="calculate timeline video clip end"
+        />
+	
+
+    <setContextData name="calculate timeline video clip end"
+	    pctComplete="16"
+        targetDataDef="timelineVideoClipEnd"
+        valueExpression="${T(java.lang.Math).min(clip.timelineEndOffset, timelineVideo.timelineEndOffset)}"
+	    devStep="true"
+        nextStep="calculate video clip start"
+        />
+
+	
+    <setContextData name="calculate video clip start"
+	    pctComplete="18"
+        targetDataDef="exportTrimStart"
+        valueExpression="${T(java.lang.Math).max(timelineVideoClipStart - timelineVideo.timelineStartOffset, 0.0d)}"
+	    devStep="true"
+        nextStep="calculate video clip end"
+        />
+
+	
+    <setContextData name="calculate video clip end"
+	    pctComplete="20"
+        targetDataDef="exportTrimEnd"
+        valueExpression="${exportTrimStart + timelineVideoClipEnd - timelineVideoClipStart}"
+	    devStep="true"
+        nextStep="export clip"
+        />
+	
+	
+	<!-- ................................................. Export Steps ................................................... -->
+	<convertVideoStep name="export clip"
+		pctComplete="80"
+		executionLabelExpression="Converting clip with template: ${targetTemplateName}"
+		mediaConversionTemplateExpression="${targetTemplateName}"
+		targetContentTemplateExpression="${targetTemplateName}"
+		sourceFileExpression="${sourceFile}"
+		trimStartExpression="${exportTrimStart}"
+		trimEndExpression="${exportTrimEnd}"
+		resultDataDef="transcodeResultFile"
+		priorityExpression="${priority}"
+		continueOnException="true"
+		>
+		<transition condition="${transcodeResultFile.exists()}">
+			<targetStepName>copy transcode result</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>transcode error</targetStepName>
+		</transition>
+	</convertVideoStep>
+
+	
+    <copyFileStep name="copy transcode result"
+	    pctComplete="90"
+        executionLabelExpression="Copy transcoded file to destination: ${exportPath.absolutePath})"
+        sourceFileExpression="${transcodeResultFile}"
+        targetDirectoryExpression="${exportPath}"
+        targetFilenameExpression="${clip.name}-${targetTemplateName}-${clip.startTimecode}-${clip.endTimecode}-${#baseFilename(subject.name)}.${#extension(transcodeResultFile.name)}"
+        resultDataDef="exportedFile"
+	    continueOnException="true"
+        >
+	    <transition condition="${exportedFile.exists()}">
+		    <targetStepName>delete transcode artifact</targetStepName>
+	    </transition>
+	    <transition condition="true">
+		    <targetStepName>copy error</targetStepName>
+	    </transition>
+    </copyFileStep>
+	
+	
+	<deleteFileStep name="delete transcode artifact"
+		pctComplete="95"
+		executionLabelExpression="Deleting transcode artifact: ${transcodeResultFile.absolutePath}"
+		sourceFilesExpression="${transcodeResultFile}"
+		continueOnException="true"
+		devStep="true"
+		nextStep="end"
+		/>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+    <noopStep name="end" />
+	
+	
+	<failWorkflowStep name="content archived"
+		reasonExpression="can not export archived content"
+		executionLabelExpression="can not export archived content"
+		/>
+	
+	
+	<failWorkflowStep name="no timeline video found"
+		reasonExpression="unable to find matching timeline video"
+		executionLabelExpression="Unable to find matching timeline video. The clip and video given are probably not on the same timeline."
+		/>
+	
+	
+	<failWorkflowStep name="transcode error"
+		reasonExpression="unable to transcode"
+		executionLabelExpression="Unable to transcode with template: ${targetTemplateName}. Check transcoder and previous step for errors."
+		/>
+	
+	
+	<failWorkflowStep name="copy error"
+		reasonExpression="can not copy file to destination"
+		executionLabelExpression="can not copy the transcoded file to the final destination: ${exportPath.absolutePath}. Check previous step for error."
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input .......... -->
+	<!-- required -->
+	<contextDataDef name="clip"                     dataType="Data Object"/>
+	<!-- optional -->
+	<contextDataDef name="exportPath"               dataType="Directory"    defaultDataExpression="${#sysconfig('clip.export.path')}"/>
+	<contextDataDef name="targetTemplateName"       dataType="String"       defaultDataExpression="${#sysconfig('clip.export.template')}"/>
+	<contextDataDef name="priority"                 dataType="Integer"      defaultDataExpression="85"/>
+	
+	<!-- ....... Processing ........ -->
+	<!-- video asset -->
+	<contextDataDef name="sourceContent"            dataType="Data Object"  defaultDataExpression="${subject.mezzanine}"/>
+    <contextDataDef name="contentArchived"          dataType="Boolean"      defaultDataExpression="${sourceContent.truncatedFlag}"/>
+    <contextDataDef name="sourceFile"               dataType="File"         defaultDataExpression="${sourceContent.file}"/>
+	<!-- timeline -->
+	<contextDataDef name="timelineVideo"            dataType="Data Object"/>
+    <!-- start and end of clip relative to timeline -->
+    <contextDataDef name="timelineVideoClipStart"   dataType="Double"       defaultDataExpression=""/>
+    <contextDataDef name="timelineVideoClipEnd"     dataType="Double"       defaultDataExpression=""/>
+    <!-- start and end of clip relative to video start -->
+    <contextDataDef name="exportTrimStart"          dataType="Double"       defaultDataExpression=""/>
+    <contextDataDef name="exportTrimEnd"            dataType="Double"       defaultDataExpression=""/>
+	<!-- export results -->
+	<contextDataDef name="transcodeResultFile"      dataType="File"/>
+	<contextDataDef name="exportedFile"             dataType="File"/>
+</workflow>

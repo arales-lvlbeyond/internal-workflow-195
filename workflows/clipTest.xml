@@ -1,0 +1,82 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns="http://levelsbeyond.com/schema/workflow"
+xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+xsi:schemaLocation="
+    http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+id="clipTest"
+name="Clip Test"
+executionLabelExpression=""
+subjectDOClassName="Clip"
+showInUserInterface="true"
+sdkVersion="">
+
+
+<initialStepName>set video asset</initialStepName>
+
+
+    <queryStep name="set video asset"
+        targetDataObjectClass="TimelineVideo"
+        resultDataDef="timelineVideos"
+    >
+        <transition condition="${timelineVideos != null and timelineVideos.size() == 1}">
+            <targetStepName>oh</targetStepName>
+        </transition>
+        <transition condition="${timelineVideos != null and timelineVideos.size() > 1}">
+            <targetStepName>my</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="timeline.id" op="eq">
+                            <test value="${timeline.id}"/>
+                        </condition>
+                        <condition property="track" op="eq">
+                            <test value="${trackId}"/>
+                        </condition>
+                        <condition property="timelineEndOffset" op="gt">
+                            <test value="${clip.timelineEndOffset}"/>
+                        </condition>
+                        <condition property="timelineStartOffset" op="lt">
+                            <test value="${clip.timelineStartOffset}"/>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+
+<noopStep name="end"/>
+    <noopStep name="oh" nextStep="end"/>
+    <noopStep name="my" nextStep="end"/>
+
+    <contextDataDef name="clip" dataType="Data Object" defaultDataExpression="${subject}"/>
+    <contextDataDef name="timeline" dataType="Data Object" defaultDataExpression="${clip.timeline}"/>
+  
+    <contextDataDef name="assetMaster" dataType="Data Object"/>
+    <contextDataDef name="index" dataType="String" userInput="true" label="1. Specify timeline track to make clip from:">
+        <picklist>
+            <picklistItem value="0" label="clean"/>
+            <picklistItem value="1" label="dirty"/>
+        </picklist>
+    </contextDataDef>
+    <contextDataDef name="vantageConversionTemplate" dataType="String" userInput="true" label="2. Vantage Template:">
+        <picklist>
+            <picklistItem value="bloop" label="bloop"/>
+            <picklistItem value="bleep" label="bleep"/>
+        </picklist>
+    </contextDataDef>
+    <contextDataDef name="outputDir" dataType="Directory" userInput="true" label="3. Output Directory:"/>
+    <contextDataDef name="collaborate" dataType="Boolean" userInput="true" label="4. Send via Colllaborate: " defaultDataExpression="false"/>
+    <contextDataDef name="collabEmail" dataType="String" userInput="true" label="5. If sending via collaborate, enter external user's email: "/>
+    <contextDataDef name="sourceFile" dataType="File" defaultDataExpression="${assetMaster?.mezzanine?.file}"/>
+    <contextDataDef name="timelineTrack" dataType="Data Object" defaultDataExpression="${timeline.Tracks[index]}"/>
+    <contextDataDef name="timelineVideos" dataType="Data Object" multiple="true"/>
+    <contextDataDef name="trackId" dataType="String" defaultDataExpression="${timelineTrack.id}"/>
+    <contextDataDef name="timelineId" dataType="String" defaultDataExpression="${timeline.id}"/>
+
+
+</workflow>

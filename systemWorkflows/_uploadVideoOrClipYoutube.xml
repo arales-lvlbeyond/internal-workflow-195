@@ -1,0 +1,146 @@
+<!--
+~ Levels Beyond CONFIDENTIAL
+~
+~ Copyright 2003 - 2018 Levels Beyond Incorporated
+~ All Rights Reserved.
+~
+~ NOTICE:  All information contained herein is, and remains
+~ the property of Levels Beyond Incorporated and its suppliers,
+~ if any.  The intellectual and technical concepts contained
+~ herein are proprietary to Levels Beyond Incorporated
+~ and its suppliers and may be covered by U.S. and Foreign Patents,
+~ patents in process, and are protected by trade secret or copyright law.
+~ Dissemination of this information or reproduction of this material
+~ is unlawful and strictly forbidden unless prior written permission is obtained
+~ from Levels Beyond Incorporated.
+-->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="_uploadVideoOrClipYoutube"
+          name="Upload Video Or Clip To Youtube"
+          description=""
+          executionLabelExpression="Upload Video Or Clip To Youtube | Sending ${clipOrVideo.name} to Youtube"
+          deadlineExpression=""
+          subjectDOClassName=""
+          showInUserInterface="false"
+          resultDataDef=""
+          sdkVersion="5.4">
+
+    <initialStepName>determine asset type</initialStepName>
+
+    <!-- .......................................... Determine Asset Type .......................................... -->
+    <!-- Check the asset type of clipOrVideo data object, only clips or videos will be passed in -->
+    <noopStep name="determine asset type"
+              pctComplete="10"
+              executionLabelExpression="Is the asset a video? ${#mediaType(clipOrVideo).equals('VIDEO')} | Is the asset a clip? ${!#mediaType(clipOrVideo).equals('VIDEO')}">
+        <transition condition="${#mediaType(clipOrVideo).equals('VIDEO')}">
+            <targetStepName>transcode whole video file</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>transcode clip from video file</targetStepName>
+        </transition>
+    </noopStep>
+
+    <!--................................................. Transcode .................................................-->
+    <!-- Transcode a whole video file for youtube upload -->
+    <convertVideoStep name="transcode whole video file"
+                      mediaConversionTemplateExpression="${videoTranscodeProfile}"
+                      sourceFileExpression="${sourceFile}"
+                      resultDataDef="uploadFile"
+                      pctComplete="30"
+                      continueOnException="true"
+                      executionLabelExpression="Transcode succeeded? ${uploadFile.exists()}">
+        <transition condition="${uploadFile.exists()}">
+            <targetStepName>upload to youtube</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>transcode failure notification</targetStepName>
+        </transition>
+    </convertVideoStep>
+
+    <!-- Transcode a clip file from the whole file for youtube upload -->
+    <convertVideoStep name="transcode clip from video file"
+                      mediaConversionTemplateExpression="${clipTranscodeProfile}"
+                      trimStartExpression="${clipOrVideo.assetClipStartOffset}"
+                      trimEndExpression="${clipOrVideo.assetClipEndOffset}"
+                      sourceFileExpression="${sourceFile}"
+                      resultDataDef="uploadFile"
+                      pctComplete="30"
+                      continueOnException="true"
+                      executionLabelExpression="Transcode succeeded? ${uploadFile.exists()}">
+        <transition condition="${uploadFile.exists()}">
+            <targetStepName>upload to youtube</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>transcode failure notification</targetStepName>
+        </transition>
+    </convertVideoStep>
+
+    <!--................................................. Upload .................................................-->
+    <!-- Upload file to Youtube -->
+    <uploadVideoToYouTubeStep name="upload to youtube"
+                              fileToUploadExpression="${uploadFile}"
+                              linkedAccountExpression="${linkedAccount.id}"
+                              assetExpression="${clipOrVideo}"
+                              executionLabelExpression="Upload ${uploadFile.name} to YouTube">
+        <exception-transition type="WorkflowException">
+            <targetStepName>upload failure notification</targetStepName>
+        </exception-transition>
+        <transition condition="${true}">
+            <targetStepName>delete transcode artifact</targetStepName>
+        </transition>
+    </uploadVideoToYouTubeStep>
+
+    <!--................................................. Cleanup .................................................-->
+    <!-- delete transcoded file after upload has completed -->
+    <deleteFileStep name="delete transcode artifact"
+                    sourceFilesExpression="${uploadFile}"
+                    executionLabelExpression="Delete ${uploadFile.absolutePath} regardless of success or fail of upload. If upload failed, please try again"
+                    nextStep="success notification"/>
+
+    <!--........................................... Error/Success Notifications ...........................................-->
+    <createFailureNotificationStep name="transcode failure notification"
+                                   notificationTypeExpression="Your post to ${linkedAccount.name} failed. Transcode Error."
+                                   notificationBodyExpression="Your post to ${linkedAccount.name} failed. Transcode Error."
+                                   nextStep="transcode fail"/>
+
+    <createFailureNotificationStep name="upload failure notification"
+                                   notificationTypeExpression="Your post to ${linkedAccount.name} failed. Upload Error."
+                                   notificationBodyExpression="Your post to ${linkedAccount.name} failed. Upload Error."
+                                   nextStep="upload fail"/>
+
+    <createSuccessNotificationStep name="success notification"
+                                   notificationTypeExpression="You have posted to ${linkedAccount.name}"
+                                   notificationBodyExpression="You have posted to ${linkedAccount.name}"
+                                   nextStep="end"/>
+
+    <!-- ...........................................Error Handling...........................................-->
+    <failWorkflowStep name="transcode fail"
+                      reasonExpression="transcode failed"
+                      executionLabelExpression="Transcode for ${clipOrVideo.name} failed... Transcode File exists? '${uploadFile.exists()}'"/>
+
+    <failWorkflowStep name="upload fail"
+                      reasonExpression="file upload failed"
+                      executionLabelExpression="Upload for ${clipOrVideo.name} failed...'"/>
+
+    <!-- ........................................... Ending Steps .......................................... -->
+    <noopStep name="end" pctComplete="100"/>
+
+    <!-- ........................................ Context Data Defs ........................................ -->
+    <!-- User Input -->
+    <contextDataDef name="clipOrVideo" dataType="Data Object" userInput="true"/>
+    <contextDataDef name="linkedAccount" dataType="JSON"/>
+    <contextDataDef name="sourceFile" dataType="File"/>
+
+    <!-- Processing Data Defs -->
+    <contextDataDef name="uploadFile" dataType="File"/>
+
+    <!-- Transcode profiles -->
+    <contextDataDef name="videoTranscodeProfile" dataType="String"
+                    defaultDataExpression="${linkedAccount.get('transcodeProfileVideo') != null ? linkedAccount.transcodeProfileVideo : (#sysconfig('youtube.transcodeProfile.video') != null ? #sysconfig('youtube.transcodeProfile.video') : #sysconfig('import.proxySettingName'))}"/>
+    <contextDataDef name="clipTranscodeProfile" dataType="String"
+                    defaultDataExpression="${linkedAccount.get('transcodeProfileClip') != null ? linkedAccount.transcodeProfileClip : (#sysconfig('youtube.transcodeProfile.clip') != null ? #sysconfig('youtube.transcodeProfile.clip') : #sysconfig('import.proxySettingName'))}"/>
+</workflow>

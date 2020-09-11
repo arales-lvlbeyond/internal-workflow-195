@@ -1,0 +1,253 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_createAndUploadCloudformAsset"
+	name="Create and Upload Cloudform Asset"
+	executionLabelExpression="Create and Upload Cloudform Asset | Asset: ${assetName} | Tasks: ${taskIds.toString()}"
+	subjectDOClassName=""
+	resultDataDef="savedMainAssetData"
+	showInUserInterface="false"
+	sdkVersion="5.4"
+	>
+
+	<!--
+		This workflow/subflows can hopefully be replaced/refactored with a lot less leg work to create a single asset in the future
+	-->
+	
+	<initialStepName>get workspace data</initialStepName>
+	
+
+	<submitHttpStep name="get workspace data"
+		requestMethodExpression="GET"
+		urlExpression="${securityServiceUrl}/workspaces/${workspaceId}"
+		responsePayloadDataDef="workspaceData"
+		responseCodeDataDef="workspaceCode"
+		continueOnException="true"
+		pctComplete="5"
+		>
+		<transition condition="${workspaceCode != 200}">
+			<targetStepName>collaborate asset error</targetStepName>
+		</transition>
+		<transition condition="${thumbnailFile != null}">
+			<targetStepName>create thumbnail asset</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>create collaborate asset</targetStepName>
+		</transition>
+		
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+	
+
+	<!-- ................................................ Thumbnail Steps ................................................. -->
+	<submitHttpStep name="create thumbnail asset"
+		requestMethodExpression="POST"
+		urlExpression="${assetServiceUrl}/assets"
+		responsePayloadDataDef="savedThumbnailData"
+		responseCodeDataDef="thumbAssetCode"
+		continueOnException="true"
+		pctComplete="10"
+		>
+		<transition condition="${thumbAssetCode != 200}">
+			<targetStepName>collaborate asset error</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>upload thumbnail</targetStepName>
+		</transition>
+		
+		<requestPayloadItem name="body">
+			{
+				"name": "${assetName} - Thumbnail",
+				"s3BucketName": "${workspaceData.organizationS3BucketName}",
+				"s3ObjectKey": "${T(java.util.UUID).randomUUID().toString() + "-" + thumbnailFile.name}",
+				"workspaceIds": [${workspaceId}],
+				"contentType": "image/jpeg"
+			}
+		</requestPayloadItem>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+
+
+	<executeSubflowStep name="upload thumbnail"
+		targetWorkflowId="_uploadAsset"
+		pctComplete="20"
+		nextStep="create collaborate asset"
+		>
+		<subflowContextDataMapping parentDataDef="thumbnailFile"        subflowDataDef="fileToUpload"/>
+		<subflowContextDataMapping parentDataDef="savedThumbnailData"   subflowDataDef="assetData"/>
+	</executeSubflowStep>
+	
+
+	<!-- ............................................... Main Asset Steps ................................................. -->
+	<submitHttpStep name="create collaborate asset"
+		requestMethodExpression="POST"
+		urlExpression="${assetServiceUrl}/assets"
+		responsePayloadDataDef="savedMainAssetData"
+		responseCodeDataDef="mainAssetCode"
+		pctComplete="25"
+		continueOnException="true"
+		>
+		<transition condition="${mainAssetCode != 200}">
+			<targetStepName>collaborate asset error</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>set main asset id</targetStepName>
+		</transition>
+		
+		<requestPayloadItem name="body">
+			{
+				"name": "${assetName}",
+				"s3BucketName": "${workspaceData.organizationS3BucketName}",
+				"s3ObjectKey": "${T(java.util.UUID).randomUUID().toString() + "-" + mezzanineFile.name}",
+				"workspaceIds": [${workspaceId}],
+				"contentType": "${assetMimeType}",
+				"thumbnailId": ${savedThumbnailData != null? savedThumbnailData.id : "null"}
+			}
+		</requestPayloadItem>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+
+
+	<setContextData name="set main asset id"
+		targetDataDef="mainAssetId"
+		valueExpression="${savedMainAssetData.id}"
+		pctComplete="30"
+		devStep="true"
+		nextStep="upload main asset"
+		/>
+
+	
+	<executeSubflowStep name="upload main asset"
+		targetWorkflowId="_uploadAsset"
+		pctComplete="70"
+		>
+		<transition condition="${proxyFile != null}">
+			<targetStepName>create proxy asset</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>add asset to tasks</targetStepName>
+		</transition>
+		<subflowContextDataMapping parentDataDef="mezzanineFile"        subflowDataDef="fileToUpload"/>
+		<subflowContextDataMapping parentDataDef="savedMainAssetData"   subflowDataDef="assetData"/>
+	</executeSubflowStep>
+	
+
+	<!-- .................................................. Proxy Steps ................................................... -->
+	<submitHttpStep name="create proxy asset"
+		requestMethodExpression="POST"
+		urlExpression="${assetServiceUrl}/assets"
+		responsePayloadDataDef="savedProxyData"
+		responseCodeDataDef="proxyAssetCode"
+		continueOnException="true"
+		pctComplete="75"
+		>
+		<transition condition="${proxyAssetCode != 200}">
+			<targetStepName>collaborate asset error</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>upload proxy</targetStepName>
+		</transition>
+		
+		<requestPayloadItem name="body">
+			{
+				"name": "${assetName} - Proxy",
+				"s3BucketName": "${workspaceData.organizationS3BucketName}",
+				"s3ObjectKey": "${T(java.util.UUID).randomUUID().toString() + "-" + proxyFile.name}",
+				"workspaceIds": [${workspaceId}],
+				"contentType": "${assetMimeType}",
+				"parentAssetId": ${mainAssetId},
+				"renditionType": "PROXY"
+			}
+		</requestPayloadItem>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+
+
+	<executeSubflowStep name="upload proxy"
+		targetWorkflowId="_uploadAsset"
+		pctComplete="95"
+		nextStep="add asset to tasks"
+		>
+		<subflowContextDataMapping parentDataDef="proxyFile"        subflowDataDef="fileToUpload"/>
+		<subflowContextDataMapping parentDataDef="savedProxyData"   subflowDataDef="assetData"/>
+	</executeSubflowStep>
+	
+	
+	<!-- ............................................. Finalize Asset Steps ............................................... -->
+	<!--
+		This subflow is required because there is no batch add asset to tasks call,
+		which means a subflow is required add the asset to each task individually.
+			Replace this with an httpStep if we get a batch call and remove the workflow _addAssetToTask.
+	-->
+	<executeSubflowStep name="add asset to tasks"
+		targetWorkflowId="_addAssetToTask"
+		subjectChangePath="${taskIds}"
+		subflowTargetDataDef="taskId"
+		pctComplete="99"
+		nextStep="end"
+		>
+		<subflowContextDataMapping parentDataDef="taskIds"          subflowDataDef="taskId"/>
+		<subflowContextDataMapping parentDataDef="mainAssetId"      subflowDataDef="assetId"/>
+	</executeSubflowStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="collaborate asset error"
+		reasonExpression="could not create asset in collaborate"
+		executionLabelExpression="could not create asset in collaborate"
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ......... Input Variables ........... -->
+	<contextDataDef name="mezzanineFile"        dataType="File"/>
+	<contextDataDef name="proxyFile"            dataType="File"/>
+	<contextDataDef name="thumbnailFile"        dataType="File"/>
+	<contextDataDef name="workspaceId"          dataType="Integer"/>
+	<contextDataDef name="assetName"            dataType="String"/>
+	<contextDataDef name="assetMimeType"        dataType="String"/>
+	<contextDataDef name="taskIds"              dataType="Integer"      multiple="true"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<!-- API responses -->
+	<contextDataDef name="workspaceCode"        dataType="Integer"/>
+	<contextDataDef name="workspaceData"        dataType="JSON"/>
+	<contextDataDef name="thumbAssetCode"       dataType="Integer"/>
+	<contextDataDef name="savedThumbnailData"   dataType="JSON"/>
+	<contextDataDef name="mainAssetCode"        dataType="Integer"/>
+	<contextDataDef name="savedMainAssetData"   dataType="JSON"/>
+	<contextDataDef name="proxyAssetCode"       dataType="Integer"/>
+	<contextDataDef name="savedProxyData"       dataType="JSON"/>
+	<contextDataDef name="mainAssetId"          dataType="Integer"/>
+	<!-- API config -->
+	<contextDataDef name="securityServiceUrl"   dataType="String"       defaultDataExpression="${#sysconfig('cloudform.securityService.url')}"/>
+	<contextDataDef name="assetServiceUrl"      dataType="String"       defaultDataExpression="${#sysconfig('cloudform.assetService.url')}"/>
+	<contextDataDef name="cloudformApiKey"      dataType="String"       defaultDataExpression="${#sysconfig('cloudform.apiKey')}"/>
+	
+</workflow>

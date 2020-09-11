@@ -1,0 +1,56 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 to the last updated date of this file Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.5.xsd"
+    id="testS3ToString"
+    name="Test S3 File toString"
+    executionLabelExpression="Testing S3 File toString on ${subject.name}"
+    subjectDOClassName="AssetMaster"
+    showInUserInterface="true"
+    sdkVersion=""
+    resultDataDef=""
+    >
+    
+    <initialStepName>compare defs</initialStepName>
+    
+    <noopStep name="compare defs"
+      executionLabelExpression="s3Path (${s3Path}) should be equal to s3AbsolutePath (${s3AbsolutePath})">
+      <transition condition="${s3Path.equals(s3AbsolutePath)}">
+        <targetStepName>success</targetStepName>
+      </transition>
+      <transition condition="${true}">
+        <targetStepName>failure</targetStepName>
+      </transition>
+    </noopStep>
+
+    <noopStep name="success"
+              executionLabelExpression="defs match as expected!"
+              />
+
+    <failWorkflowStep name="failure" reasonExpression="defs do not match!"/>
+
+    <contextDataDef name="s3Path" dataType="String" defaultDataExpression="${subject.originalContent.file}"/>
+    <contextDataDef name="s3AbsolutePath" dataType="String" defaultDataExpression="${subject.originalContent.file.absolutePath}"/>
+
+    <contextDataDef name="someDirectory" dataType="Directory" userInput="true"/>
+  <contextDataDef name="dirString" dataType="String" defaultDataExpression="${someDirectory}"/>
+  <contextDataDef name="dirString2" dataType="String" defaultDataExpression="${someDirectory.absolutePath}"/>
+	
+	
+</workflow>

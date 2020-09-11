@@ -1,0 +1,206 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="pbsSynchronizeTaskHidden"
+	name="PBS Synchronize Task Hidden"
+	executionLabelExpression="PBS Synchronize Task (Hidden) | Task ID: ${subject.taskId}"
+	description=""
+	subjectDOClassName="AssetCollectionTask"
+	showInUserInterface="false"
+	devWorkflow="true"
+	resultDataDef=""
+	sdkVersion="5.4"
+	>
+	
+	<!--
+		THIS IS A TEMPORARY WORKFLOW
+			There is no way to get all tasks that are ready to be synced, so an API call for every task must be made.
+			This workflow is made to be hidden from the UI and check if the task is ready to sync.
+			If the task is ready, a new workflow is started to then be visible in the UI and actually sync the task.
+			
+			This workflow should be replaced by an API call that can query all tasks that are ready to be synced.
+	-->
+	
+	
+	<initialStepName>check if workflow is running</initialStepName>
+	
+	
+	<!-- ................................................. Initial Steps .................................................. -->
+	<queryStep name="check if workflow is running"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="currentExecutions"
+		executionLabelExpression="Is a workflow running already? ${currentExecutions.size() != 0}"
+		pctComplete="1"
+		>
+		<transition condition="${currentExecutions.size() == 0}">
+			<targetStepName>get task data</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>workflow is running</targetStepName>
+		</transition>
+		
+		<criteria>
+			<![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="workflowVersion.workflow.key" op="eq">
+                            <test value="${ #this.workflow.workflowVersion.workflow.key }" />
+                        </condition>
+                        <condition property="uuid" op="noteq">
+                            <test value="${ #this.workflow.uuid }" />
+                        </condition>
+                        <condition property="executionLabel" op="like">
+							<test value="%Task ID: ${subject.taskId}" />
+						</condition>
+                        <condition property="status" op="in">
+                            <tests>
+                                <test value="CREATED" />
+                                <test value="QUEUED" />
+                                <test value="EXECUTING" />
+                            </tests>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<submitHttpStep name="get task data"
+		urlExpression="${assetServiceUrl}/tasks/${subject.taskId}"
+		requestMethodExpression="GET"
+		responsePayloadDataDef="taskData"
+		continueOnException="true"
+		executionLabelExpression="getting data for task ${subject.taskId}"
+		pctComplete="5"
+		>
+		<transition condition="${taskData?.status == null OR taskData?.status.equals('')}">
+			<targetStepName>task sync error</targetStepName>
+		</transition>
+		<transition condition="${taskData.status == 'COMPLETED'}">
+			<targetStepName>start regular sync workflow</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>task not ready to sync</targetStepName>
+		</transition>
+		
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+	
+	
+	<!-- ................................................... Sync Loop .................................................... -->
+	<executeSubflowStep name="start regular sync workflow"
+		targetWorkflowId="pbsSynchronizeTask"
+		subjectChangePath="${subject}"
+		waitForCompletionExpression="false"
+		executionLabelExpression="task ready to sync"
+		nextStep="query subflow execution"
+		>
+		<subflowContextDataMapping parentDataDef="taskData"     subflowDataDef="taskData"/>
+	</executeSubflowStep>
+	
+	
+	<queryStep name="query subflow execution"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="subflowExecution"
+		executionLabelExpression="checking for subflow... workflow with key = _synchronizeTask and Task ID: ${subject.taskId} that is still executing"
+		devStep="true"
+		>
+		<transition condition="${subflowExecution == null}">
+			<targetStepName>sync finished</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>wait for subflow</targetStepName>
+		</transition>
+		
+		<criteria>
+			<![CDATA[
+            <criteria>
+                <and>
+                    <condition property="workflowVersion.workflow.key" op="eq">
+                        <test value="_synchronizeTask"/>
+                    </condition>
+                    <condition property="executionLabel" op="like">
+							<test value="%Task ID: ${subject.taskId}" />
+					</condition>
+                    <condition property="status" op="in">
+                        <tests>
+                            <test value="CREATED" />
+                            <test value="QUEUED" />
+                            <test value="EXECUTING" />
+                         </tests>
+                    </condition>
+                </and>
+            </criteria>
+        ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<delayStep name="wait for subflow"
+		delaySecondsExpression="5"
+		executionLabelExpression="waiting 5 seconds to check if the subflow has completed"
+		nextStep="query subflow execution"
+		/>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<noopStep name="task not ready to sync"
+		executionLabelExpression="Task must be completed in order to sync. Current status: ${taskData.status}"
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+	<noopStep name="sync finished"
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+	<!-- success -->
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="workflow is running"
+		executionLabelExpression="Workflow already executing on the task"
+		reasonExpression="Workflow already executing on the task"
+		/>
+	
+	
+	<failWorkflowStep name="task sync error"
+		reasonExpression="Task ID ${subject.id} had an error synchronizing. Check previous workflow steps for the error."
+		executionLabelExpression="Task ID ${subject.id} had an error synchronizing. Check previous workflow steps for the error."
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="currentExecutions" 	dataType="Data Object" 	multiple="true"/>
+	<contextDataDef name="taskData"             dataType="JSON"/>
+	<contextDataDef name="subflowExecution"     dataType="Data Object"/>
+
+	<!-- API Config -->
+	<contextDataDef name="cloudformApiKey"      dataType="String"       defaultDataExpression="${#sysconfig('cloudform.apiKey')}"/>
+	<contextDataDef name="assetServiceUrl"      dataType="String"       defaultDataExpression="${#sysconfig('cloudform.assetService.url')}"/>
+
+</workflow>

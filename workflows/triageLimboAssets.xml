@@ -1,0 +1,129 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="triageLimboAssets"
+	name="Triage Screener Assets in Limbo"
+	executionLabelExpression="Screener Assets Triaged: ${resultCount}"
+	description=""
+	subjectDOClassName=""
+	resultDataDef="resultCount"
+	deadlineExpression=""
+	adminOnly="true"
+	showInUserInterface="true"
+	sdkVersion="5.21"
+	>
+
+    <initialStepName>get screener collections</initialStepName>
+
+    <queryStep name="get screener collections"
+		targetDataObjectClass="AssetCollection"
+		resultDataDef="screenerCollections"
+        nextStep="find assets in limbo">
+		<criteria>
+			<![CDATA[
+			<criteria>
+				<and>
+					<condition property="name" op="like">
+						<test value="%Screening Queue" />
+					</condition>
+				</and>
+			</criteria>
+		]]>
+		</criteria>
+	</queryStep>
+
+    <groovyStep name="find assets in limbo"
+		resultDataDef="resultCount"
+		executionLabelExpression="update metadata csv: ${csvFile.name}"
+		nextStep="end"
+		>
+		<script>
+		<![CDATA[
+			import com.levelsbeyond.service.inventory.InventorySearchService
+			import com.levelsbeyond.service.inventory.InventorySearchCriteria
+			import com.levelsbeyond.api.inventory.InventorySearchResponse
+			import com.levelsbeyond.api.inventory.InventorySearchResult
+			import com.routeto1.spring.ApplicationContextHolder
+			import com.routeto1.data.impl.DynamicDataObjectDAO
+			import com.levelsbeyond.service.inventory.MetadataService
+			import com.fasterxml.jackson.databind.JsonNode
+			import com.routeto1.asset.filesystem.AssetMaster
+			import com.levelsbeyond.persistence.domain.metadata.set.MetadataSet;
+
+            DynamicDataObjectDAO dataObjectDAO = ApplicationContextHolder.getApplicationContext().getBean(DynamicDataObjectDAO.class)
+            InventorySearchService inventorySearchService = ApplicationContextHolder.getApplicationContext().getBean(InventorySearchService.class)
+            MetadataService metadataService = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class)
+
+            String collectionIds = screenerCollectionIds.join("', '");
+
+            int offset = 0;
+            int batchSize = 25;
+            int processedCount = 0;
+            boolean moreAssets = true;
+            while (moreAssets == true) {
+				String rqlFind = "collectionMemberships not in ('" + collectionIds + "') and assignedToScreener is not null"
+				rqlFind += " OFFSET " + offset + " SIZE " + batchSize
+
+				InventorySearchCriteria criteria = InventorySearchCriteria.builder()
+					.setRql(rqlFind)
+					.build()
+
+				Collection<JsonNode> esResults = inventorySearchService.search(criteria).getResults()
+
+				if (esResults.isEmpty()) {
+					moreAssets = false
+				} else {
+
+					esResults.each {record ->
+
+						AssetMaster asset = dataObjectDAO.findById(AssetMaster.class, record.get("id").asText())
+						def membershipIter = asset.collectionMemberships.iterator()
+						boolean bSafe = true;
+						while (membershipIter.hasNext()) {
+							def value = membershipIter.next();
+							if (screenerCollectionIds.contains(value.getCollection().getId().toString())) {
+								bSafe = false;
+							}
+						}
+						if (bSafe == true) {
+							++processedCount
+							MetadataSet metadata = asset.getMetadata();
+							metadataService.storeMetadataValue("assignedToScreener", metadata, null)
+							//this re-index is here because the above method does not reindex if we delete a value
+							metadataService.reindex(metadata)
+						}
+					}
+				}
+				offset += batchSize;
+            }
+
+            return processedCount
+		]]>
+		</script>
+	</groovyStep>
+
+    <noopStep name="end"/>
+
+    <contextDataDef name="resultCount" dataType="Integer"/>
+	<contextDataDef name="screenerCollections" 		dataType="Data Object"	  multiple="true"/>
+    <contextDataDef name="screenerCollectionIds" dataType="String" multiple="true" defaultDataExpression="${screenerCollections.![id]}"/>
+
+</workflow>

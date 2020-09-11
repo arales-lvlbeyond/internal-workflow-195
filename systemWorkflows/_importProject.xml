@@ -1,0 +1,106 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:production="http://levelsbeyond.com/schema/workflow/production"
+	xsi:schemaLocation="
+		http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+		http://levelsbeyond.com/schema/workflow/production http://www.levelsbeyond.com/schema/production/nimbus-projects-workflow-1.2.xsd
+	"
+	id="_importProject"
+	name="Import Project"
+	executionLabelExpression="Import Project | Project: ${project.name}"
+	subjectDOClassName="Project"
+	showInUserInterface="false"
+	resultDataDef="project"
+	sdkVersion=""
+	>
+
+	<initialStepName>check NLE type for import</initialStepName>
+	
+	
+	<!-- .............................................. Import With Sidecar ............................................... -->
+	<noopStep name="check NLE type for import"
+        pctComplete="15"
+		executionLabelExpression="NLE Type: ${nleType}"
+		devStep="true"
+		>
+		<transition condition="${nleType == 'AVID'}">
+			<targetStepName>import Avid project</targetStepName>
+		</transition>
+		<transition condition="${nleType == 'PREMIERE'}">
+			<targetStepName>import Premiere project</targetStepName>
+		</transition>
+		<transition condition="${nleType == 'OTHER'}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>import FCP project</targetStepName>
+		</transition>
+	</noopStep>
+
+	
+	<production:importAvidProject name="import Avid project"
+		pctComplete="50"
+		projectExpression="${project}"
+		projectFileExpression="${projectFile}"
+		lockProjectExpression="${keepLocked}"
+		resultDataDef="project"
+		nextStep="end"
+		/>
+
+	
+	<production:importFinalCutProject name="import FCP project"
+		pctComplete="50"
+		projectExpression="${project}"
+		projectFileExpression="${projectFile}"
+		projectXmlExpression="${projectXml}"
+		ingestExternalMediaExpression="${ingestExternalMedia}"
+		resultDataDef="project"
+		nextStep="end"
+		/>
+
+	
+	<production:importPremiereProject name="import Premiere project"
+		projectExpression="${project}"
+		projectFileExpression="${projectFile}"
+		projectXmlExpression="${projectXml}"
+		ingestExternalMediaExpression="${ingestExternalMedia}"
+		pctComplete="50"
+		resultDataDef="project"
+		nextStep="end"
+		/>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<noopStep name="end"/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- Input -->
+	<contextDataDef name="projectFile"          dataType="File"         required="true"/>
+	<contextDataDef name="projectXmlFile"       dataType="File"/>
+	<contextDataDef name="projectXml"           dataType="XML"          defaultDataExpression="${projectXmlFile}"/>
+	<contextDataDef name="project"              dataType="Data Object"  defaultDataExpression="${subject}"/>
+	<contextDataDef name="nleType"              dataType="String"       defaultDataExpression="${project?.nleType}"/>
+	<contextDataDef name="keepLocked"           dataType="Boolean"      defaultDataExpression="false"/>
+	<contextDataDef name="ingestExternalMedia"  dataType="Boolean"      defaultDataExpression="false"/>
+	
+	<!-- Processing -->
+
+</workflow>

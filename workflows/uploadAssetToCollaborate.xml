@@ -1,0 +1,309 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="uploadAssetToCollaborate"
+	name="Upload Asset To Collaborate"
+	executionLabelExpression="Upload Asset To Collaborate | Asset: ${asset != null? asset.name : 'null'}"
+	subjectDOClassName=""
+	showInUserInterface="false"
+	sdkVersion="5.4"
+	>
+	
+
+	<initialStepName>check asset type</initialStepName>
+	
+
+	<noopStep name="check asset type"
+		executionLabelExpression="Asset Type: ${assetType} | Asset Asset Type: ${collectionItem.asset.assetType}"
+		pctComplete="2"
+		>
+		<transition condition="${assetType.equals('AssetMaster')}">
+			<targetStepName>set asset data</targetStepName>
+		</transition>
+		<transition condition="${assetType.equals('VideoClip')}">
+			<targetStepName>export clip</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>asset type not supported</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- .................................................. Clip Steps .................................................... -->
+	<executeSubflowStep name="export clip"
+		targetWorkflowId="_exportVideoClip"
+		subjectChangePath="${asset}"
+		resultDataDef="clipFile"
+		pctComplete="20"
+		nextStep="set asset data"
+		>
+		<subflowContextDataMapping parentDataDef="cloudformClipTemplate"    subflowDataDef="targetTemplateName"/>
+		<subflowContextDataMapping parentDataDef="exportPath"               subflowDataDef="exportPath"/>
+	</executeSubflowStep>
+	
+	
+	<!-- .............................................. Create Asset Steps ................................................ -->
+	<setContextData name="set asset data"
+		devStep="true"
+		pctComplete="25"
+		>
+		<transition condition="${collectionItem.asset.assetType.equals('Video')}">
+			<targetStepName>create transcoded file</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>create and upload collaborate asset</targetStepName>
+		</transition>
+		<set targetDataDef="assetMimeType"  valueExpression="${clipFile != null? 'Video/mp4' : #assetContent(asset, null).mimeType}"/>
+		<set targetDataDef="assetName"      valueExpression="${asset.name}"/>
+		<set targetDataDef="metadata"       valueExpression="${asset.metadata}"/>
+		<set targetDataDef="mezzanineFile"  valueExpression="${clipFile != null ? clipFile : asset.originalContent.file}"/>
+		<set targetDataDef="proxyFile"      valueExpression="${clipFile != null? clipFile : asset.proxy?.file}"/>
+		<set targetDataDef="thumbnailFile"  valueExpression="${clipFile != null? #thumbnailFile(asset.thumbnailRef) : asset.thumbnail?.file}"/>
+	</setContextData>
+	
+	
+	<convertVideoStep name="create transcoded file"
+		sourceFileExpression="${asset.mezzanine.file}"
+		mediaConversionTemplateExpression="${targetTemplateName}"
+		resultDataDef="mezzanineFile"
+		executionLabelExpression="Transcode template >>> ${targetTemplateName} // source video >>> ${asset.absolutePath}"
+		pctComplete="33"
+		nextStep="create and upload collaborate asset"
+		/>
+	
+	
+	<executeSubflowStep name="create and upload collaborate asset"
+		targetWorkflowId="_createAndUploadCloudformAsset"
+		emptyTargetHandling="allow"
+		resultDataDef="mainAssetJSON"
+		pctComplete="70"
+		>
+		<transition condition="${metadataSchemaId != null}">
+			<targetStepName>get schema data</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>create metadata json</targetStepName>
+		</transition>
+		
+		<subflowContextDataMapping parentDataDef="assetMimeType"            subflowDataDef="assetMimeType"/>
+		<subflowContextDataMapping parentDataDef="mezzanineFile"            subflowDataDef="mezzanineFile"/>
+		<subflowContextDataMapping parentDataDef="proxyFile"                subflowDataDef="proxyFile"/>
+		<subflowContextDataMapping parentDataDef="thumbnailFile"            subflowDataDef="thumbnailFile"/>
+		<subflowContextDataMapping parentDataDef="taskIds"                  subflowDataDef="taskIds"/>
+		<subflowContextDataMapping parentDataDef="workspaceId"              subflowDataDef="workspaceId"/>
+		<subflowContextDataMapping parentDataDef="assetName"                subflowDataDef="assetName"/>
+	</executeSubflowStep>
+	
+
+	<!-- ................................................ Metadata Steps .................................................. -->
+	<submitHttpStep name="get schema data"
+		urlExpression="${metadataSearchServiceUrl}/schemas/${metadataSchemaId}"
+		requestMethodExpression="GET"
+		responseCodeDataDef="getSchemaDataCode"
+		responsePayloadDataDef="metadataSchemaData"
+		continueOnException="true"
+		pctComplete="75"
+		>
+		<transition condition="${getSchemaDataCode != 200}">
+			<targetStepName>asset metadata error</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>create metadata json</targetStepName>
+		</transition>
+		
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+
+	
+	<groovyStep name="create metadata json"
+		resultDataDef="metadataJSON"
+		pctComplete="80"
+		nextStep="create collaborate metadata"
+		>
+		<script>
+		<![CDATA[
+			import com.routeto1.data.validation.PicklistValidator
+			import com.levelsbeyond.api.metadata.MetadataFieldDTO
+			import com.levelsbeyond.service.inventory.MetadataService
+			import com.routeto1.spring.ApplicationContextHolder
+			import com.levelsbeyond.workflow.sdk.function.GetPicklistLabelFunction
+			
+			def metadataService = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class)
+			
+			def metadataMap = [:]
+			if (metadataSchemaId != null) {
+  				metadataSchemaData.get('schemaData').get('properties').fields().each {
+			  		def fieldName = it.getKey()
+				    def value = metadataService.getStoredMetadataValue(fieldName, metadata)
+				    
+			  		if (metadataService.getMetadataFieldByName(fieldName)){
+					    def metadataField = metadataService.getMetadataFieldByName(fieldName).get()
+					    
+			  			if (metadataField.getType() == "lookup") {
+						    if(metadataField.getMultiple()) {
+						        metadataMap.put(fieldName, value.collect{GetPicklistLabelFunction.evaluate(fieldName, it)})
+						    }
+						    else {
+				                metadataMap.put(fieldName, GetPicklistLabelFunction.evaluate(fieldName, value))
+				            }
+			  			}
+				    	else {
+			  				metadataMap.put(fieldName, value)
+			  			}
+			  		}
+  				}
+			}
+
+			metadataMap.put('workspaces', [workspaceId])
+			metadataMap.put('resourcePath', '/assets/' + mainAssetJSON.id)
+			metadataMap.put('assetName', mainAssetJSON.name)
+			metadataMap.put('taskId', taskIds)
+
+			return metadataMap
+		]]>
+		</script>
+	</groovyStep>
+
+	
+	<submitHttpStep name="create collaborate metadata"
+		urlExpression="${metadataSearchServiceUrl}/metadata"
+		requestMethodExpression="POST"
+		responseCodeDataDef="createMetadataCode"
+		responsePayloadDataDef="savedMetadata"
+		continueOnException="true"
+		pctComplete="85"
+		>
+		<transition condition="${createMetadataCode != 200}">
+			<targetStepName>asset metadata error</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>add metadata id to json</targetStepName>
+		</transition>
+		
+		<requestPayloadItem name="body">${metadataJSON}</requestPayloadItem>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+
+	
+	<groovyStep name="add metadata id to json"
+		resultDataDef="mainAssetJSON"
+		devStep="true"
+		pctComplete="90"
+		nextStep="update collaborate asset with metadata"
+		>
+		<script>
+		<![CDATA[
+			mainAssetJSON.put('metadataId', savedMetadata.id)
+			return mainAssetJSON
+		]]>
+		</script>
+	</groovyStep>
+
+	
+	<submitHttpStep name="update collaborate asset with metadata"
+		urlExpression="${assetServiceUrl}/assets/${mainAssetJSON.get('id').intValue()}"
+		requestMethodExpression="PUT"
+		responseCodeDataDef="updateMetadataCode"
+		continueOnException="true"
+		pctComplete="95"
+		>
+		<transition condition="${updateMetadataCode != 200}">
+			<targetStepName>asset metadata error</targetStepName>
+		</transition>
+		<transition condition="${clipFile != null AND clipFile.exists()}">
+			<targetStepName>delete clip file</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		
+		<requestPayloadItem name="body">${mainAssetJSON}</requestPayloadItem>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<deleteFileStep name="delete clip file"
+		sourceFilesExpression="${clipFile}"
+		executionLabelExpression="cleaning up transcoded clip: ${clipFile.absolutePath}"
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+	<noopStep name="asset type not supported"
+		executionLabelExpression="Asset Type is unable to be uploaded to Collaborate. Skipping Upload..."
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<failWorkflowStep name="asset metadata error"
+		reasonExpression="could not add metadata to the collaborate asset"
+		executionLabelExpression="could not add metadata to the collaborate asset"
+		/>
+		
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ......... Input Variables ........... -->
+	<contextDataDef name="taskIds"                  dataType="Integer"      multiple="true"/>
+	<contextDataDef name="workspaceId"              dataType="Integer"/>
+	<contextDataDef name="ingestForm"               dataType="Data Object"/>
+	<contextDataDef name="targetTemplateName"       dataType="String"/>
+	<!-- required when passing in collection items -->
+	<contextDataDef name="collectionItem"           dataType="Data Object"/>
+	<!-- required when passing in without a collection -->
+	<contextDataDef name="assetType"                dataType="String"       defaultDataExpression="${collectionItem != null? (collectionItem.asset != null? 'AssetMaster' : (collectionItem.videoClip != null? 'VideoClip' : (collectionItem.timeline != null? 'Timeline' : (collectionItem.clip != null? 'Clip' : (collectionItem.project != null? 'Project' : (collectionItem.marker != null? 'Marker' : 'Unknown')))))) : null}"/>
+	<contextDataDef name="asset"                    dataType="Data Object"  defaultDataExpression="${assetType != null? (assetType.equals('AssetMaster')? collectionItem.asset : (assetType.equals('VideoClip')? collectionItem.videoClip : (assetType.equals('Timeline')? collectionItem.timeline : (assetType.equals('Clip')? collectionItem.clip : (assetType.equals('Project')? collectionItem.project : (assetType.equals('Marker')? collectionItem.marker : null)))))) : null}"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<!-- files -->
+	<contextDataDef name="clipFile"                 dataType="File"/>
+	<contextDataDef name="mezzanineFile"            dataType="File"/>
+	<contextDataDef name="proxyFile"                dataType="File"/>
+	<contextDataDef name="thumbnailFile"            dataType="File"/>
+	<!-- objects -->
+	<contextDataDef name="metadata"                 dataType="Data Object"/>
+	<contextDataDef name="assetMaster"              dataType="Data Object"/>
+	<!-- object data -->
+	<contextDataDef name="assetMimeType"            dataType="String"/>
+	<contextDataDef name="assetName"                dataType="String"/>
+	<!-- api response -->
+	<contextDataDef name="savedMetadata"            dataType="JSON"/>
+	<contextDataDef name="metadataJSON"             dataType="JSON"/>
+	<contextDataDef name="metadataSchemaData"       dataType="JSON"/>
+	<contextDataDef name="mainAssetJSON"            dataType="JSON"/>
+	<contextDataDef name="updateMetadataCode"       dataType="Integer"/>
+	<contextDataDef name="createMetadataCode"       dataType="Integer"/>
+	<contextDataDef name="getSchemaDataCode"        dataType="Integer"/>
+	<!-- defaults -->
+	<contextDataDef name="metadataSchemaId"         dataType="Integer"      defaultDataExpression="${ingestForm?.cloudformSchemaId}"/>
+	<contextDataDef name="metadataSearchServiceUrl" dataType="String"       defaultDataExpression="${#sysconfig('cloudform.metadataSearchService.url')}"/>
+	<contextDataDef name="cloudformApiKey"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.apiKey')}"/>
+	<contextDataDef name="assetServiceUrl"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.assetService.url')}"/>
+	<contextDataDef name="cloudformClipTemplate"    dataType="String"       defaultDataExpression="${#sysconfig('cloudform.clipExportTemplate')}" />
+	<contextDataDef name="exportPath"               dataType="Directory"    defaultDataExpression="${#sysconfig('cloudform.clipExportPath')}" />
+</workflow>

@@ -1,0 +1,51 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="requestDeleteAsset"
+          name="Request Delete Asset"
+          executionLabelExpression="Request Delete Asset - ${subject.name} by ${#this.requestedBy.userName}"
+          description="May be ran by any user to request deletion of an asset."
+          showInUserInterface="true"
+          subjectDOClassName="AssetMaster"
+          subjectQualifierExpression=""
+          sdkVersion="">
+
+    <initialStepName>submit delete request notification to email</initialStepName>
+    
+    <emailStep
+            name="submit delete request notification to email"
+            executionLabelExpression="Submit delete request emails to: ${deleteApprovalNotificationEmails.toString()}"
+            emailAddressesExpression="${deleteApprovalNotificationEmails}"
+            subjectExpression="${requestedBy.userName} delete request from DCL"
+            nextStep="save requested metadata">
+        <body>
+            Hello NFL Network Admin,
+
+            ${requestedBy.emailAddress} has requested to delete ${assetMaster.name} from DCL.
+            
+            Click on this link ${slackAssetUrl} to inspect the request and apply "Delete Asset" if the request is granted.
+            
+            Kind regards,
+            
+            DCL team
+        </body>
+    </emailStep>
+
+    <saveDataObjectStep
+            name="save requested metadata"
+            dataObjectExpression="${assetMaster.metadata}"
+            nextStep="end">
+        <property name="deleteRequestedBy">${existingRequestedBy != null ? existingRequestedBy : requestedBy}</property>
+        <property name="deleteRequestedDate">${#newDate()}</property>
+    </saveDataObjectStep>
+
+    <noopStep name="end"/>
+
+    <contextDataDef name="assetMaster" dataType="Data Object" defaultDataExpression="${subject}"/>
+    <contextDataDef name="requestedBy" dataType="Data Object" defaultDataExpression="${#this.startedBy}"/>
+    <contextDataDef name="existingRequestedBy" dataType="String" defaultDataExpression="${assetMaster.metadata.deleteRequestedBy}"/>
+    <contextDataDef name="deleteApprovalNotificationEmails" dataType="String" multiple="true" defaultDataExpression="${#sysconfig('notification.emails.networkDeleteApproval')}"/>
+    <contextDataDef name="slackAssetUrl" dataType="String" defaultDataExpression="${#sysconfig('reachengine.public.url')}/#/assets${assetMaster.assetType == 'Video' ? '?' + 'focusedAssetType=video&amp;focusedAssetId=' + assetMaster.id : '/' + assetMaster.assetType.toLowerCase() + '/' + assetMaster.id}"/>
+
+</workflow>

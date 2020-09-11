@@ -1,0 +1,59 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="concurrentGroovySubflow"
+          name="Concurrent Groovy Subflow"
+          executionLabelExpression="Concurrent Groovy Subflow: ${#this.id} input :${inputInt}"
+          description=""
+          subjectDOClassName=""
+          showInUserInterface="false"
+          resultDataDef="incrementedResult"
+          subjectQualifierExpression=""
+           
+          sdkVersion="">
+
+        <initialStepName>run groovy</initialStepName>
+
+    <groovyStep name="run groovy"
+                resultDataDef="incrementedResult"
+                executionLabelExpression="Expected Result : ${inputInt} : Actual Result : ${incrementedResult}"
+                nextStep="confirm result">
+
+        <script>
+            <![CDATA[
+            import org.slf4j.Logger;
+            import org.slf4j.LoggerFactory;
+            Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow.execution.processor.ExecuteSubflowStepExecutionProcessor");
+            
+            for(; increment < inputInt; ++increment)
+            {
+                    //uncomment this if you'd like to see the groovy scripts outputting concurrently in the logs
+                    //log.debug("+++++++++++++++++++++++"+ increment + "/ " + inputInt+ "++++++++++++++++++++++++++++++++++");
+                    Thread.sleep(500);
+            }
+            
+            return increment;
+            
+            ]]>
+        </script>
+
+    </groovyStep>
+  
+    <noopStep name="confirm result">
+        <transition condition="${inputInt == incrementedResult}">
+            <targetStepName>success</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>fail</targetStepName>
+        </transition>
+    </noopStep>
+
+    <failWorkflowStep name="fail" reasonExpression="incrementedResult: ${incrementedResult} does not match expected value: ${inputInt}"/>
+
+    <noopStep name="success"/>
+
+    <contextDataDef name="inputInt" dataType="Integer"></contextDataDef>
+    <contextDataDef name="increment" dataType="Integer" defaultDataExpression="0"/>
+    <contextDataDef name="incrementedResult" dataType="Integer"></contextDataDef>
+</workflow>

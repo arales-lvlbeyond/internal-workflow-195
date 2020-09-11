@@ -1,0 +1,423 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"    
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	
+	id="assetMetadataReport"
+	name="Asset Metadata Report"
+	executionLabelExpression="Asset Metadata Report"
+	description=""
+	subjectDOClassName=""
+	showInUserInterface="true"
+	resultDataDef=""
+	deadlineExpression=""
+	adminOnly="true"
+	sdkVersion=""
+	>
+	
+	
+	
+	<initialStepName>generate report</initialStepName>
+	
+
+	<!-- ............................................. Report Step .............................................. -->
+	<groovyStep name="generate report"
+		resultDataDef="totalAssetCount"
+		executionLabelExpression="Generate Report | Asset Types: ${assetTypes.toString()}"
+		continueOnException="true"
+		pctComplete="90"
+		>
+		<transition condition="${totalAssetCount == null}">
+			<targetStepName>email report error</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>zip report</targetStepName>
+		</transition>
+		
+		<script>
+		<![CDATA[
+			// .............................. Imports ..............................
+			import org.slf4j.Logger
+			import org.slf4j.LoggerFactory
+			import java.lang.Class
+			import com.routeto1.spring.ApplicationContextHolder
+			import com.routeto1.data.IDataObjectDAO
+			import com.routeto1.metadata.Metadata
+			import com.routeto1.asset.filesystem.*
+			import com.levelsbeyond.nimbus.common.data.Clip
+			import com.levelsbeyond.nimbus.common.data.Timeline
+			import com.routeto1.asset.AssetCollection
+			import com.routeto1.data.query.*
+			import com.levelsbeyond.service.inventory.MetadataService
+			import com.routeto1.services.security.UserService
+			import com.routeto1.asset.AssetCategory
+			import com.levelsbeyond.workflow.sdk.function.GetPicklistLabelsFunction
+			
+			
+			// ............................. Functions .............................
+			def buildHeader(reachDataToReport, metadataProperties){
+				String header = ""
+				for (propertyName in reachDataToReport)
+					header = header + "," + propertyName
+					
+				for (property in metadataProperties)
+					header = header + "," + property.displayName
+				
+				header = header.substring(1)
+				return header
+			}
+			
+			
+			def queryForAssets(assetType, fetchOffset, fetchLimit){
+				IDataObjectDAO dao = ApplicationContextHolder.getApplicationContext().getBean(IDataObjectDAO.class)
+				
+				DataObjectQuery query
+				if (assetType == "video")
+					query = new DataObjectQuery(VideoAssetMaster.DATA_OBJECT_CLASS)
+				else if (assetType == "videoClip")
+					query = new DataObjectQuery(VideoClip.DATA_OBJECT_CLASS)
+				else if (assetType == "image")
+					query = new DataObjectQuery(ImageAssetMaster.DATA_OBJECT_CLASS)
+				else if (assetType == "audio")
+					query = new DataObjectQuery(AudioAssetMaster.DATA_OBJECT_CLASS)
+				else if (assetType == "document")
+					query = new DataObjectQuery(DocumentAssetMaster.DATA_OBJECT_CLASS)
+				else if (assetType == "other") {
+					query = new DataObjectQuery(AssetMaster.DATA_OBJECT_CLASS)
+					query.setCriteria(CriterionFactory.and().add(CriterionFactory.equals("assetType", "Other")))
+				}
+				else if (assetType == "timeline")
+					query = new DataObjectQuery(Timeline.DATA_OBJECT_CLASS)
+				else if (assetType == "clip")
+					query = new DataObjectQuery(Clip.DATA_OBJECT_CLASS)
+				else if (assetType == "collection")
+					query = new DataObjectQuery(AssetCollection.DATA_OBJECT_CLASS)
+				else
+					return new ArrayList()
+				
+				query.setFetchOffset(fetchOffset)
+				query.setFetchLimit(fetchLimit)
+				
+				def assets = dao.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, query).getDataObjects()
+				
+				return assets
+				
+			}
+			
+			
+			def buildRecord(asset, reachDataToReport, metadataProperties){
+				def record = ""
+				if (reachDataToReport != null && reachDataToReport.size() > 0)
+					record += buildReachData(asset, reachDataToReport)
+				if (metadataProperties != null && metadataProperties.size() > 0) {
+					if (record != "")
+						record += ","
+					
+					record += buildMetadata(asset, metadataProperties)
+				}
+				
+				return record
+			}
+			
+			
+			def buildReachData(asset, reachDataToReport) {
+				Map reachDataMap = [:]
+				
+				// Basic Asset Data
+				def assetName
+				def assetId = asset.id
+				def assetClass = asset.getClass().toString()
+				
+				assetClass = assetClass.substring(assetClass.lastIndexOf('.') + 1)
+				if (assetClass.contains('AssetMaster'))
+					assetName = asset.getName().toString()
+				else
+					assetName = asset.name.toString()
+				
+				reachDataMap.put("RE Asset Name", assetName)
+				reachDataMap.put("RE Asset Type", assetClass.replaceAll("Asset","").replaceAll("Master",""))
+				reachDataMap.put("RE Asset ID", assetId)
+				
+				
+				// AssetContent Data
+				def sourcePath = ""
+				def truncatedFlag = ""
+				def restoreKey = ""
+				if (!assetClass.contains('Collection') && !assetClass.contains('Project') && !assetClass.contains('Timeline')){
+					if (asset != null) {
+						def originalContent = asset.getOriginalContent()
+						if (originalContent == null) {
+							sourcePath = "no source"
+						}
+						else {
+							sourcePath = originalContent.file.absolutePath.toString()
+							truncatedFlag = originalContent.truncatedFlag.toString()
+							restoreKey = originalContent.restoreKey.toString()
+						}
+					}
+					else {
+						sourcePath = "no source"
+					}
+				}
+				
+				reachDataMap.put("RE Asset Source Path", sourcePath)
+				reachDataMap.put("RE Asset Truncated", truncatedFlag)
+				reachDataMap.put("RE Asset Restore Key", restoreKey)
+				
+				
+				// Collection Usage
+				def collectionUsage = ""
+				if (!assetClass.contains('Collection')) {
+					IDataObjectDAO dao = ApplicationContextHolder.getApplicationContext().getBean(IDataObjectDAO.class)
+					DataObjectQuery query = new DataObjectQuery(AssetCollection.DATA_OBJECT_CLASS)
+					query.setCriteria(CriterionFactory.and().add(CriterionFactory.equals("items.itemId", assetId)))
+					def collections = dao.findByQuery(UserService.DOUBLE_SECRET_SYSTEM_USER, query).getDataObjects()
+					
+					if (collections.size() != 0) {
+						collectionUsage = "| "
+						for (collection in collections)
+							collectionUsage += collection.name + " | "
+					}
+				}
+				
+				reachDataMap.put("RE Collection Usage", collectionUsage)
+				
+				
+				// Category Usage
+				def categoryUsage = ""
+				def categoryNames = asset.getMetadata().getCategoryNames()
+				if (categoryNames.size() != 0) {
+					categoryUsage = "| "
+					for (categoryName in categoryNames)
+						categoryUsage += categoryName + " | "
+				}
+				
+				reachDataMap.put("RE Category Usage", categoryUsage)
+				
+				
+				// create reachData record
+				def reachDataRecord = ""
+				for (propertyName in reachDataToReport){
+					propertyData = reachDataMap.get(propertyName)
+					if(propertyName != null)
+						reachDataRecord += "," + propertyData
+				}
+				
+				reachDataRecord = reachDataRecord.substring(1)
+				return reachDataRecord
+			}
+			
+			
+			def buildMetadata(asset, metadataProperties) {
+				def metadataService = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class)
+				def metadataRecord = ""
+				for (property in metadataProperties) {
+					String propertyName = property.name
+					def propertyValue = metadataService.getStoredMetadataValue(propertyName, asset.getMetadata())
+					String propertyValueString = GetPicklistLabelsFunction.evaluate(propertyName, propertyValue, " | ")
+					
+					if (propertyValueString == null || propertyValueString == "")
+						metadataRecord += ","
+					else
+						metadataRecord += "," + propertyValueString
+				}
+				
+				metadataRecord = metadataRecord.substring(1)
+				return metadataRecord
+			}
+			
+			
+			
+			
+			// .............................. Execute ..............................
+			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+			def metadataService = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class)
+			
+			// translate workflow user input to real data
+			// asset types
+			def assetsToQuery
+			if (reportAllAssets)
+				assetsToQuery = ["video","videoClip","image","audio","document","other","timeline","clip","collection"]
+			else
+				assetsToQuery = assetTypes
+			
+			// metadata properties
+			def propertiesToReport
+			if (reportAllMetadata){
+				propertiesToReport = new ArrayList()
+				def reportablePropertiesPicklist = metadataService.getMetadataFieldByName("reportProperties").get()
+				for(picklistItem in reportablePropertiesPicklist.getPicklistItems())
+					propertiesToReport.add(picklistItem.getKey())
+			}
+			else{
+				propertiesToReport = reportProperties
+			}
+			def metadataProperties = new ArrayList()
+			for(propertyName in propertiesToReport)
+				metadataProperties.add(metadataService.getMetadataFieldByName(propertyName).get())
+			
+			// reachengine properties
+			def reachDataToReport
+			if (reportAllReachData)
+				reachDataToReport = ["RE Asset Name","RE Asset Type","RE Asset ID","RE Asset Source Path","RE Asset Truncated","RE Asset Restore Key","RE Collection Usage","RE Category Usage"]
+			else
+				reachDataToReport = extraReachData
+			
+			
+			// build report
+			File csvFile = new File(csvReportFile.absolutePath)
+			csvFile.write(buildHeader(reachDataToReport, metadataProperties))
+			csvFile.append("\n")
+			
+			Integer fetchLimit = 1000
+			Long assetCount = 0
+			for (assetType in assetsToQuery){
+				Integer fetchOffset = 0
+				Boolean moreAssets = true
+				while(moreAssets){
+					def assetsToReport = queryForAssets(assetType, fetchOffset, fetchLimit)
+					if (assetsToReport.size() == 0) {
+						moreAssets = false
+						log.info("Finished reporting all ${assetType} assets")
+					}
+					else{
+						for (asset in assetsToReport){
+							csvFile.append(buildRecord(asset, reachDataToReport, metadataProperties))
+							csvFile.append("\n")
+						}
+						assetCount += assetsToReport.size()
+						fetchOffset += fetchLimit
+						log.info("Reported on ${assetsToReport.size()} ${assetType} assets")
+					}
+				}
+			}
+			
+			log.info("Report Completed")
+			return assetCount
+			
+		]]>
+		</script>
+	</groovyStep>
+
+	
+	<!-- ............................................... Send Report Steps ................................................ -->
+	<runCommandStep name="zip report"
+		executablePathExpression="/usr/bin/zip"
+		executionLabelExpression="Creating zip: ${zipReportFile.absolutePath}"
+		pctComplete="95"
+		>
+		<transition condition="${zipReportFile.length()/1048576 &gt; emailSizeLimit}">
+			<targetStepName>email report too large</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>email report</targetStepName>
+		</transition>
+		
+		<arg>-j</arg>
+		<arg>${zipReportFile.absolutePath}</arg>
+		<arg>${csvReportFile.absolutePath}</arg>
+	</runCommandStep>
+    
+	
+    <emailStep name="email report" 
+        emailAddressesExpression="${emailAddressList}"
+        subjectExpression="Asset Report"
+        attachmentsExpression="${zipReportFile}"
+        executionLabelExpression="Email zipped report to ${emailAddressList.toString()}"
+        pctComplete="99"
+	    nextStep="end"
+        >
+        <body>
+            Please see the attached file for the report.
+            
+            Total Number of Assets Reported: ${totalAssetCount}
+        </body>
+    </emailStep>
+	
+	
+	<emailStep name="email report too large"
+		emailAddressesExpression="${emailAddressList}"
+		subjectExpression="Asset Report"
+		executionLabelExpression="Report Too Large. Email notification to ${emailAddressList.toString()}"
+		pctComplete="99"
+		nextStep="end"
+		>
+		<body>
+			Report is too large to email (${zipReportFile.length()/1048576} mb).
+			Report can be found here: ${zipReportFile.absolutePath}
+			
+			Total Number of Assets Reported: ${totalAssetCount}
+		</body>
+	</emailStep>
+	
+	
+	<emailStep name="email report error"
+		emailAddressesExpression="${emailAddressList}"
+		subjectExpression="Asset Report"
+		executionLabelExpression="Report could not be completed. Email notification to ${emailAddressList.toString()}"
+		nextStep="end"
+		>
+		<body>
+			An error occurred and the report could not be fully generated.
+			
+			Attempted Report: ${csvReportFile.absolutePath}
+		</body>
+	</emailStep>
+    
+    
+    <!-- .................................................. End Steps ................................................... -->
+    <noopStep name="end"	pctComplete="100"/>
+	
+	
+	<failWorkflowStep name="report error"
+		reasonExpression="There was a problem generating the report"
+		executionLabelExpression="There was a problem generating the report"
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ....... User Input Variables ........ -->
+	<contextDataDef name="reportAllAssets"          dataType="Boolean"      label="3. Report All Assets?"       userInput="true"    defaultDataExpression="false"/>
+	<contextDataDef name="assetTypes" 				dataType="String"		label="2. Specify Asset Types:"     userInput="true"	multiple="true">
+		<picklist>
+			<picklistItem value="video"		    label="Videos"/>
+			<picklistItem value="videoClip"		label="Video Clips"/>
+			<picklistItem value="image"		    label="Images"/>
+			<picklistItem value="audio"		    label="Audio"/>
+			<picklistItem value="document"	    label="Documents"/>
+			<picklistItem value="other"			label="Others"/>
+			<picklistItem value="timeline"      label="Timelines"/>
+			<picklistItem value="clip"          label="Clips"/>
+			<picklistItem value="collection"	label="Collections"/>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="reportAllMetadata"        dataType="Boolean"      label="3. Report All Metadata?"     userInput="true"    defaultDataExpression="false"/>
+	<contextDataDef name="reportProperties" 		dataType="String"	    label="4. Specify Metadata:"        userInput="true"    multiple="true">
+		<picklist>
+			<metadataProperty>reportProperties</metadataProperty>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="reportAllReachData"       dataType="Boolean"      label="5. Report All Asset Data?"   userInput="true"    defaultDataExpression="false"/>
+	<contextDataDef name="extraReachData"           dataType="String"       label="6. Specify Asset Data:"      userInput="true"    multiple="true">
+		<picklist>
+			<picklistItem value="RE Asset Name"		    label="RE Asset Name"/>
+			<picklistItem value="RE Asset Type"		    label="RE Asset Type"/>
+			<picklistItem value="RE Asset ID"		    label="RE Asset ID"/>
+			<picklistItem value="RE Asset Source Path"	label="RE Asset Source Path"/>
+			<picklistItem value="RE Asset Truncated"	label="RE Asset Truncated"/>
+			<picklistItem value="RE Asset Restore Key"	label="RE Asset Restore Key"/>
+			<picklistItem value="RE Collection Usage"	label="RE Collection Usage"/>
+			<picklistItem value="RE Category Usage"     label="RE Category Usage"/>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="reportName" 				dataType="String"		label="9. Report Name:"			    userInput="true"/>
+	
+	<!-- .......... Input Variables .......... -->
+    <!-- Files -->
+	<contextDataDef name="csvReportFile"            dataType="File"         defaultDataExpression="${#sysconfig('reports.directory')}/${reportName != null? reportName : 'AssetReport_' + #formatDate('yyyy-MM-dd', #newDate())}.csv"/>
+    <contextDataDef name="zipReportFile"            dataType="File"         defaultDataExpression="${csvReportFile.absolutePath.replace('.csv', '.zip')}"/>
+    <!-- Email -->
+	<contextDataDef name="totalAssetCount"          dataType="Integer"/>
+	<contextDataDef name="emailSizeLimit" 			dataType="Double"		defaultDataExpression="${#sysconfig('reports.email.sizeLimit')}"/>
+	<contextDataDef name="emailAddressList"     	dataType="Email"        multiple="true" defaultDataExpression="${#this.startedBy.emailAddress}"/>
+</workflow>

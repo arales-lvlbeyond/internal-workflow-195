@@ -1,0 +1,108 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_createTask"
+	name="Create Task"
+	executionLabelExpression="Create Task | Subject: ${taskSubject}"
+	description=""
+	subjectDOClassName=""
+	showInUserInterface="false"
+	resultDataDef="taskId"
+	deadlineExpression=""
+	sdkVersion="5.1"
+	>
+
+	
+	<initialStepName>create task</initialStepName>
+	
+
+	<submitHttpStep name="create task"
+		urlExpression="${assetServiceUrl}/tasks"
+		requestMethodExpression="POST"
+		responseCodeDataDef="createTaskCode"
+		responsePayloadDataDef="createTaskResponse"
+		pctComplete="90"
+		>
+		<transition condition="${createTaskCode != 200}">
+			<targetStepName>create task error</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>get task id</targetStepName>
+		</transition>
+
+		<requestPayloadItem name="body">
+			{
+				"assignedUserId":"${assignedUserId}",
+				"createdByUserDisplayName":"${createdByEmail}",
+				"workspaceId":"${workspaceId}",
+				"comments":"${comments}",
+				"status":"${initialStatus}",
+				"type":"${taskType}",
+				"subject":"${taskSubject}"
+			}
+		</requestPayloadItem>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+	
+
+	<setContextData name="get task id"
+		targetDataDef="taskId"
+		valueExpression="${createTaskResponse.id}"
+		executionLabelExpression="Task ID: ${createTaskResponse.id}"
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="create task error"
+		reasonExpression="could not create the collaborate task"
+		executionLabelExpression="could not create the collaborate task"
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ......... Input Variables ........... -->
+	<contextDataDef name="taskName"             dataType="String"/>
+	<contextDataDef name="comments"             dataType="String"/>
+	<contextDataDef name="taskSubject"          dataType="String"/>
+	<contextDataDef name="workspaceId"          dataType="Integer"/>
+	<contextDataDef name="assignedUserId"       dataType="Integer"/>
+	<contextDataDef name="taskType"             dataType="String"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="taskId"               dataType="Integer"/>
+	<contextDataDef name="initialStatus"        dataType="String"       defaultDataExpression="IN_PROGRESS"/>
+	<contextDataDef name="createdByEmail"       dataType="String"       defaultDataExpression="${#this.startedBy.emailAddress}"/>
+	<contextDataDef name="taskJSONString"       dataType="String"/>
+	<contextDataDef name="createTaskCode"       dataType="Integer"/>
+	<contextDataDef name="createTaskResponse"   dataType="JSON"/>
+	<contextDataDef name="assetServiceUrl"      dataType="String"       defaultDataExpression="${#sysconfig('cloudform.assetService.url')}"/>
+	<contextDataDef name="cloudformApiKey"      dataType="String"       defaultDataExpression="${#sysconfig('cloudform.apiKey')}"/>
+
+
+</workflow>

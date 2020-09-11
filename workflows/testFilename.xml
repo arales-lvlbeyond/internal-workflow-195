@@ -1,0 +1,20 @@
+<workflow xmlns="http://levelsbeyond.com/schema/workflow"
+    id="testFilename"
+    name="test filename"
+    subjectDOClassName="AssetMaster"
+    resultDataDef=""
+    sdkVersion=""
+    showInUserInterface="true">
+
+    <initialStepName>check some stuff</initialStepName>
+    
+    <noopStep name="check some stuff"
+        nextStep="end"
+        executionLabelExpression="${fileName} is the name of the file"/>
+    
+    <noopStep name="end"/>
+    
+    <contextDataDef name="fileName" dataType="String" defaultDataExpression="${assetMaster.originalContent.originalFileName}"/>
+    <contextDataDef name="assetMaster" dataType="Data Object" defaultDataExpression="${subject}"/>
+    
+</workflow>

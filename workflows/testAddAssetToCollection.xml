@@ -1,0 +1,40 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="testAddAssetToCollection"
+    name="Evan Test Add Asset to Collection"
+    executionLabelExpression="Test Add Asset to Collection | "
+    subjectDOClassName="AssetMaster"
+    showInUserInterface="true"
+    sdkVersion="">
+
+    <initialStepName>Add video or asset to collection</initialStepName>
+    
+    <executeSubflowStep name="Add video or asset to collection"
+        targetWorkflowId="_addAnyAssetToCollection"
+        subjectChangePath="${assetMaster}"
+        subflowTargetDataDef="asset"
+        executionLabelExpression="save asset ${assetMaster.name} to ${collection.name}"
+        nextStep="end"
+    >
+        <subflowContextDataMapping parentDataDef="createdCollection" subflowDataDef="collection"/>
+    </executeSubflowStep>
+    <!-- ................................................... End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end" />
+    <!-- ................................................... Data Defs .................................................... -->
+    <!-- ............ INPUT ............. -->
+    <contextDataDef name="createdCollection"               dataType="Data Object"   userInput="true" >
+        <picklist>
+            <dataObjectSearch dataObjectClass="AssetCollection">
+                <searchPath>name</searchPath>
+            </dataObjectSearch>
+        </picklist>
+    </contextDataDef>
+    <contextDataDef name="assetMaster"                     dataType="Data Object"   defaultDataExpression="${subject}" />
+    <!-- ......... PROCESSING ........... -->
+
+  
+    
+</workflow>

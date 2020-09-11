@@ -1,0 +1,31 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="testGetMethod"
+          name="test getMethod in Groovy"
+          description=""
+          executionLabelExpression="test getMethod in Groovy"
+          showInUserInterface="true"
+          subjectDOClassName=""
+          sdkVersion="">
+
+    <initialStepName>confirm getmethod</initialStepName>
+
+    <groovyStep name="confirm getmethod"
+        executionLabelExpression="Compiling jsonMetadata"
+        resultDataDef="testDate"
+        nextStep="end">
+        <script>
+            <![CDATA[
+                import com.levelsbeyond.workflow.sdk.function.ParseDateFunction;
+
+                return ParseDateFunction.newInstance().getMethod().invoke(ParseDateFunction,"04/06/85", "MM/dd/yy");
+            ]]>
+        </script>
+    </groovyStep>
+
+    <noopStep name="end"/>
+
+    <contextDataDef name="testDate"         dataType="Date"/>
+
+</workflow>

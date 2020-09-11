@@ -1,0 +1,68 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="deleteCollection"
+          name="Delete Collection"
+          executionLabelExpression="Delete Collection - ${subjectName}"
+          description=""
+          showInUserInterface="false"
+          subjectDOClassName="AssetCollection"
+          subjectQualifierExpression=""
+          sdkVersion="">
+
+    <initialStepName>check are you sure</initialStepName>
+
+    <noopStep
+            name="check are you sure"
+            devStep="true">
+        <transition condition="${areYouSure}">
+            <targetStepName>check content source and role</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>user is not sure</targetStepName>
+        </transition>
+    </noopStep>
+
+    <noopStep
+            name="check content source and role"
+            executionLabelExpression="User roles contain ${contentSource}? ${roles.toString().contains(contentSource)}. User is super admin? ${userIsAdmin}">
+        <transition condition="${roles.toString().contains(contentSource) or userIsAdmin}">
+            <targetStepName>delete collection</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>notify no access</targetStepName>
+        </transition>
+    </noopStep>
+
+    <deleteDataObjectStep
+            name="delete collection"
+            pctComplete="50"
+            dataObjectExpression="${collection}"
+            nextStep="end"/>
+
+    <createFailureNotificationStep
+            name="notify no access"
+            notificationTypeExpression="error"
+            notificationBodyExpression="You do not have permission to delete ${collection.name}. Contact an admin for assistance"
+            nextStep="fail no access"/>
+
+    <failWorkflowStep
+            name="fail no access"
+            executionLabelExpression="User does not have permission to delete this collection - ${collection.name}."
+            reasonExpression="User does not have permission to delete this collection - ${collection.name}."
+            pctComplete="95"/>
+
+    <noopStep name="user is not sure" executionLabelExpression="User is not sure. Nothing to do."/>
+    <noopStep name="end"/>
+
+    <!-- Input -->
+    <contextDataDef name="areYouSure" label="Are you sure you want to delete this collection?" dataType="Boolean" userInput="true" defaultDataExpression="${true}"/>
+
+    <!-- Internal -->
+    <contextDataDef name="subjectName" dataType="String" defaultDataExpression="${subject.name}"/>
+    <contextDataDef name="collection" dataType="Data Object" defaultDataExpression="${subject}"/>
+    <contextDataDef name="contentSource" dataType="String" defaultDataExpression="${#picklistLabel('contentSource', collection.metadata.contentSource)}"/>
+    <contextDataDef name="roles" dataType="String" multiple="true" defaultDataExpression="${#this.startedBy.securityRoles.![roleName]}"/>
+    <contextDataDef name="userIsAdmin" dataType="Boolean" defaultDataExpression="${#this.startedBy.adminFlag or roles.contains('Media Administrator')}"/>
+</workflow>

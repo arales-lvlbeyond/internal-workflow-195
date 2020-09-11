@@ -1,0 +1,158 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="mediaAcceptFileIngest"
+    name="Media Accept File Ingest"
+    subjectDOClassName=""
+    executionLabelExpression="Media Accept File Ingest | File: ${fileToIngest.name}"
+    showInUserInterface="false"
+    resultDataDef="assetMaster"
+    sdkVersion=""
+	>
+
+	
+    <initialStepName>check if validation is required</initialStepName>
+	
+	
+	<!-- ............................................... Validation Steps ................................................. -->
+	<noopStep name="check if validation is required"
+		executionLabelExpression="Videos require validation. | File Type: ${fileType}"
+		>
+		<transition condition="${fileType.equals('video')}">
+			<targetStepName>validate media</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>set valid variables</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+    <validateMediaStep name="validate media"
+        sourceFileExpression="${fileToIngest}"
+        mediaProfileIdExpression="${mediaAcceptId}"
+        resultDataDef="validateJson"
+        executionLabelExpression="validate ${fileToIngest.name} against mediaAccept profile ${mediaAcceptId}"
+        >
+	    <transition condition="${validateJson?.get('valid')?.asBoolean()}">
+		    <targetStepName>set valid variables</targetStepName>
+	    </transition>
+        <transition condition="true">
+            <targetStepName>set rejected variables</targetStepName>
+        </transition>
+    </validateMediaStep>
+	
+
+    <setContextData name="set valid variables"
+        executionLabelExpression="File Accepted"
+        nextStep="ingest asset"
+        >
+	    <set targetDataDef="jsonMetadata">${jsonMetadata.put('mediaProfileAccepted','TRUE')}</set>
+	    <set targetDataDef="asyncProxies">true</set>
+	    <set targetDataDef="createMezz">false</set>
+	    <set targetDataDef="createProxy">true</set>
+	    <set targetDataDef="createThumb">true</set>
+	    <set targetDataDef="createThumbVideo">true</set>
+    </setContextData>
+	
+	
+	<setContextData name="set rejected variables"
+		executionLabelExpression="File Rejected"
+		nextStep="ingest asset"
+		>
+		<set targetDataDef="collection">${rejectedCollection}</set>
+		<set targetDataDef="jsonMetadata">${jsonMetadata.put('mediaProfileAccepted','FALSE')}</set>
+		<set targetDataDef="asyncProxies">false</set>
+		<set targetDataDef="createMezz">false</set>
+		<set targetDataDef="createProxy">false</set>
+		<set targetDataDef="createThumb">false</set>
+		<set targetDataDef="createThumbVideo">false</set>
+	</setContextData>
+	
+	
+	<!-- .............................................. Ingest Asset Steps ................................................ -->
+	<executeSubflowStep name="ingest asset"
+		targetWorkflowId="_anyAssetIngest"
+		resultDataDef="assetMaster"
+		nextStep="notify ingest success"
+		>
+		<subflowContextDataMapping parentDataDef="fileToIngest"         subflowDataDef="fileToIngest"/>
+		<subflowContextDataMapping parentDataDef="collection"           subflowDataDef="collections"/>
+		<subflowContextDataMapping parentDataDef="jsonMetadata"         subflowDataDef="jsonMetadata"/>
+		<subflowContextDataMapping parentDataDef="metadataForm"         subflowDataDef="metadataForm"/>
+		<subflowContextDataMapping parentDataDef="metadataFormType"     subflowDataDef="metadataFormType"/>
+		<subflowContextDataMapping parentDataDef="asyncProxies"         subflowDataDef="asyncProxies"/>
+		<subflowContextDataMapping parentDataDef="createMezz"           subflowDataDef="createMezz"/>
+		<subflowContextDataMapping parentDataDef="createProxy"          subflowDataDef="createProxy"/>
+		<subflowContextDataMapping parentDataDef="createThumb"          subflowDataDef="createThumb"/>
+		<subflowContextDataMapping parentDataDef="createThumbVideo"     subflowDataDef="createThumbVideo"/>
+	</executeSubflowStep>
+	
+	
+	
+	<!-- .............................................. Notification Steps ................................................ -->
+    <emailStep name="fail email"
+        emailAddressesExpression="${adminEmail}"
+        subjectExpression="${fileName} Rejected on ${#newDate()}"
+        nextStep="end"
+        >
+        <body>
+		<![CDATA[
+	        Hello Admin,
+	        
+	        The collaborate requested file ${fileName} failed the MediaAccept test.
+	        
+	        Sincerely,
+            Reach Engine System
+		]]>
+        </body>
+    </emailStep>
+
+    <emailStep name="notify ingest success"
+        emailAddressesExpression="${adminEmail}"
+        subjectExpression="${fileName} Accepted on ${#newDate()}"
+        nextStep="end"
+        >
+        <body>
+        <![CDATA[
+	        Hello Admin,
+	        
+	        The collaborate requested file ${fileName} was ingested successfully!
+	        Reach Engine Asset: ${reachUrl}/#/assets/${assetMaster.assetType}/${assetMaster.id}
+	        
+	        Sincerely,
+	        Reach Engine System
+        ]]>
+        </body>
+    </emailStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end"/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input Variables .......... -->
+    <contextDataDef name="fileToIngest" 		dataType="File"/>
+	<contextDataDef name="collection"           dataType="Data Object"/>
+	<contextDataDef name="metadataForm"         dataType="MetadataForm"/>
+	<contextDataDef name="metadataFormType"     dataType="String"/>
+	<contextDataDef name="jsonMetadata"         dataType="JSON"             defaultDataExpression="{}"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="fileName"             dataType="String"           defaultDataExpression="${fileToIngest.name}"/>
+	<contextDataDef name="fileType"             dataType="String"           defaultDataExpression="${#mediaType(fileToIngest).toLowerCase()}"/>
+	<contextDataDef name="reachUrl"             dataType="String"           defaultDataExpression="${#sysconfig('reachengine.url')}"/>
+	<contextDataDef name="adminEmail"           dataType="String"           defaultDataExpression="${#sysconfig('admin.email.addresses')}"/>
+	<contextDataDef name="mediaAcceptId"        dataType="String"           defaultDataExpression="${#sysconfig('ingest.mediaAccept.id')}"/>
+	<contextDataDef name="rejectedCollection"   dataType="Data Object"      defaultDataExpression="${#sysconfig('ingest.mediaAccept.rejectedCollection')}"/>
+	<contextDataDef name="assetMaster"          dataType="Data Object"/>
+	<contextDataDef name="asyncProxies"         dataType="Boolean"/>
+    <contextDataDef name="createMezz"           dataType="Boolean"/>
+    <contextDataDef name="createProxy"          dataType="Boolean"/>
+    <contextDataDef name="createThumb"          dataType="Boolean"/>
+    <contextDataDef name="createThumbVideo"     dataType="Boolean"/>
+
+
+</workflow>

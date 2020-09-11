@@ -1,0 +1,118 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+	http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd
+	"
+	
+	id="query4KContentToTruncate"
+	name="Query for 4K Assets Test"
+	description=""
+	executionLabelExpression="Querying for all assets ready for truncation. 4K assets separately."
+	showInUserInterface="true"
+	subjectDOClassName=""
+	resultDataDef=""
+	deadlineExpression="">
+	
+	<initialStepName>query 4K content</initialStepName>
+	
+	
+	
+	<queryStep name="query 4K content"
+		targetDataObjectClass="Timeline"
+		resultDataDef="timelines4K"
+		pctCompleteExpression="20"
+		nextStep="check timeline results">
+		
+		<criteria>
+			<![CDATA[
+				<criteria>
+					<and>
+						<condition property="metadata.sourceIs4K" op="eq" nullTarget="false">
+							<test value="${true}"/>
+						</condition>
+					</and>
+				</criteria>
+			]]>
+		</criteria>
+	
+	</queryStep>
+	
+	
+	<noopStep name="check timeline results"
+		executionLabelExpression="Query returned ${ timelines4K.size() } timeline results."
+		nextStep="end"
+	/>
+	
+	
+	<!-- Step 2: Be sure to do all asset contents that we might need... but don't do one file twice. -->
+	<groovyStep name="set full asset contents list"
+		resultDataDef="assetContents"
+		nextStep="print asset content count"
+		pctCompleteExpression="25">
+		<script>
+			<![CDATA[
+			def assetContents;
+			assetContents = new ArrayList();
+			
+			timelines4K.each {
+				if ( it.mainVideoAsset != null )
+				{
+					if ( it.mainVideoAsset.mezzanineContent != null && !assetContents.contains( it.mainVideoAsset.mezzanineContent )
+						&& !it.mainVideoAsset.mezzanineContent.truncatedFlag )
+					{
+						println "TRUNCATE: FOUND ASSET CONTENT (mezz): " + it.mainVideoAsset.mezzanineContent.file.absolutePath
+						assetContents.add( it.mainVideoAsset.mezzanineContent );
+					}
+					
+					if ( it.mainVideoAsset.originalContent != null && !assetContents.contains( it.mainVideoAsset.originalContent )
+						&& !it.mainVideoAsset.originalContent.truncatedFlag )
+					{
+						println "TRUNCATE: FOUND ASSET CONTENT (source): " + it.mainVideoAsset.originalContent.file.absolutePath
+						assetContents.add( it.mainVideoAsset.originalContent );
+					}
+				}
+			}
+			
+			return assetContents;
+			]]>
+		</script>
+	</groovyStep>
+	
+	<noopStep name="print asset content count"
+		executionLabelExpression="Found ${assetContents.size()} asset content items to process"
+		nextStep="end" />
+	
+	
+	
+	<noopStep name="end" />
+	
+	<!-- No inputs needed. -->
+	
+	<!-- 4K asset info -->
+	<contextDataDef name="is4K"                     dataType="Boolean"/>
+	<contextDataDef name="timelines4K"              dataType="Data Object"      multiple="true"/>
+	
+	<!-- Context datas - calculated -->
+	<contextDataDef name="assetMasters" dataType="Data Object" multiple="true" />
+	<contextDataDef name="timelines" dataType="Data Object" multiple="true" />
+	<contextDataDef name="assetContents" dataType="Data Object" multiple="true" />
+	<contextDataDef name="targetDateNoLastRestore" dataType="String" defaultDataExpression="${ #formatDate('yyyy-MM-dd', #addDays( #newDate(), -15 ) ) }" />
+	<contextDataDef name="targetDate" dataType="String" defaultDataExpression="${ #formatDate('yyyy-MM-dd', #addDays( #newDate(), -10) ) }" />
+	<contextDataDef name="targetDate4K"         dataType="String"       defaultDataExpression="#formatDate('yyyy-MM-dd', #addDays( #newDate(), ${daysTillTruncate4K}) )"/>
+	<contextDataDef name="daysTillTruncate4K"     dataType="Integer"      defaultDataExpression="${#sysconfig('truncateArchivedAssetContent.targetDate.daysTillTruncate4K')}"/>
+	
+	<!-- ......... Queue Variables ........... -->
+	<!-- subflows that are returned from the 'not finished' subflow query -->
+	<contextDataDef name="executingSubflows"    dataType="Data Object"      multiple="true"/>
+	<!-- how often to check the number of 'not finished' subflows running (in seconds) -->
+	<contextDataDef name="queuePollInterval"    dataType="Integer"          					defaultDataExpression="${#sysconfig('truncateArchivedAssetContent.queue.pollInterval')}"/>
+	<!-- how many subflows to allow to run at a given time -->
+	<contextDataDef name="queueLimit"           dataType="Integer"          					defaultDataExpression="${#sysconfig('truncateArchivedAssetContent.queue.limit')}"/>
+	<!-- number of subflows to kick off at a time, allowing more processing while the loop removes items from the list for the next go -->
+	<contextDataDef name="batchSize"         	dataType="Integer"          					defaultDataExpression="${#sysconfig('truncateArchivedAssetContent.queue.batchSize')}"/>
+	<!-- name of the subflow to query and find how many subflows with this name are 'not finished' -->
+	<contextDataDef name="subflowName"          dataType="String"           					defaultDataExpression="Truncate Archived Asset Content Subflow"/>
+	<!-- Context data for looping working set -->
+	<contextDataDef name="workingSet" dataType="Data Object" multiple="true" />
+
+</workflow>

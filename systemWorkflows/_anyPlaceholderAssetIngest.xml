@@ -1,0 +1,184 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_anyPlaceholderAssetIngest"
+	name="Any Placeholder Asset Ingest"
+	executionLabelExpression="Any Placeholder Asset Ingest | Placeholder: ${subject.name} | File: ${fileToIngest.name}"
+	description=""
+	subjectDOClassName="AssetMaster"
+	subjectQualifierExpression="${getContents().isEmpty()}"
+	showInUserInterface="true"
+	deadlineExpression=""
+	sdkVersion="5.21"
+	>
+
+	<initialStepName>Validate Asset Type</initialStepName>
+
+	
+	<noopStep name="Validate Asset Type"
+		executionLabelExpression="Placeholder Type: ${assetMediaType} | File Type: ${#mediaType(fileToIngest)}"
+		pctComplete="2"
+		>
+		<transition condition="${assetMediaType.equals(#mediaType(fileToIngest))}">
+			<targetStepName>ingest file</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>invalid file notification</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<executeSubflowStep name="ingest file"
+		targetWorkflowId="${ingestSubflow}"
+		subjectChangePath="${fileToIngest}"
+		subflowTargetDataDef="fileToIngest"
+		executionLabelExpression="Ingest file (${fileToIngest.name}) into asset (${subject.name})"
+		pctComplete="99"
+		nextStep="end"
+		>
+		<!-- ingest -->
+		<subflowContextDataMapping parentDataDef="assetVersion"             subflowDataDef="assetVersion"/>
+		<subflowContextDataMapping parentDataDef="placeholderName"          subflowDataDef="assetName"/>
+		<subflowContextDataMapping parentDataDef="sourceAsMezz"             subflowDataDef="sourceAsMezz"/>
+		<subflowContextDataMapping parentDataDef="overwriteExisting"        subflowDataDef="overwriteExisting"/>
+		<!-- metadata -->
+		<subflowContextDataMapping parentDataDef="failOnMetadataError"      subflowDataDef="failOnMetadataError"/>
+		<subflowContextDataMapping parentDataDef="collections"              subflowDataDef="collections"/>
+		<subflowContextDataMapping parentDataDef="metadataForm"             subflowDataDef="metadataForm"/>
+		<subflowContextDataMapping parentDataDef="metadataFormType"         subflowDataDef="metadataFormType"/>
+		<subflowContextDataMapping parentDataDef="categories"               subflowDataDef="categories"/>
+		<subflowContextDataMapping parentDataDef="jsonMetadata"             subflowDataDef="jsonMetadata"/>
+		<subflowContextDataMapping parentDataDef="linkMetadata"             subflowDataDef="linkMetadata"/>
+		<!-- proxies -->
+		<subflowContextDataMapping parentDataDef="failOnProxiesError"       subflowDataDef="failOnProxiesError"/>
+		<subflowContextDataMapping parentDataDef="prioritiesJson"           subflowDataDef="prioritiesJson"/>
+		<subflowContextDataMapping parentDataDef="createMezz"               subflowDataDef="createMezz"/>
+		<subflowContextDataMapping parentDataDef="createProxy"              subflowDataDef="createProxy"/>
+		<subflowContextDataMapping parentDataDef="createThumbVideo"         subflowDataDef="createThumbVideo"/>
+		<subflowContextDataMapping parentDataDef="createThumb"              subflowDataDef="createThumb"/>
+		<subflowContextDataMapping parentDataDef="videoMezzTemplate"        subflowDataDef="videoMezzTemplate"/>
+		<subflowContextDataMapping parentDataDef="videoProxyTemplate"       subflowDataDef="videoProxyTemplate"/>
+		<subflowContextDataMapping parentDataDef="videoThumbVideoTemplate"  subflowDataDef="videoThumbVideoTemplate"/>
+		<subflowContextDataMapping parentDataDef="audioProxyTemplate"       subflowDataDef="audioProxyTemplate"/>
+		<subflowContextDataMapping parentDataDef="imageProxyArguments"      subflowDataDef="imageProxyArguments"/>
+		<subflowContextDataMapping parentDataDef="imageThumbArguments"      subflowDataDef="imageThumbArguments"/>
+		<subflowContextDataMapping parentDataDef="documentProxyArguments"   subflowDataDef="documentProxyArguments"/>
+		<subflowContextDataMapping parentDataDef="documentThumbArguments"   subflowDataDef="documentThumbArguments"/>
+	</executeSubflowStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<createFailureNotificationStep name="invalid file notification"
+		notificationTypeExpression="Placeholder Asset Ingest Error"
+		notificationBodyExpression="Could not ingest file. Placeholder Asset is of type ${assetMediaType}. File is of type ${#mediaType(fileToIngest)}."
+		nextStep="invalid file type"
+		/>
+	
+	
+	<!-- success -->
+	<noopStep name="end"	pctComplete="100"/>
+	
+
+	<!-- fail -->
+	<failWorkflowStep name="invalid file type"
+		reasonExpression="file type does not match asset type"
+		executionLabelExpression="file type does not match asset type"
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ....... User Input Variables ........ -->
+	<contextDataDef name="fileToIngest" 		    dataType="File"				userInput="true"    label="1: File To Ingest"   required="true"/>
+	<contextDataDef name="collections"              dataType="Data Object"      userInput="true"    label="2: Collections"      multiple="true">
+		<picklist>
+			<dataObjectSearch dataObjectClass="AssetCollection">
+				<searchPath>name</searchPath>
+			</dataObjectSearch>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="metadataForm"             dataType="MetadataForm"     userInput="true"    label="3: Metadata Form"/>
+	
+	<!-- .......... Input Variables .......... -->
+	<!-- metadata options -->
+	<contextDataDef name="failOnMetadataError"      dataType="Boolean"/>
+	<contextDataDef name="categories"               dataType="Data Object"      multiple="true"/>
+	<contextDataDef name="jsonMetadata"             dataType="JSON">
+		<description>
+			Single JSON where:
+				Keys are metadata property names
+				Values are what to set the matching property to on this asset
+		</description>
+	</contextDataDef>
+	<contextDataDef name="linkMetadata"             dataType="JSON"             multiple="true">
+		<description>
+			Array of JSONs where:
+				Each JSON has 2 Keys (propertyName and linkInfo):
+					propertyName's value is a metadata property name of type link
+					linkInfo's value is a JSON with 2 keys (title and url):
+						title's value is the display name for the link
+						url's value is the url to open when the title is clicked on
+		</description>
+	</contextDataDef>
+	<contextDataDef name="metadataFormType"         dataType="String"           defaultDataExpression="access">
+		<description>
+			TEMPORARY!!! (Forms will be standardized to the same format in the future)
+				Valid types = "access" or "panel"
+		</description>
+	</contextDataDef>
+	<!-- ingest options -->
+	<contextDataDef name="sourceAsMezz"             dataType="Boolean"/>
+	<contextDataDef name="overwriteExisting"        dataType="Boolean"          defaultDataExpression="true"/>
+	<!-- transcode options -->
+	<contextDataDef name="failOnProxiesError"       dataType="Boolean"/>
+	<contextDataDef name="asyncProxies"             dataType="Boolean"/>
+	<!-- create proxies? (defaults in subflows) -->
+	<contextDataDef name="prioritiesJson"           dataType="JSON">
+		<description>
+			A JSON with the structure:
+				{"mezzanine":w, "proxy":x, "thumbnailVideo":y, "thumbnail":z}
+		</description>
+	</contextDataDef>
+	<contextDataDef name="createMezz"               dataType="Boolean"/>
+	<contextDataDef name="createProxy"              dataType="Boolean"/>
+	<contextDataDef name="createThumb"              dataType="Boolean"/>
+	<contextDataDef name="createThumbVideo"         dataType="Boolean"/>
+	<!-- supply a file for proxies? -->
+	<contextDataDef name="mezzFile"                 dataType="File"/>
+	<contextDataDef name="proxyFile"                dataType="File"/>
+	<contextDataDef name="thumbFile"                dataType="File"/>
+	<contextDataDef name="thumbVideoFile"           dataType="File"/>
+	<!-- Templates/Args for proxies creation (defaults in subflows) -->
+	<contextDataDef name="videoMezzTemplate"    	dataType="String"/>
+	<contextDataDef name="videoProxyTemplate"    	dataType="String"/>
+	<contextDataDef name="videoThumbVideoTemplate"  dataType="String"/>
+	<contextDataDef name="audioProxyTemplate"       dataType="String"/>
+	<contextDataDef name="imageProxyArguments"      dataType="String"/>
+	<contextDataDef name="imageThumbArguments"      dataType="String"/>
+	<contextDataDef name="documentProxyArguments"   dataType="String"/>
+	<contextDataDef name="documentThumbArguments"   dataType="String"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="assetVersion"             dataType="Data Object"      defaultDataExpression="${subject.currentVersion}"/>
+	<contextDataDef name="placeholderName"          dataType="String"           defaultDataExpression="${subject.name}"/>
+	<contextDataDef name="assetMediaType"           dataType="String"           defaultDataExpression="${subject.getInventoryType().name() != null ? subject.getInventoryType().name().toUpperCase() : 'UNKNOWN'}"/>
+	<contextDataDef name="ingestSubflow"      	    dataType="String" 		    defaultDataExpression="${#sysconfig('workflows.default.ingestAssetWorkflow') ?: '_anyAssetIngest'}"/>
+	
+</workflow>

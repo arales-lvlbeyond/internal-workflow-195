@@ -1,0 +1,166 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          id="IngestDirWithMetaData_gw"
+          name="IngestDirWithMetaData_gw"
+          executionLabelExpression="IngestDirWithMetaData_gw | "
+          subjectDOClassName=""
+          showInUserInterface="true"
+          sdkVersion="">
+
+    <initialStepName>copy to csv to tmpdir</initialStepName>
+
+    <!-- these copy steps are only if s3 data object -->
+    <copyFileStep name="copy to csv to tmpdir"
+                  sourceFileExpression="${csvFile}"
+                  targetDirectoryExpression="/reachengine/media/"
+                  nextStep="copy to jsonMap tp tmpdir"
+                  resultDataDef="tmpCsvFile"/>
+    <copyFileStep name="copy to jsonMap tp tmpdir"
+                  sourceFileExpression="${jsonMappingFile}"
+                  targetDirectoryExpression="/reachengine/media/"
+                  nextStep="build csv map"
+                  resultDataDef="tmpJsonFile"/>
+
+
+    <groovyStep name="build csv map"
+                resultDataDef="CsvMap"
+                nextStep="end"
+                executionLabelExpression="hmm">
+        <script>
+            <![CDATA[
+
+            import groovy.json.JsonSlurper
+            import com.fasterxml.jackson.databind.node.ObjectNode;
+            //def jsonSlurper = new JsonSlurper()
+            //def object = jsonSlurper.parseText('{ "name": "John Doe" }')
+
+            //return object.name
+            //----------------------------
+            import groovy.*
+			import groovy.json.*
+			import groovy.util.XmlSlurper
+			import org.jdom.output.XMLOutputter
+			import com.fasterxml.jackson.databind.node.*
+			import com.fasterxml.jackson.annotation.JsonIgnore
+			import java.util.List
+
+
+			    uniqueKey = "fileName"
+
+                def csvToJsonMap = [:]                              //mapping will be key from header paired with mapping built from provided keymap
+
+                //Parse CSV into values
+                def file = new File(csvpath)
+                def jsonSlurper = new JsonSlurper()
+
+                def line;
+                def values = []
+                file.withReader { reader ->
+
+                    line = reader.readLine()                            //get line header
+                    values = line.split(",")                            //split header line into values
+
+                    headerMap = [:]                                     //define a map to holder headers and values
+
+                    values.each{ val ->
+                        headerMap[val] = ''                             //set all headers as map with default empty value
+                    }
+                                                                        //iterate through csv
+                    while ((line = reader.readLine()) != null) {
+                        line = line.replace(",,",",Null,")              //replace empty values with null
+                        if(line[line.size()-1] == ",")                  //replace empty trailing value on line
+                            line+="Null"
+                                                                        //split values from line
+                        values = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*\$)");
+                        headerMap.eachWithIndex{ key,value, index ->
+                            headerMap.put(key,values[index])            //set all headers with a value
+                        }
+
+                        def uniqueKeyValue = headerMap[uniqueKey]       //get the unique key value per each entry
+
+                        def tmpMap = [:]                                //create tmpMap tp map to csv map
+
+                                                                        //create tmp map that we will add to main csvMap using json map provided
+                        xmlMapping.fieldNames().each { key ->
+                            if (headerMap.containsKey(key.toString()) && headerMap."$key".toString().length() != 0) {
+                                if(xmlMapping."$key" instanceof Boolean) //<--------------- hard coded fix? why is this issue happening
+                                    tmpMap.put("shortDescription", headerMap."$key".toString())
+                                else
+                                    tmpMap.put(xmlMapping."$key".textValue(), headerMap."$key".toString())
+                            }
+                        }
+                        csvToJsonMap.put(uniqueKeyValue,tmpMap)          //add tmp map to main csvMap
+                    }
+                }
+
+                return csvToJsonMap                                     //return the csvMap
+            ]]>
+        </script>
+    </groovyStep>
+
+    <contextDataDef name="xmlMapping" dataType="JSON" >
+        <defaultDataExpression>
+            <![CDATA[
+				{
+                    "uuid":"recordOID",
+                    "wid":"weekID",
+                    "location":"eventLocation",
+                    "description":"longDescription",
+                    "short":"shortDescription",
+                    "keywords":"keywords",
+                    "validated":"preValidated",
+                    "project":"collection",
+                    "department":"category"
+                }
+            ]]>
+        </defaultDataExpression>
+    </contextDataDef>
+
+
+
+
+
+    <!-- ................................................... End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end"/>
+
+
+    <!-- ................................................... Data Defs .................................................... -->
+    <!-- ............USER INPUT...............-->
+    <contextDataDef name="directoryToIngest"    dataType="Directory"	    userInput="false"    label="1: Directory To Ingest"  required="false"/>
+    <contextDataDef name="jsonMappingFile"      dataType="File"             userInput="true"    label="JSON Mapping File"/>
+    <contextDataDef name="csvFile"              dataType="File"             userInput="true"     label="CSV to Map to JSON"/>
+
+    <contextDataDef name="UserEmail"            dataType="Email"            userInput="false"    label="Feedback Email"/>
+    <contextDataDef name="CsvMap"               dataType="JSON"             />
+    <contextDataDef name="tmpCsvFile"           dataType="File"/>
+    <contextDataDef name="tmpJsonFile"          dataType="JSON"/>
+    <contextDataDef name="csvpath"              dataType="String"           defaultDataExpression="${tmpCsvFile?.absolutePath}"/>
+
+    <!-- .............OTHER....................-->
+    <contextDataDef name="value" dataType="String"/>
+
+
+
+    <!-- ......... PROCESSING ................-->
+
+
+</workflow>

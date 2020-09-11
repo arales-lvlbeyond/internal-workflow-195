@@ -1,0 +1,266 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="findAssetSizeFromCsv"
+	name="Find Asset Size From CSV"
+	executionLabelExpression="Find asset size from csv       "
+	subjectDOClassName=""
+	adminOnly="true"
+	showInUserInterface="true"
+	sdkVersion=""
+	hasDownload="true"
+>
+	​
+	<initialStepName>extract information to json</initialStepName>
+	​
+	
+	<!-- parse CSV file to json format -->
+	<groovyStep name="extract information to json"
+		resultDataDef="csvJson"
+		executionLabelExpression="extract information"
+		nextStep="set single CSV json"
+	>
+		
+		<script>
+            <![CDATA[
+			
+			/* ....................................... Setup ....................................... */
+			// Imports
+			import groovy.*;
+			import groovy.json.*;
+			import java.util.regex.*
+			import com.fasterxml.jackson.databind.node.*;
+			
+			// Variables
+			def rowCount=0;
+			def heading=[];
+			def row=[];
+			def assetMetadataJson="";
+			def currentKeyValue = "";
+			def jsonArray = new ArrayList();
+			def metadataJson = new ObjectNode( JsonNodeFactory.instance );
+			
+			// File
+			csvFile = new File(csvFilePath);
+			
+			// Print start of goovy step
+			// println " ";
+			// println " ";
+			// println " ";
+			// println "----------------- Starting CSV parse for $csvFilePath -----------------";
+			// println "***";
+			// println "**";
+			// println "*";
+			/* ..................................... End Setup ..................................... */
+			
+			
+			/* ..................................... Row Loop ...................................... */
+			csvFile.eachLine
+				{
+					/* .................................. First Line ................................... */
+					// If it is the first line of the file, we want to grab the header for each column.
+					// The headers will need to be fomatted properly for metadata mapping into reachengine
+					if (rowCount == 0)
+					{
+						// Create array for the headers (Columns of the first row)
+						// "it" is an iterator object that equals the current line in the file
+						// The following expression splits on commas that are not wrapped in quotes
+						heading=it.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*\$)");
+						
+						// add 1 to rowCount just so that we know we are no longer on the header row
+						rowCount++;
+					}
+					/* ................................ End First Line ................................. */
+					
+					
+					
+					/* .............................. Asset Metadata Lines ............................. */
+					// For all other lines, we want to gather metadata from each column
+					// each row is associated with a set of assets (collection)
+					else
+					{
+						// reset metadata json for each new asset row
+						assetMetadataJson = new ObjectNode( JsonNodeFactory.instance );
+						
+						// Create Columns of the row
+						// "it" is an iterator object that equals the current line in the file
+						// The following expression splits on commas that are not wrapped in quotes
+						row=it.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*\$)");
+						
+						/* ................................ Column Loop ................................ */
+						for (int curColumn = 0; curColumn < heading.size(); curColumn++)
+						{
+							// if the current row has a value for the current column, add it
+							if (curColumn < row.size())
+							{assetMetadataJson.put(heading[curColumn].replaceAll('"', ''), row[curColumn].replaceAll('"', '') );}
+							// otherwise, insert a blank value
+							else
+							{assetMetadataJson.put(heading[curColumn].replaceAll('"', ''),"");}
+						}
+						/* .............................. End Column Loop .............................. */
+						
+						// print metadataJson each loop
+						// println "row ${rowCount}";
+						// println "${assetMetadataJson.toString()}";
+						
+						// add one to row count for logging
+						rowCount++;
+						
+						jsonArray.add(assetMetadataJson);
+					}
+					/* ............................ End Asset Metadata Lines ........................... */
+				}
+			/* ................................... End Row Loop .................................... */
+			
+			
+			// Print end of goovy step
+			// println "*";
+			// println "**";
+			// println "***";
+			// println "------------------ Ending CSV parse for $csvFilePath ------------------";
+			// println " ";
+			// println " ";
+			// println " ";
+			
+			return jsonArray;
+			
+			]]>
+        </script>
+	</groovyStep>
+	
+	<setContextData name="set single CSV json"
+		executionLabelExpression="single CSV json: ${singleCsvJson}"
+		nextStep="send to subflow"
+		devStep="true"
+		targetDataDef="singleCsvJson"
+		valueExpression="${csvJson[counter]}" />
+	
+	<executeSubflowStep name="send to subflow"
+		targetWorkflowId="findAssetSize"
+		resultDataDef="newSingleCsv"
+		nextStep="add to new json" >
+		<subflowContextDataMapping parentDataDef="singleCsvJson" subflowDataDef="singleCsvJson" />
+	</executeSubflowStep>
+	
+	<groovyStep name="add to new json"
+		resultDataDef="finalJson"
+		nextStep="increment counter" >
+		<script>
+            <![CDATA[
+			def array = []
+			
+			if(finalJson != null){
+				array = finalJson
+			}
+			
+			
+			array.add(newSingleCsv)
+			
+			return array
+			
+			]]>
+        </script>
+	</groovyStep>
+	
+	
+	<setContextData
+		name="increment counter"
+		targetDataDef="counter"
+		executionLabelExpression="Counter is ${counter} out of ${csvJson.size()}"
+		devStep="true"
+		valueExpression="${counter + 1}" >
+		<transition condition="${counter &gt; csvJson.size()-1}">
+			<targetStepName>create csv file</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>set single CSV json</targetStepName>
+		</transition>
+	</setContextData>
+	
+	
+	<groovyStep
+		name="create csv file"
+		resultDataDef="newFullCsvCreated"
+		nextStep="set download file">
+		
+		<script>
+            <![CDATA[
+			import java.io.FileWriter
+			import com.csvreader.CsvWriter
+			import java.nio.charset.Charset
+			
+			
+			char delimiter = ','
+			try {
+				
+				CsvWriter csvOutput = new CsvWriter(new FileWriter(resultCsvFilePath, true), delimiter)
+				// Build Headers
+				csvOutput.write("Asset Name")
+				csvOutput.write("File Size")
+				csvOutput.endRecord()
+				// if the file didn't already exist then we need to write out the header line
+				
+				finalJson.each { row ->
+					csvOutput.write(row.name.asText())
+					csvOutput.write(row.fileSizes.asText())
+					csvOutput.endRecord()
+				}
+				
+				
+				csvOutput.close()
+			} catch (IOException e) {
+				e.printStackTrace()
+			}
+			return true
+			]]>
+        </script>
+	</groovyStep>
+	
+	<setWorkflowDownloadStep name="set download file"
+		sourceFileExpression="${resultCsvFilePath}"
+		nextStep="end" />
+	
+	
+	
+	​
+	<!-- ................................................. Initial Steps .................................................. -->
+	
+	​
+	​
+	<noopStep name="end" pctComplete="100"/>
+	​
+	​
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ............ INPUT ............. -->
+	<contextDataDef name="csvFile"     dataType="File"     userInput="true"    required="true"     label="1. Input CSV" />
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="csvFilePath"      dataType="String"           defaultDataExpression="${csvFile?.absolutePath}" />
+	<contextDataDef name="resultCsvFilePath" dataType="String"          defaultDataExpression="/reachengine/media/testing/fileSize${#uuid()}.csv" />
+	
+	<contextDataDef name="csvJson"          dataType="JSON"             multiple="true"     defaultDataExpression="{}" />
+	<contextDataDef name="singleCsvJson"    dataType="JSON"             multiple="true"     />
+	<contextDataDef name="counter"          dataType="Integer"      defaultDataExpression="0" />
+	<contextDataDef name="newSingleCsv"     dataType="JSON"             />
+	<contextDataDef name="finalJson"        dataType="JSON"   multiple="true"  />
+	<contextDataDef name="newFullCsvCreated"       dataType="Boolean" />
+	​
+</workflow>

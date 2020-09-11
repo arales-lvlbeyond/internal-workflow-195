@@ -1,0 +1,334 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="createSourceFromHls"
+          name="Create Source from HLS"
+          executionLabelExpression="Create Source from HLS - ${hlsPath}"
+          description=""
+          resultDataDef="mezResultFile"
+          showInUserInterface="false"
+          subjectDOClassName=""
+          subjectQualifierExpression=""
+          sdkVersion="">
+
+    <initialStepName>check if workflow is already executing</initialStepName>
+
+    <queryStep
+            name="check if workflow is already executing"
+            targetDataObjectClass="WorkflowExecution"
+            resultDataDef="currentExecutions">
+        <transition condition="${currentExecutions.size() == 0}">
+            <targetStepName>check active jobs</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>workflow already executing</targetStepName>
+        </transition>
+        <criteria>
+            <![CDATA[
+				<criteria>
+					<and>
+						<condition property="workflowVersion.workflow.key" op="eq">
+							<test value="${ #this.workflow.workflowVersion.workflow.key }" />
+						</condition>
+						<condition property="executionLabel" op="eq">
+							<test value="${ #this.workflow.executionLabel }" />
+						</condition>
+						<condition property="uuid" op="noteq">
+							<test value="${ #this.workflow.uuid }" />
+						</condition>
+						<condition property="status" op="in">
+							<tests>
+								<test value="CREATED" />
+								<test value="QUEUED" />
+								<test value="EXECUTING" />
+							</tests>
+						</condition>
+					</and>
+				</criteria>
+			]]>
+        </criteria>
+    </queryStep>
+
+    <runCommandStep
+            name="check active jobs"
+            executablePathExpression="/reachengine/tomcat/lib/scripts/auth_curl.pl"
+            stdoutDataDef="activeJobsString"
+            nextStep="set active jobs max value">
+        <arg>-k</arg>
+        <arg>--login</arg>
+        <arg>${#sysconfig('elemental.defaultUserName')}</arg>
+        <arg>--api-key</arg>
+        <arg>${#sysconfig('elemental.defaultApiKey')}</arg>
+        <arg>-H</arg>
+        <arg>Accept:application/xml</arg>
+        <arg>-H</arg>
+        <arg>Content-Type:application/xml</arg>
+        <arg>${elementalURL}/api/jobs?filter=active</arg>
+    </runCommandStep>
+
+    <setContextData
+            name="set active jobs max value"
+            devStep="true"
+            targetDataDef="activeJobsMax"
+            valueExpression="${#sysconfig('elemental.jobsLimit')}"
+            nextStep="set active jobs xml"/>
+
+    <setContextData
+            name="set active jobs xml"
+            executionLabelExpression="Active Jobs count = ${#xpath(activeJobsXML,'count(//job_list/job)',false).intValue()}"
+            targetDataDef="activeJobsXML"
+            valueExpression="${activeJobsString}">
+        <transition condition="${#xpath(activeJobsXML,'count(//job_list/job)',false).intValue() &lt; activeJobsMax}">
+            <targetStepName>submit job to elemental</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>delay job submission</targetStepName>
+        </transition>
+    </setContextData>
+
+    <delayStep
+            name="delay job submission"
+            executionLabelExpression="Active jobs at max. Delaying for ${activeJobsDelaySeconds} seconds and will check active jobs again."
+            delaySecondsExpression="${activeJobsDelaySeconds}"
+            nextStep="check active jobs"/>
+
+    <!-- START Main Proxy Gen -->
+    <runCommandStep
+            name="submit job to elemental"
+            executablePathExpression="/reachengine/tomcat/lib/scripts/auth_curl.pl"
+            stdoutDataDef="responseString"
+            nextStep="set xml response">
+        <arg>-k</arg>
+        <arg>--login</arg>
+        <arg>${#sysconfig('elemental.defaultUserName')}</arg>
+        <arg>--api-key</arg>
+        <arg>${#sysconfig('elemental.defaultApiKey')}</arg>
+        <arg>-H</arg>
+        <arg>Accept:application/xml</arg>
+        <arg>-H</arg>
+        <arg>Content-Type:application/xml</arg>
+        <arg>-d</arg>
+        <arg>${jobCreateString}</arg>
+        <arg>${elementalURL}/api/jobs</arg>
+    </runCommandStep>
+
+    <setContextData
+            name="set xml response"
+            targetDataDef="responseXML"
+            valueExpression="${responseString}"
+            continueOnException="true">
+        <transition condition="${responseXML != null and #xpath(responseXML,'//job/@href',false) != null}">
+            <targetStepName>get job id</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>notify transcode submit error</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData
+            name="get job id"
+            targetDataDef="jobId"
+            valueExpression="${#xpath(responseXML,'//job/@href',false).value.substring(6)}"
+            executionLabelExpression="Job id = ${jobId != null ? jobId : 'NULL'}">
+        <transition condition="${jobId == null}">
+            <targetStepName>notify transcode submit error</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>query occasionally for status</targetStepName>
+        </transition>
+    </setContextData>
+
+    <noopStep
+            name="query occasionally for status"
+            executionLabelExpression="Querying every ${pollDelaySeconds} seconds until job completes."
+            nextStep="delay a bit"/>
+
+    <!-- Begin LOOP waiting for completion -->
+    <delayStep
+            name="delay a bit"
+            devStep="true"
+            delaySecondsExpression="${pollDelaySeconds}"
+            nextStep="get job status"/>
+
+    <runCommandStep
+            name="get job status"
+            devStep="true"
+            pctCompleteExpression="${#xpath(responseXML, '//pct_complete', false)?.value}"
+            executionLabelExpression="Pct complete = ${#xpath(responseXML, '//pct_complete', false)?.value}"
+            executablePathExpression="/reachengine/tomcat/lib/scripts/auth_curl.pl"
+            stdoutDataDef="responseXML">
+        <transition condition="${#xpath(responseXML, '//status', false)?.value == 'error'}">
+            <targetStepName>notify transcode error</targetStepName>
+        </transition>
+        <transition condition="${#xpath(responseXML, '//status', false)?.value == 'cancelled'}">
+            <targetStepName>transcode cancelled</targetStepName>
+        </transition>
+        <transition condition="${#xpath(responseXML, '//status', false)?.value != 'complete'}">
+            <targetStepName>delay a bit</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>check result file</targetStepName>
+        </transition>
+        <arg>-k</arg>
+        <arg>--login</arg>
+        <arg>${#sysconfig('elemental.defaultUserName')}</arg>
+        <arg>--api-key</arg>
+        <arg>${#sysconfig('elemental.defaultApiKey')}</arg>
+        <arg>-H</arg>
+        <arg>Accept:application/xml</arg>
+        <arg>${elementalURL}/api/jobs/${jobId}/status</arg>
+    </runCommandStep>
+    <!-- End LOOP waiting for completion -->
+
+
+    <!-- Begin LOOP waiting for result file -->
+    <noopStep
+            name="check result file"
+            devStep="true"
+            executionLabelExpression="Result file exists? ${#ls(transcodeResultPath, true, false, null).size() &gt; 0}">
+        <transition condition="${#ls(transcodeResultPath, true, false, null).size() &gt; 0}">
+            <targetStepName>set mezResultFile</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>update file exists counter</targetStepName>
+        </transition>
+    </noopStep>
+
+    <setContextData
+            name="update file exists counter"
+            devStep="true"
+            targetDataDef="fileExistsCounter"
+            valueExpression="${fileExistsCounter + 1}">
+        <transition condition="${fileExistsCounter &lt; 120}">
+            <targetStepName>delay a while</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>give up mode</targetStepName>
+        </transition>
+    </setContextData>
+
+    <delayStep
+            name="delay a while"
+            devStep="true"
+            delaySecondsExpression="15"
+            nextStep="check result file"/>
+    <!-- End LOOP waiting for result file -->
+    <!-- END Main Proxy Gen -->
+
+    <setContextData name="set mezResultFile"
+                    targetDataDef="mezResultFile"
+                    valueExpression="${#ls(transcodeResultPath, true, false, null).get(0)}"
+                    executionLabelExpression="Setting result: ${mezResultFile.absolutePath}"
+            >
+        <transition condition="${archiveJobUponSuccess}">
+            <targetStepName>archive job in elemental</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </setContextData>
+
+    <runCommandStep
+            name="archive job in elemental"
+            executablePathExpression="/reachengine/tomcat/lib/scripts/auth_curl.pl"
+            stdoutDataDef="archiveResponseString"
+            nextStep="end">
+        <arg>-k</arg>
+        <arg>--login</arg>
+        <arg>${#sysconfig('elemental.defaultUserName')}</arg>
+        <arg>--api-key</arg>
+        <arg>${#sysconfig('elemental.defaultApiKey')}</arg>
+        <arg>-H</arg>
+        <arg>Accept:application/xml</arg>
+        <arg>-H</arg>
+        <arg>Content-Type:application/xml</arg>
+        <arg>-d</arg>
+        <arg>${jobArchiveString}</arg>
+        <arg>${elementalURL}/api/jobs/${jobId}/archive</arg>
+    </runCommandStep>
+
+    <createFailureNotificationStep
+            name="notify transcode submit error"
+            notificationTypeExpression="error"
+            notificationBodyExpression="Transcode request failed with reason: ${responseString}"
+            nextStep="fail transcode submit error"/>
+
+    <createFailureNotificationStep
+            name="notify transcode error"
+            notificationTypeExpression="error"
+            notificationBodyExpression="Elemental Error: ${#xpath(responseXML, '//message', false)?.value}"
+            nextStep="fail transcode error"/>
+
+    <failWorkflowStep name="fail transcode submit error" reasonExpression="Transcode request failed with reason: ${responseString}" executionLabelExpression="Transcode request failed with reason: ${responseString}"/>
+    <failWorkflowStep name="fail transcode error" reasonExpression="Elemental Error: ${#xpath(responseXML, '//message', false)?.value}"/>
+    <failWorkflowStep name="transcode cancelled" reasonExpression="Elemental job cancelled from Elemental"/>
+    <failWorkflowStep name="give up mode" reasonExpression="Proxy result didn't show up within a half hour of the transcode completing!"/>
+
+    <noopStep name="workflow already executing"/>
+    <noopStep name="end"/>
+
+    <!-- Input -->
+    <contextDataDef name="archiveJobUponSuccess" dataType="Boolean" defaultDataExpression="${true}"/>
+    <contextDataDef name="hlsPath" dataType="String" required="true"/>
+    <contextDataDef name="hlsBitrate" dataType="String" required="true" defaultDataExpression="8000"/>
+
+    <!-- Internal -->
+    <contextDataDef name="currentExecutions" dataType="Data Object" multiple="true" />
+    <contextDataDef name="activeJobsString" dataType="String"/>
+    <contextDataDef name="activeJobsXML" dataType="XML"/>
+    <contextDataDef name="activeJobsMax" dataType="Integer" defaultDataExpression="${#sysconfig('elemental.jobsLimit')}"/>
+    <contextDataDef name="activeJobsDelaySeconds" dataType="Integer" defaultDataExpression="60"/>
+
+    <contextDataDef name="sourcePath" dataType="String" defaultDataExpression="${#sysconfig('filesystem.root.sources').endsWith('/') ? #sysconfig('filesystem.root.sources') : #sysconfig('filesystem.root.sources') + '/'}"/>
+    <contextDataDef name="exportsPath" dataType="String" defaultDataExpression="${#sysconfig('filesystem.root.exports').endsWith('/') ? #sysconfig('filesystem.root.exports') : #sysconfig('filesystem.root.exports') + '/'}"/>
+    <contextDataDef name="transcodeResultPath" dataType="String" defaultDataExpression="${sourcePath}${#uuid().toString()}/"/>
+
+    <contextDataDef name="nameModifier" dataType="String" defaultDataExpression="_${hlsBitrate}k"/>
+    <contextDataDef name="mezResultFile" dataType="File" defaultDataExpression="${transcodeResultPath}${#baseFilename(hlsPath)}${nameModifier}.mp4"/>
+    <contextDataDef name="elementalURL" dataType="String" defaultDataExpression="https://${#sysconfig('elemental.defaultHost')}"/>
+    <contextDataDef name="templateId" dataType="String" defaultDataExpression="${hlsBitrate == '5000' ? 'nfl_5mb_mezz_2' : 'nfl_8mb_mezz_v2'}"/>
+    <!--<contextDataDef name="templateId" dataType="String" defaultDataExpression="${hlsBitrate == '5000' ? 'nfl_5mb_mezz' : 'nfl_8mb_mezz'}"/>-->
+    <contextDataDef name="responseString" dataType="String"/>
+    <contextDataDef name="responseXML" dataType="XML"/>
+    <contextDataDef name="jobCreateString" dataType="String">
+        <defaultDataExpression>
+            <![CDATA[
+<job>
+  <input>
+    <file_input>
+        <uri>${#mapPath(hlsPath, 'elemental')}</uri>
+    </file_input>
+  </input>
+  <output_group>
+    <order>1</order>
+    <file_group_settings>
+        <destination>
+            <uri>${#mapPath(transcodeResultPath, 's3mapping')}?endpoint=${#sysconfig('s3.endpoint').replace('https://', '')}</uri>
+            <authentication_details>
+                <authentication_type>basic</authentication_type>
+                <username>${#sysconfig('s3.key')}</username>
+                <password>${#sysconfig('s3.secret')}</password>
+           </authentication_details>
+        </destination>
+    </file_group_settings>
+  </output_group>
+  <priority>10</priority>
+  <profile>${templateId}</profile>
+</job>
+            ]]>
+        </defaultDataExpression>
+    </contextDataDef>
+    <contextDataDef name="jobArchiveString" dataType="String">
+        <defaultDataExpression>
+            <![CDATA[
+<archive></archive>
+            ]]>
+        </defaultDataExpression>
+    </contextDataDef>
+    <contextDataDef name="archiveResponseString" dataType="String"/>
+    <contextDataDef name="jobId" dataType="String"/>
+    <contextDataDef name="fileExistsCounter" dataType="Integer" defaultDataExpression="0"/>
+
+    <contextDataDef name="pollDelaySeconds" dataType="Integer" defaultDataExpression="30"/>
+</workflow>

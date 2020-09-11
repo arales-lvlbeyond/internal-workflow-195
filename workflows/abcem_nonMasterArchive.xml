@@ -1,0 +1,75 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="abcem_nonMasterArchive"
+	name="abcem_Archive A Non-master Asset"
+	executionLabelExpression="Archiving Source File for ${subject.name}"
+	description=""
+	subjectDOClassName=""
+	showInUserInterface="true"
+	deadlineExpression=""
+	sdkVersion="">
+	
+	<initialStepName>determine media type</initialStepName>
+	
+	<!--
+		
+		This was built to only be kicked off via an API call with
+		either an AssetID or Tprovided in the body.
+		
+		-->
+	
+	<noopStep name="determine media type"
+		executionLabelExpression="Checking if we're archiving an asset">
+		<transition condition="${assetID != null or assetID != ''}">
+			<targetStepName>query for asset</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>no ID provided</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<queryStep name="query for asset"
+		targetDataObjectClass="AssetMaster"
+		resultDataDef="assetToArchive"
+		executionLabelExpression="match id ${assetId} to an AssetMaster"
+		>
+		<transition condition="${assetToRestore != null}">
+			<targetStepName>archive asset</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>id not found</targetStepName>
+		</transition>
+		
+		<criteria>
+			<![CDATA[
+				<criteria>
+					<and>
+						<condition property="id" op="eq">
+							<test value="${assetId}" />
+						</condition>
+					</and>
+				</criteria>
+			]]>
+		</criteria>
+	</queryStep>
+	
+	<!-- Asset Subflow -->
+	<executeSubflowStep name="archive asset"
+		targetWorkflowId="abcem_nonMasterArchiveAsset"
+		subjectChangePath="${assetToArchive}"
+		subflowTargetDataDef="assetToArchive"
+		nextStep="end" />
+	
+	<failWorkflowStep name="id not found" reasonExpression="id not found" />
+	
+	<failWorkflowStep name="no ID provided" reasonExpression="no ID provided" />
+	
+	<noopStep name="end" />
+	
+	<!-- Data Defs -->
+	<contextDataDef name="assetID" 				dataType="String"></contextDataDef>
+	<contextDataDef name="assetToArchive" 		dataType="Data Object"></contextDataDef>
+	
+</workflow>

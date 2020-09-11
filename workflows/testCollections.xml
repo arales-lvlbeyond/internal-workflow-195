@@ -1,0 +1,50 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="testCollections"
+    name="test collections"
+    executionLabelExpression="test collections"
+    description=""
+    subjectDOClassName="AssetCollection"
+    resultDataDef=""
+    deadlineExpression=""
+    showInUserInterface="true"
+    sdkVersion="5.21">
+
+    <initialStepName>check for collection contents</initialStepName>
+
+    <noopStep name="check for collection contents"
+        executionLabelExpression="check for collection contents"
+        devStep="true">
+        <transition condition="${collectionItems.size() &gt; 0}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>no items in collection</targetStepName>
+        </transition>
+    </noopStep>
+
+
+
+    <noopStep name="end" pctComplete="100"/>
+
+
+    <!--..........fail steps....................-->
+    <failWorkflowStep name="no items in collection"
+        reasonExpression="There were no assets found in this collection."
+        executionLabelExpression="There were no assets found in this collection."/>
+
+    <!-- .................................................. Context Data Defs .................................................. -->
+    <!-- user input - archive (truncate) content? or backup content? -->
+    <contextDataDef name="collection" dataType="Data Object" defaultDataExpression="${subject}"/>
+    <contextDataDef name="collectionItems" dataType="Data Object" multiple="true" defaultDataExpression="${collection?.assetItems?.![asset]}"/>
+    <contextDataDef name="archiveOrBackup" dataType="String" label="1: Archive or backup?" userInput="true" required="true">
+        <picklist>
+            <picklistItem label="Archive" value="archive"/>
+            <picklistItem label="Archive (Retain on Tier 2)" value="retainArchive"/>
+            <picklistItem label="Backup" value="backup"/>
+        </picklist>
+    </contextDataDef>
+
+</workflow>

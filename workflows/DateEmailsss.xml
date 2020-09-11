@@ -1,0 +1,54 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.x"
+	id="DateEmailsss"
+	name="Send Email with datesss"
+	description="A workflow that send an email with the date"
+	subjectDOClassName=""
+	deadlineExpression=""
+	sdkVersion="">
+	<!-- says that first step is going to be Hello_Workflow -->
+	<initialStepName>Hello_Workflow</initialStepName>
+	<testStep name="Hello_Workflow" outputExpression="Why, Hello Workflow.">
+		<!-- first step, name=stepName outputExpression= shows up in status of Reach Engine UI -->
+		<transition condition="${sendEmail}">
+			<!-- User makes this selection, bubble value -->
+			<targetStepName>Email_Hello</targetStepName>
+			<!-- if send email is true, go to step Email_Hello -->
+		</transition>
+		<transition condition="${sendEmailsss}">
+			<!-- User makes this selection, bubble value -->
+			<targetStepName>Email_Hello</targetStepName>
+			<!-- if send email is true, go to step Email_Hello -->
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>Say_Goodbye</targetStepName>
+			<!-- Else if, go to step Say_Goodbye -->
+		</transition>
+	</testStep>
+	<emailStep name="Email_Hello"
+		emailAddressesExpression="eapodaca@levelsbeyond.com"
+		subjectExpression="I'm just writing to say..">
+		<!-- name=step name emailAddress=email subjectExpression=subject of email -->
+		<body><![CDATA[
+          HELLO! Today's date is:  ${#newDate()}
+]]> </body>
+	<!-- body of email -->
+	</emailStep>
+	<!-- emailStep is a built in step for reach engine -->
+	<testStep name="Say_Goodbye"
+		outputExpression="I Didn't send an email because you told me not to. Goodbye.">
+		<!-- name & output expression are shown in React Engine status page -->
+	</testStep>
+	<!-- Say_Goodbye is the catch all  -->
+	<!--DATA DEFS aka variables or user inputs  -->
+	<contextDataDef dataType="Boolean"
+		name="sendEmail"
+		required="true">
+	</contextDataDef>
+	<contextDataDef dataType="Boolean"
+		name="sendEmailsss"
+		required="true">
+	</contextDataDef>
+	<!-- I think this defines user input ? -->
+</workflow>

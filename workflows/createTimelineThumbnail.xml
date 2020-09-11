@@ -1,0 +1,46 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow" xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.5.xsd"
+    id="createTimelineThumbnail"
+    name="Create Timeline Thumbnail"
+    executionLabelExpression="Create Timeline Thumbnail | Timeline: ${timeline.name}"
+    description=""
+    subjectDOClassName="Timeline"
+    showInUserInterface="true"
+    deadlineExpression=""
+    sdkVersion="">
+    
+    
+    <initialStepName>check if timeline has a video</initialStepName>
+    
+    <noopStep name="check if timeline has a video"
+        executionLabelExpression="Does Timeline have a Video? | ${asset != null}"
+        devStep="true">
+        
+        <transition condition="${asset != null}">
+            <targetStepName>set thumbnail</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>no video found</targetStepName>
+        </transition>
+    </noopStep>
+    
+    <nimbus:setTimelineThumbnailStep name="set thumbnail"
+        displayName="Set timeline thumbnail"
+        executionLabelExpression="Set asset (${asset?.name}) as Thumbnail for Timeline (${timeline.id})"
+        targetTimelineExpression="${timeline}"
+        targetAssetExpression="${asset}"
+        nextStep="end"/>
+    
+    <noopStep name="no video found"
+        executionLabelExpression="No video can be used to make a thumbnail. Skipping this timeline."
+        nextStep="end"/>
+    
+    <noopStep name="end"/>
+    
+    
+    <!-- ................................................... Data Defs .................................................... -->
+    <contextDataDef name="timeline" dataType="Data Object" defaultDataExpression="${subject}"/>
+    <contextDataDef name="asset" dataType="Data Object" defaultDataExpression="${timeline?.mainVideoAsset}"/>
+
+</workflow>

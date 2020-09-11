@@ -1,0 +1,184 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          id="loadlessParentFlow"
+          name="Performance for Loadless Steps"
+          executionLabelExpression="100 noOp steps with ${numberOfSubflows} subflows"
+          showInUserInterface="true"
+          sdkVersion=""
+>
+    <initialStepName>NoOpStep 1</initialStepName>
+    ​
+    <noopStep name="NoOpStep 1" nextStep="NoOpStep 2" pctComplete="10"/>
+    <noopStep name="NoOpStep 2" nextStep="NoOpStep 3" pctComplete="10"/>
+    <noopStep name="NoOpStep 3" nextStep="NoOpStep 4" pctComplete="10"/>
+    <noopStep name="NoOpStep 4" nextStep="NoOpStep 5" pctComplete="10"/>
+    <noopStep name="NoOpStep 5" nextStep="NoOpStep 6" pctComplete="10"/>
+    <noopStep name="NoOpStep 6" nextStep="NoOpStep 7" pctComplete="10"/>
+    <noopStep name="NoOpStep 7" nextStep="NoOpStep 8" pctComplete="10"/>
+    <noopStep name="NoOpStep 8" nextStep="NoOpStep 9" pctComplete="10"/>
+    <noopStep name="NoOpStep 9" nextStep="NoOpStep 10" pctComplete="10"/>
+    <noopStep name="NoOpStep 10" nextStep="NoOpStep 11" pctComplete="10"/>
+    <noopStep name="NoOpStep 11" nextStep="NoOpStep 12" pctComplete="10"/>
+    <noopStep name="NoOpStep 12" nextStep="NoOpStep 13" pctComplete="10"/>
+    <noopStep name="NoOpStep 13" nextStep="NoOpStep 14" pctComplete="10"/>
+    <noopStep name="NoOpStep 14" nextStep="NoOpStep 15" pctComplete="10"/>
+    <noopStep name="NoOpStep 15" nextStep="NoOpStep 16" pctComplete="10"/>
+    <noopStep name="NoOpStep 16" nextStep="NoOpStep 17" pctComplete="10"/>
+    <noopStep name="NoOpStep 17" nextStep="NoOpStep 18" pctComplete="10"/>
+    <noopStep name="NoOpStep 18" nextStep="NoOpStep 19" pctComplete="10"/>
+    <noopStep name="NoOpStep 19" nextStep="NoOpStep 20" pctComplete="10"/>
+    <noopStep name="NoOpStep 20" nextStep="NoOpStep 21" pctComplete="10"/>
+    <noopStep name="NoOpStep 21" nextStep="NoOpStep 22" pctComplete="10"/>
+    <noopStep name="NoOpStep 22" nextStep="NoOpStep 23" pctComplete="10"/>
+    <noopStep name="NoOpStep 23" nextStep="NoOpStep 24" pctComplete="10"/>
+    <noopStep name="NoOpStep 24" nextStep="NoOpStep 25" pctComplete="10"/>
+    <noopStep name="NoOpStep 25" nextStep="NoOpStep 26" pctComplete="10"/>
+    <noopStep name="NoOpStep 26" nextStep="NoOpStep 27" pctComplete="10"/>
+    <noopStep name="NoOpStep 27" nextStep="NoOpStep 28" pctComplete="10"/>
+    <noopStep name="NoOpStep 28" nextStep="NoOpStep 29" pctComplete="10"/>
+    <noopStep name="NoOpStep 29" nextStep="NoOpStep 30" pctComplete="10"/>
+    <noopStep name="NoOpStep 30" nextStep="NoOpStep 31" pctComplete="10"/>
+    <noopStep name="NoOpStep 31" nextStep="NoOpStep 32" pctComplete="10"/>
+    <noopStep name="NoOpStep 32" nextStep="NoOpStep 33" pctComplete="10"/>
+    <noopStep name="NoOpStep 33" nextStep="NoOpStep 34" pctComplete="10"/>
+    <noopStep name="NoOpStep 34" nextStep="NoOpStep 35" pctComplete="10"/>
+    <noopStep name="NoOpStep 35" nextStep="NoOpStep 36" pctComplete="10"/>
+    <noopStep name="NoOpStep 36" nextStep="NoOpStep 37" pctComplete="10"/>
+    <noopStep name="NoOpStep 37" nextStep="NoOpStep 38" pctComplete="10"/>
+    <noopStep name="NoOpStep 38" nextStep="NoOpStep 39" pctComplete="10"/>
+    <noopStep name="NoOpStep 39" nextStep="NoOpStep 40" pctComplete="10"/>
+    <noopStep name="NoOpStep 40" nextStep="NoOpStep 41" pctComplete="10"/>
+    <noopStep name="NoOpStep 41" nextStep="NoOpStep 42" pctComplete="10"/>
+    <noopStep name="NoOpStep 42" nextStep="NoOpStep 43" pctComplete="10"/>
+    <noopStep name="NoOpStep 43" nextStep="NoOpStep 44" pctComplete="10"/>
+    <noopStep name="NoOpStep 44" nextStep="NoOpStep 45" pctComplete="10"/>
+    <noopStep name="NoOpStep 45" nextStep="NoOpStep 46" pctComplete="10"/>
+    <noopStep name="NoOpStep 46" nextStep="NoOpStep 47" pctComplete="10"/>
+    <noopStep name="NoOpStep 47" nextStep="NoOpStep 48" pctComplete="10"/>
+    <noopStep name="NoOpStep 48" nextStep="NoOpStep 49" pctComplete="10"/>
+    <noopStep name="NoOpStep 49" nextStep="NoOpStep 50" pctComplete="10"/>
+    <noopStep name="NoOpStep 50" nextStep="NoOpStep 51" pctComplete="10"/>
+    <noopStep name="NoOpStep 51" nextStep="NoOpStep 52" pctComplete="10"/>
+    <noopStep name="NoOpStep 52" nextStep="NoOpStep 53" pctComplete="10"/>
+    <noopStep name="NoOpStep 53" nextStep="NoOpStep 54" pctComplete="10"/>
+    <noopStep name="NoOpStep 54" nextStep="NoOpStep 55" pctComplete="10"/>
+    <noopStep name="NoOpStep 55" nextStep="NoOpStep 56" pctComplete="10"/>
+    <noopStep name="NoOpStep 56" nextStep="NoOpStep 57" pctComplete="10"/>
+    <noopStep name="NoOpStep 57" nextStep="NoOpStep 58" pctComplete="10"/>
+    <noopStep name="NoOpStep 58" nextStep="NoOpStep 59" pctComplete="10"/>
+    <noopStep name="NoOpStep 59" nextStep="NoOpStep 60" pctComplete="10"/>
+    <noopStep name="NoOpStep 60" nextStep="NoOpStep 61" pctComplete="10"/>
+    <noopStep name="NoOpStep 61" nextStep="NoOpStep 62" pctComplete="10"/>
+    <noopStep name="NoOpStep 62" nextStep="NoOpStep 63" pctComplete="10"/>
+    <noopStep name="NoOpStep 63" nextStep="NoOpStep 64" pctComplete="10"/>
+    <noopStep name="NoOpStep 64" nextStep="NoOpStep 65" pctComplete="10"/>
+    <noopStep name="NoOpStep 65" nextStep="NoOpStep 66" pctComplete="10"/>
+    <noopStep name="NoOpStep 66" nextStep="NoOpStep 67" pctComplete="10"/>
+    <noopStep name="NoOpStep 67" nextStep="NoOpStep 68" pctComplete="10"/>
+    <noopStep name="NoOpStep 68" nextStep="NoOpStep 69" pctComplete="10"/>
+    <noopStep name="NoOpStep 69" nextStep="NoOpStep 70" pctComplete="10"/>
+    <noopStep name="NoOpStep 70" nextStep="NoOpStep 71" pctComplete="10"/>
+    <noopStep name="NoOpStep 71" nextStep="NoOpStep 72" pctComplete="10"/>
+    <noopStep name="NoOpStep 72" nextStep="NoOpStep 73" pctComplete="10"/>
+    <noopStep name="NoOpStep 73" nextStep="NoOpStep 74" pctComplete="10"/>
+    <noopStep name="NoOpStep 74" nextStep="NoOpStep 75" pctComplete="10"/>
+    <noopStep name="NoOpStep 75" nextStep="NoOpStep 76" pctComplete="10"/>
+    <noopStep name="NoOpStep 76" nextStep="NoOpStep 77" pctComplete="10"/>
+    <noopStep name="NoOpStep 77" nextStep="NoOpStep 78" pctComplete="10"/>
+    <noopStep name="NoOpStep 78" nextStep="NoOpStep 79" pctComplete="10"/>
+    <noopStep name="NoOpStep 79" nextStep="NoOpStep 80" pctComplete="10"/>
+    <noopStep name="NoOpStep 80" nextStep="NoOpStep 81" pctComplete="10"/>
+    <noopStep name="NoOpStep 81" nextStep="NoOpStep 82" pctComplete="10"/>
+    <noopStep name="NoOpStep 82" nextStep="NoOpStep 83" pctComplete="10"/>
+    <noopStep name="NoOpStep 83" nextStep="NoOpStep 84" pctComplete="10"/>
+    <noopStep name="NoOpStep 84" nextStep="NoOpStep 85" pctComplete="10"/>
+    <noopStep name="NoOpStep 85" nextStep="NoOpStep 86" pctComplete="10"/>
+    <noopStep name="NoOpStep 86" nextStep="NoOpStep 87" pctComplete="10"/>
+    <noopStep name="NoOpStep 87" nextStep="NoOpStep 88" pctComplete="10"/>
+    <noopStep name="NoOpStep 88" nextStep="NoOpStep 89" pctComplete="10"/>
+    <noopStep name="NoOpStep 89" nextStep="NoOpStep 90" pctComplete="10"/>
+    <noopStep name="NoOpStep 90" nextStep="NoOpStep 91" pctComplete="10"/>
+    <noopStep name="NoOpStep 91" nextStep="NoOpStep 92" pctComplete="10"/>
+    <noopStep name="NoOpStep 92" nextStep="NoOpStep 93" pctComplete="10"/>
+    <noopStep name="NoOpStep 93" nextStep="NoOpStep 94" pctComplete="10"/>
+    <noopStep name="NoOpStep 94" nextStep="NoOpStep 95" pctComplete="10"/>
+    <noopStep name="NoOpStep 95" nextStep="NoOpStep 96" pctComplete="10"/>
+    <noopStep name="NoOpStep 96" nextStep="NoOpStep 97" pctComplete="10"/>
+    <noopStep name="NoOpStep 97" nextStep="NoOpStep 98" pctComplete="10"/>
+    <noopStep name="NoOpStep 98" nextStep="NoOpStep 99" pctComplete="10"/>
+    <noopStep name="NoOpStep 99" nextStep="NoOpStep 100" pctComplete="10"/>
+    <noopStep name="NoOpStep 100" pctComplete="15">
+        <transition condition="${runSubflow}">
+            <targetStepName>populate subflow array</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end - set total time</targetStepName>
+        </transition>
+    </noopStep>
+    ​
+    <groovyStep name="populate subflow array"
+                resultDataDef="subflowArray"
+                nextStep="execute noopSubflows"
+                pctComplete="20"
+    >
+        <script>
+            <![CDATA[
+                def values = [];
+                for (int i = 0; i < numberOfSubflows; ++i) {
+                    values.add(i);
+                }
+                return values;
+            ]]>
+        </script>
+    </groovyStep>
+    ​
+    <executeSubflowStep name="execute noopSubflows"
+                        targetWorkflowId="noopChildFlow"
+                        subjectChangePath="${subflowArray.size() &gt; subflowBatchSize ? subflowArray.subList(0, subflowBatchSize) : subflowArray.subList(0, subflowArray.size())}"
+                        subflowTargetDataDef="integerValue">
+        <transition condition="${subflowArray.size() &gt; subflowBatchSize}">
+            <targetStepName>reduce array</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end - set total time</targetStepName>
+        </transition>
+    </executeSubflowStep>
+    ​
+    <setContextData name="reduce array"
+                    targetDataDef="subflowArray"
+                    valueExpression="${subflowArray.subList(subflowBatchSize, subflowArray.size())}"
+                    nextStep="execute noopSubflows" pctComplete="10"/>
+    ​
+    <setContextData name="end - set total time"
+                    targetDataDef="totalTime"
+                    valueExpression="${T(String).valueOf(#this.getStartDate().getTime() - thisExecution.getStartDate().getTime())}" pctComplete="90"/>
+    ​
+    ​
+    <!--  Context Data  -->
+    <contextDataDef name="subflowBatchSize" dataType="Integer" defaultDataExpression="20"/>
+    <contextDataDef name="thisExecution" dataType="Data Object" defaultDataExpression="${#this}"/>
+    <contextDataDef name="subflowArray" dataType="Integer" multiple="true"/>
+    <contextDataDef name="numberOfSubflows" label="Number of Subflows:" dataType="Integer" userInput="true" defaultDataExpression="100"/>
+    <contextDataDef name="runSubflow" dataType="Boolean" userInput="true" defaultDataExpression="false"/>
+    <contextDataDef name="totalTime" dataType="String"/>
+</workflow>

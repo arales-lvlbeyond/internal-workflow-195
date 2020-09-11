@@ -1,0 +1,112 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="testThisNow"
+	name="Test This Now - get list of asset names and generate CSV with sizes"
+	executionLabelExpression="Fetching assets with RQL: ${rqlString}"
+	subjectDOClassName=""
+	hasDownload="true"
+	showInUserInterface="true"
+	resultDataDef="assets"
+	sdkVersion=""
+>
+	​
+	<initialStepName>get all assets</initialStepName>
+	​
+	<queryStep name="get all assets"
+		targetDataObjectClass="AssetMaster"
+		resultDataDef="assets"
+		nextStep="get assets by RQL"/>
+	​
+	<groovyStep
+		name="get assets by RQL"
+		executionLabelExpression="RQL: ${rqlString}"
+		resultDataDef="jsonArray"
+		nextStep="set download file">
+		<script>
+            <![CDATA[
+			import com.fasterxml.jackson.databind.JsonNode
+			import com.levelsbeyond.service.inventory.InventorySearchCriteria
+			import com.levelsbeyond.service.inventory.InventorySearchService
+			import com.levelsbeyond.service.inventory.reference.InventoryReferenceService
+			import com.routeto1.data.IDataObject
+			import com.routeto1.data.impl.DynamicDataObjectDAO
+			import com.routeto1.spring.ApplicationContextHolder
+			import com.csvreader.CsvWriter
+			import java.nio.charset.StandardCharsets
+			​
+			InventorySearchService inventorySearchService = ApplicationContextHolder.getApplicationContext().getBean(InventorySearchService.class)
+			// DynamicDataObjectDAO dataObjectDAO = ApplicationContextHolder.getApplicationContext().getBean(DynamicDataObjectDAO.class)
+			// InventoryReferenceService inventoryReferenceService = ApplicationContextHolder.getApplicationContext().getBean(InventoryReferenceService.class)
+			​
+			def jsonArray = new ArrayList()
+			char delim = ','
+			​
+			csvWriter = new CsvWriter(outputCsvFile.createOutputStream(), delim, StandardCharsets.UTF_8)
+			// Write out headers
+			csvWriter.write('name')
+			csvWriter.write('sourceFilePath')
+			csvWriter.write('id')
+			csvWriter.write('inventoryKey')
+			csvWriter.write('size')
+			csvWriter.endRecord()
+			​
+			assets.each { asset ->
+				def rqlString = 'name = "' + asset.getName() + '" and (inventoryKey = "video" or inventoryKey = "image" or inventoryKey = "audio" or inventoryKey = "document")'
+				InventorySearchCriteria criteria = InventorySearchCriteria.builder()
+					.setRql(rqlString)
+					.build()
+				Collection<JsonNode> esResults = inventorySearchService.search(criteria).getResults()
+				esResults.each { record ->
+					csvWriter.write(record.get("name").toString())
+					csvWriter.write(record.get("sourceFilePath").toString())
+					csvWriter.write(record.get("id").toString())
+					csvWriter.write(record.get("inventoryKey").toString())
+					csvWriter.write(record.get("technicalMetadata").get("fileSize").toString())
+					csvWriter.endRecord()
+					jsonArray.add(record)
+				}
+//                esResults.each { record ->
+//                    IDataObject dataObject = dataObjectDAO.findById(inventoryReferenceService.getDataObjectClassForKey(record.get("inventoryTypeName").asText()), record.get("id").asText())
+//                    assetArray.add(dataObject)
+//                }
+			}
+			csvWriter.flush()
+			csvWriter.close()
+			return jsonArray
+			]]>
+        </script>
+	</groovyStep>
+	​
+	<setWorkflowDownloadStep name="set download file"
+		sourceFileExpression="${outputCsvFile}"
+		continueOnException="true"
+		executionLabelExpression="Set download to ${outputCsvFile.name}"
+		nextStep="end"/>
+	​
+	<noopStep name="end"/>
+	​
+	<contextDataDef name="assets" dataType="Data Object" multiple="true"/>
+	<contextDataDef name="jsonArray" dataType="JSON" multiple="true"/>
+	<contextDataDef name="tempPath" dataType="String" defaultDataExpression="${#sysconfig('filesystem.root.temp')}"/>
+	<contextDataDef name="outputCsv" dataType="String" defaultDataExpression="${tempPath}/output_${#uuid()}.csv"/>
+	<contextDataDef name="outputCsvFile" dataType="File" defaultDataExpression="${outputCsv}"/>
+</workflow>

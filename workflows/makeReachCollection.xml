@@ -1,0 +1,58 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.5.xsd"
+    id="makeReachCollection"
+    name="Make Reach collection"
+    executionLabelExpression="Making collection ${collectionName} if not found"
+    description=""
+    subjectDOClassName=""
+    showInUserInterface="false"
+    resultDataDef="collectionName"
+    sdkVersion="">
+
+    <initialStepName>query for collection</initialStepName>
+
+
+
+    <queryStep
+        name="query for collection"
+        executionLabelExpression="Checking to see if collection ${collectionName} exists >>> ${collection != null}"
+        targetDataObjectClass="AssetCollection"
+        resultDataDef="collection">
+        <transition condition="${collection == null}">
+            <targetStepName>create collection</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+
+        <criteria>
+            <![CDATA[
+         <criteria>
+             <and>
+                 <condition property="name" op="eq">
+                     <test value="${collectionName}" />
+                 </condition>
+             </and>
+         </criteria>
+     ]]>
+        </criteria>
+    </queryStep>
+
+    <saveDataObjectStep name="create collection"
+        targetDataObjectClass="AssetCollection"
+        resultDataDef="collection"
+        executionLabelExpression="Creating collection: ${collectionName}"
+        nextStep="end"
+    >
+        <property name="name">${collectionName}</property>
+    </saveDataObjectStep>
+
+
+
+
+    <noopStep name="end"/>
+    <contextDataDef name="collectionNames" dataType="String"/>
+    <contextDataDef name="collectionName" dataType="String"/>
+    <contextDataDef name="collection" dataType="Data Object"/>
+</workflow>

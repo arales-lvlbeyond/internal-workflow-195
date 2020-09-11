@@ -1,0 +1,45 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="conurrentGroovyParent"
+          name="Concurrent Groovy Parent"
+          executionLabelExpression="Concurrent Groovy Parent ${singleThing.getClass().toString()}"
+          description=""
+          subjectDOClassName=""
+          showInUserInterface="true"
+          resultDataDef=""
+          subjectQualifierExpression=""
+
+          sdkVersion="">
+
+    <initialStepName>launch subflows</initialStepName>
+
+    <executeSubflowStep name="launch subflows"
+                        targetWorkflowId="concurrentGroovySubflow"
+                        subjectChangePath="${multipleInts}"
+                        subflowTargetDataDef="inputInt"
+                        resultDataDef="subflowResults"
+                        nextStep="check results">
+
+    </executeSubflowStep>
+
+    <noopStep name="check results"
+              executionLabelExpression="${subflowResults[0].getClass().toString()}">
+        <transition condition="${!subflowResults.contains(10)}">
+            <targetStepName>fail</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </noopStep>
+
+    <noopStep name="end"/>
+
+    <failWorkflowStep name="fail" reasonExpression="Expected result not found"/>
+
+    <contextDataDef name="multipleInts" dataType="Integer" multiple="true" defaultDataExpression="|10|12|14|16|18|20|22|24|26|"/>
+    <contextDataDef name="subflowResults" dataType="Integer" multiple="true"/>
+    <contextDataDef name="singleThing" dataType="Integer" defaultDataExpression="10"/>
+
+</workflow>

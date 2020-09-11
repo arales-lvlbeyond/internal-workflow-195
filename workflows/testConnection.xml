@@ -1,0 +1,80 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+	http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="testConnection"
+	name="Test Connection"
+	description=""
+	executionLabelExpression="Testing Connection"
+	showInUserInterface="true"
+	subjectDOClassName=""
+	resultDataDef=""
+	deadlineExpression=""
+	sdkVersion="">
+
+	<initialStepName>test 1</initialStepName>
+	
+	<submitHttpStep
+        name="test 1"
+        urlExpression="${frameioURL}"
+        requestMethodExpression="GET"
+        responseCodeDataDef="frameioResponseCode"
+        responsePayloadDataDef="frameioResponseString"
+        continueOnException="false"
+        nextStep="test 2"
+        >
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="Authorization">Bearer fio-u-NWm_e-SLY-xX8jJ3_hfBt5pNKV-E6uaXDYQs2HwQqIzRv2nyXNcA5gqJFlIUyCHp</requestHeader>
+    </submitHttpStep>
+
+    <runCommandStep name="test 2"
+        executablePathExpression="/usr/bin/curl"
+        stdoutDataDef="curlResponse" 
+        stderrDataDef="curlErr"
+        continueOnException="false"
+        nextStep="test 3"
+        >
+        
+        <arg>-X</arg>
+    	<arg>GET</arg>
+    	<arg>-H</arg>
+    	<arg>Content-Type:application/json</arg>
+        <arg>-H</arg>
+        <arg>Authorization:Bearer fio-u-NWm_e-SLY-xX8jJ3_hfBt5pNKV-E6uaXDYQs2HwQqIzRv2nyXNcA5gqJFlIUyCHp</arg>
+        <arg>${frameioURL}</arg>
+        
+    </runCommandStep>
+
+    <groovyStep name="test 3"
+        executionLabelExpression="Setting Ownership on Asset with ID ${assetId}"
+        resultDataDef="groovyResult"
+        continueOnException="false"
+        nextStep="end"
+        >
+        <script>
+            <![CDATA[
+               connection = new URL(frameioURL).openConnection()
+               connection.setRequestProperty("Content-Type", "application/json")
+               connection.setRequestProperty("Authorization", "Bearer fio-u-NWm_e-SLY-xX8jJ3_hfBt5pNKV-E6uaXDYQs2HwQqIzRv2nyXNcA5gqJFlIUyCHp")
+
+               responseCode = connection.responseCode
+
+               return responseCode;
+            ]]>
+        </script>
+    </groovyStep>
+
+	<noopStep name="end" />
+	
+	
+	<!-- ........................................... Context Data Defs .......................................... -->
+	<contextDataDef name="frameioURL"               dataType="String"       defaultDataExpression="https://api.frame.io/v2/projects/18edec97-7bc3-4454-8651-8e598282013c"/>
+    <contextDataDef name="frameBearer"              dataType="String"       defaultDataExpression="${#sysconfig('workflow.frameio.bearerToken')}"/>
+    <contextDataDef name="frameioResponseCode"      dataType="Integer"/>
+    <contextDataDef name="frameioResponseString"    dataType="String"/>
+    <contextDataDef name="curlResponse"    dataType="String"/>
+    <contextDataDef name="curlErr"    dataType="String"/>
+    <contextDataDef name="groovyResult" dataType="String"/>
+    <contextDataDef name="frameBearer"              dataType="String"       defaultDataExpression="fio-u-NWm_e-SLY-xX8jJ3_hfBt5pNKV-E6uaXDYQs2HwQqIzRv2nyXNcA5gqJFlIUyCHp"/>
+
+</workflow>

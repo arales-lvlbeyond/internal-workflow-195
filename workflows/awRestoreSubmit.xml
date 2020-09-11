@@ -1,0 +1,72 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://www.reachengine.com/schema http://www.reachengine.com/schema/latest/studio.xsd"
+	sdkVersion="5.0"
+	
+	id="awRestoreSubmit"
+	name="Submit Restore Queue"
+	executionLabelExpression="Test Submit Restore Queue"
+	subjectDOClassName="AssetCollection"
+	subjectQualifierExpression=""
+	showInUserInterface="true"
+	group="Archiware Restore"
+>
+	
+	<initialStepName>Convert Queue to Job - Name</initialStepName>
+	
+	<groovyStep name="nothing" resultDataDef="something">
+		<![CDATA[
+			return "boom"
+		]]>
+	</groovyStep>
+	
+	<saveDataObjectStep name="Convert Queue to Job - Name"
+		executionLabelExpression="Converting ${subject.name}"
+		dataObjectExpression="${subject}"
+		nextStep="Convert Queue to Job - Properties"
+	>
+		<property name="name">helllllloooo</property>
+	</saveDataObjectStep>
+	
+	<saveDataObjectStep name="Convert Queue to Job - Properties"
+		executionLabelExpression="Converting ${subject.name}"
+		dataObjectExpression="${subject.metadata}"
+		nextStep="end"
+		>
+		<property name="awJobStatus">${jobStatus}</property>
+		<property name="awJobNumber">${jobNumber}</property>
+	</saveDataObjectStep>
+	
+	<noopStep name="end"/>
+	
+	
+	<!-- CONTEXT DATA DEFS -->
+	
+	<contextDataDef name="jobNumber" dataType="String" defaultDataExpression="65468465"/>
+	
+	<contextDataDef name="jobNumberProperty"
+		dataType="String"
+		defaultDataExpression="awJobNumber"/>
+	
+	<contextDataDef name="jobStatus"
+		dataType="String" defaultDataExpression="Running"/>
+	
+	<contextDataDef name="jobStatusProperty"
+		dataType="String"
+		defaultDataExpression="${#sysconfig('aw.property.jobStatus')}"/>
+	
+	<contextDataDef name="jsonMetadata" dataType="JSON">
+		<defaultDataExpression>
+			<![CDATA[
+				{
+					'awJobStatus':'${jobStatus}',
+					'awJobNumber':'${jobNumber}'
+				}
+			]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	<contextDataDef name="jsonMeta" dataType="JSON"/>
+	
+	<contextDataDef name="something" dataType="String"/>
+</workflow>

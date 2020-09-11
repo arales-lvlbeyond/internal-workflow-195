@@ -1,0 +1,37 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="uploadProxy"
+          name="Upload Proxy File"
+          executionLabelExpression="Uploading Proxy for ${subject.name}"
+          description=""
+          showInUserInterface="true"
+          subjectDOClassName="VideoAssetMaster"
+          subjectQualifierExpression=""
+          sdkVersion="">
+
+    <initialStepName>save proxy</initialStepName>
+
+	<saveAssetStep name="save proxy"
+		contentExpression="${proxyFile}"
+		contentUseExpression="Proxy"
+		versionAssetExpression="false"
+		assetExpression="${subject.currentVersion}"
+		executionLabelExpression="Save new proxy to asset | file: ${proxyFile?.absolutePath}"
+		nextStep="end"
+		>
+	</saveAssetStep>
+
+    <!-- ..............................End States ...................................... -->
+
+	<noopStep name="end"/>
+
+
+    <!-- .............................. Context Data Defs ...................................... -->
+	<!--input-->
+
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="proxyFile" dataType="File" userInput="true" required="true"/>
+
+</workflow>

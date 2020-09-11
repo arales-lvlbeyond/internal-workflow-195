@@ -1,0 +1,51 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="deleteAssetMasterContents"
+          name="Delete Asset Master Contents"
+          executionLabelExpression="Delete Asset Master Contents - ${subject.name}"
+          description=""
+          showInUserInterface="false"
+          subjectDOClassName="AssetMaster"
+          subjectQualifierExpression=""
+          sdkVersion="">
+
+    <initialStepName>check files and contents</initialStepName>
+
+    <noopStep name="check files and contents">
+        <transition condition="${files != null and files.size() > 0}">
+            <targetStepName>delete files</targetStepName>
+        </transition>
+        <transition condition="${subject.contents != null}">
+            <targetStepName>delete asset contents</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </noopStep>
+
+    <deleteFileStep
+            name="delete files"
+            sourceFilesExpression="${files}"
+            executionLabelExpression="Deleting ${files.size()} files.">
+        <transition condition="${subject.contents != null}">
+            <targetStepName>delete asset contents</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </deleteFileStep>
+
+    <deleteDataObjectStep
+            name="delete asset contents"
+            executionLabelExpression="Cleaning up Asset Content entries."
+            dataObjectExpression="${ subject.contents }"
+            nextStep="end"/>
+
+    <noopStep name="end" />
+
+    <!-- Internal -->
+    <contextDataDef name="files" dataType="File" multiple="true" defaultDataExpression="${ subject.contents.![ file ] }" />
+
+</workflow>

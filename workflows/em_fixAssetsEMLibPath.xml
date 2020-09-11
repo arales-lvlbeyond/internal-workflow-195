@@ -1,0 +1,186 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="em_fixAssetsEMLibPath"
+    name="em_Fix Assets EM Library Path"
+    executionLabelExpression="Fix Assets EM Library Path | Assets before: ${#formatDate('yyyy-MM-dd', cutOffDate)}"
+    subjectDOClassName=""
+    showInUserInterface="true"
+    adminOnly="true"
+    sdkVersion=""
+    devWorkflow="true"
+    >
+    
+    
+    <initialStepName>find assets to check</initialStepName>
+    
+    
+    <queryStep name="find assets to check"
+        pctComplete="25"
+        targetDataObjectClass="AssetMaster"
+        resultDataDef="assets"
+        >
+        <transition condition="${assets.size() &gt; 0}">
+            <targetStepName>query for running subflows</targetStepName>
+        </transition> 
+        <transition condition="true">
+            <targetStepName>set last loop true</targetStepName>
+        </transition>
+        <criteria>
+        <![CDATA[
+            <criteria>
+                <and>
+                    <condition property="metadata.arcisilonPath" op="notnull" nullTargets="false"/>
+                    <condition property="metadata.emlibraryPath" op="isnull"/>
+                    <condition property="assetType" op="noteq">
+                        <test value="Video"/>
+                    </condition>
+                    <condition property="dateCreated" op="lt" nullTargets="false">
+                        <test value="${#formatDate('yyyy-MM-dd', cutOffDate)}"/>
+                    </condition>
+                    <condition property="metadata.repoOnArcisilon" op="eq" nullTargets="false">
+                        <test value="true"/>
+                    </condition>
+                </and>
+            </criteria>
+        ]]>
+        </criteria>
+    </queryStep>
+    
+    
+    <setContextData name="set last loop true"
+        targetDataDef="lastLoop"
+        valueExpression="true"
+        pctComplete="50"
+        devStep="true"
+        nextStep="end"
+        />
+    
+    
+    <!-- ................................................... Queue Loop ................................................... -->
+    <queryStep name="query for running subflows"
+        targetDataObjectClass="WorkflowExecution"
+        resultDataDef="executingSubflows"
+        executionLabelExpression="checking for workflows (with id = ${subflowId})"
+        devStep="true"
+        nextStep="check running subflows"
+        >
+        <criteria>
+            <![CDATA[
+            <criteria>
+                <and>
+                    <condition property="workflowVersion.workflow.key" op="eq">
+                        <test value="${subflowId}"/>
+                    </condition>
+                    <condition property="status" op="in">
+                        <tests>
+                            <test value="CREATED" />
+                            <test value="QUEUED" />
+                            <test value="EXECUTING" />
+                         </tests>
+                    </condition>
+                </and>
+            </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+    
+    
+    <noopStep name="check running subflows"
+        executionLabelExpression="number of subflows (id = ${subflowId}) running >>> ${executingSubflows.size()} out of ${queueLimit}"
+        devStep="true"
+        >
+        <transition condition="${ executingSubflows.size() &lt; queueLimit }">
+            <targetStepName>ready next assets</targetStepName>
+        </transition>
+        <transition condition="${ true }">
+            <targetStepName>queue full</targetStepName>
+        </transition>
+    </noopStep>
+    
+    
+    <delayStep name="queue full"
+        delaySecondsExpression="${ queryPollInterval }"
+        executionLabelExpression="${assets.size()} assets remaining | Subflows running: ${executingSubflows.size()}/${queueLimit} | Waiting ${queryPollInterval} seconds."
+        nextStep="query for running subflows"
+        />
+    
+    
+    <setContextData name="ready next assets"
+        targetDataDef="nextAssets"
+        valueExpression="${assets.size() &gt; batchSize ? assets.subList(0, batchSize) : assets.subList(0, assets.size()) }"
+        executionLabelExpression="got ${nextAssets.size()} assets to process"
+        nextStep="remove assets from main list"
+        devStep="true"
+        />
+    
+    
+    <groovyStep name="remove assets from main list"
+        resultDataDef="assets"
+        executionLabelExpression="remove ${nextAssets.size()} assets from the main list"
+        nextStep="process assets"
+        devStep="true"
+        >
+        <script>
+            <![CDATA[
+	        assets.removeAll(nextAssets)
+	        return assets
+	     ]]>
+        </script>
+    </groovyStep>
+    
+    
+    <executeSubflowStep name="process assets"
+        executionLabelExpression="Preparing ${nextAssets.size()} assets to check. | ${assets.size()} assets remaining | Subflows running: ${executingSubflows.size()}/${queueLimit}"
+        targetWorkflowId="${subflowId}"
+        subjectChangePath="${nextAssets}"
+        subflowTargetDataDef="itemToUpdate"
+        waitForCompletionExpression="false"
+        nextStep="check for more assets"
+        />
+    
+    
+    <noopStep name="check for more assets"
+        executionLabelExpression="number of assets remaining >>> ${assets.size()}"
+        devStep="true"
+        >
+        <transition condition="${assets.size() &gt; 0}">
+            <targetStepName>query for running subflows</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>check if last loop</targetStepName>
+        </transition>
+    </noopStep>
+    <!-- ................................................. End Queue Loop ................................................. -->
+    
+    
+    <noopStep name="check if last loop"
+        executionLabelExpression="last loop? ${lastLoop}"
+        >
+        <transition condition="${lastLoop}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>set last loop true</targetStepName>
+        </transition>
+    </noopStep>
+    
+    
+    <!-- ................................................... End Steps .................................................... -->
+    <noopStep name="end"    pctComplete="100"/>
+    
+    
+    <!-- ............................................... Context Data Defs ................................................ -->
+    <contextDataDef name="currentDate" 		        dataType="Date/Time"    defaultDataExpression="${#newDate()}"/>
+    <contextDataDef name="cutOffDate" 		        dataType="Date/Time"    defaultDataExpression="${#addDays(currentDate, -75)}"/>
+    <contextDataDef name="assets"                   dataType="Data Object"  multiple="true"/>
+    <!-- queue loop variables -->
+    <contextDataDef name="nextAssets"    		    dataType="Data Object" 	multiple="true"/>
+    <contextDataDef name="executingSubflows" 	    dataType="Data Object" 	multiple="true"/>
+    <contextDataDef name="queueLimit" 			    dataType="Integer" 		defaultDataExpression="51"/>
+    <contextDataDef name="batchSize" 		        dataType="Integer" 		defaultDataExpression="50"/>
+    <contextDataDef name="queryPollInterval"  	    dataType="Integer" 		defaultDataExpression="60"/>
+    <contextDataDef name="subflowId"      	        dataType="String" 		defaultDataExpression="em_fixAssetEMLibPath"/>
+    <contextDataDef name="lastLoop"                 dataType="Boolean"      defaultDataExpression="false"/>
+</workflow>

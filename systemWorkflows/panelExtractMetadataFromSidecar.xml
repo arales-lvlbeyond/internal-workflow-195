@@ -1,0 +1,163 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="panelExtractMetadataFromSidecar"
+	name="Panel Extract Metadata From Sidecar"
+	executionLabelExpression="Panel Extract Metadata From Sidecar | Metadata File: ${metadataFile.absolutePath}"
+	subjectDOClassName=""
+	resultDataDef="metadataForm"
+	showInUserInterface="false"
+	sdkVersion=""
+	>
+	
+	<initialStepName>check metadataFile location</initialStepName>
+	
+	
+	<noopStep name="check metadataFile location"
+		executionLabelExpression="is metadataFile in temp filesystem already? ${metadataFile.absolutePath.contains(fileSystemLocation)}"
+		pctComplete="2"
+		devStep="true"
+		>
+		<transition condition="${metadataFile.absolutePath.contains(fileSystemLocation)}">
+			<targetStepName>set temp file</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>copy file to temp</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<setContextData name="set temp file"
+		executionLabelExpression="set tempMetadataFile to original metadataFile: ${metadataFile.absolutePath}"
+		targetDataDef="tempMetadataFile"
+		valueExpression="${metadataFile}"
+		pctComplete="5"
+		devStep="true"
+		nextStep="get metadata from sidecar"
+		/>
+	
+	
+	<copyFileStep name="copy file to temp"
+		executionLabelExpression="copy file to: ${fileSystemDirectory.absolutePath}"
+		sourceFileExpression="${metadataFile}"
+		targetDirectoryExpression="${fileSystemDirectory}"
+		resultDataDef="tempMetadataFile"
+		pctComplete="5"
+		>
+		<transition condition="${tempMetadataFile.exists()}">
+			<targetStepName>get metadata from sidecar</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>copy file error</targetStepName>
+		</transition>
+	</copyFileStep>
+	
+	
+	<groovyStep name="get metadata from sidecar"
+		executionLabelExpression="get json from sidecar: ${tempMetadataFile.absolutePath}"
+		resultDataDef="metadataForm"
+		pctComplete="85"
+		>
+		<transition condition="${metadataForm.get('error') != null}">
+			<targetStepName>metadata extraction error</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>check to delete</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+			import groovy.json.JsonSlurper
+			import org.slf4j.Logger
+			import org.slf4j.LoggerFactory
+			import com.routeto1.filesystem.VirtualFile
+			import com.routeto1.filesystem.IFileWrapper
+			
+			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+			
+			try {
+				if (tempMetadataFile instanceof VirtualFile) {
+					return new JsonSlurper().parseText(tempMetadataFile.toFile().getFile().text)
+				} else if (tempMetadataFile instanceof IFileWrapper) {
+					// JSONSlurper closes the input stream after reading here.
+					return new JsonSlurper().parse(tempMetadataFile.createInputStream())
+				} else {
+				    throw new Exception("Unable to parse contents from file! " + tempMetadataFile.getClass() + " is not supported");
+				}
+			} catch(Exception e){
+				log.error("Error extracting metadata from ${tempMetadataFile.absolutePath}.", e)
+				return new JsonSlurper().parseText('{"error":"could not extract metadata"}')
+			}
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<noopStep name="check to delete"
+		executionLabelExpression="is metadataFile in temp filesystem already? ${metadataFile.absolutePath.contains(fileSystemLocation)}"
+		pctComplete="90"
+		devStep="true"
+		>
+		<transition condition="${metadataFile.absolutePath.contains(fileSystemLocation)}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>delete temp location</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<deleteFileStep name="delete temp location"
+		executionLabelExpression="deleting: ${fileSystemDirectory.absolutePath}"
+		sourceFilesExpression="${fileSystemDirectory}"
+		recurseSubfoldersExpression="true"
+		pctComplete="99"
+		nextStep="end"
+		/>
+		
+	
+	
+	<!-- Success -->
+	<noopStep name="end" pctComplete="100"/>
+	
+	
+	<!-- Fail -->
+	<failWorkflowStep name="metadata extraction error"
+		reasonExpression="Metadata extraction error: ${metadataForm.error}. Check logs for more information."
+		executionLabelExpression="Metadata extraction error: ${metadataForm.error}. Check logs for more information."
+		/>
+	
+	
+	<failWorkflowStep name="copy file error"
+		reasonExpression="Copy file error: cannot copy ${metadataFile.absolutePath} into ${fileSystemDirectory.absolutePath}. Check &quot;copy file to temp&quot; step for stack trace."
+		executionLabelExpression="Copy file error: cannot copy ${metadataFile.absolutePath} into ${fileSystemDirectory.absolutePath}. Check &quot;copy file to temp&quot; step for stack trace."
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input Variables .......... -->
+	<contextDataDef name="metadataFile" 		dataType="File"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="tempMetadataFile"     dataType="File"/>
+	<contextDataDef name="metadataForm" 		dataType="MetadataForm"/>
+	<contextDataDef name="fileSystemLocation"   dataType="String"           defaultDataExpression="${#sysconfig('filesystem.root.temp').endsWith('/') ? #sysconfig('filesystem.root.temp') : #sysconfig('filesystem.root.temp') + '/'}"/>
+	<contextDataDef name="fileSystemDirectory"  dataType="Directory"        defaultDataExpression="${fileSystemLocation}${#uuid().toString()}"/>
+</workflow>

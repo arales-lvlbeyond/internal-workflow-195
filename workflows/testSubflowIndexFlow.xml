@@ -1,0 +1,165 @@
+<!--
+    For ingesting a single assets into Reach.
+    May be triggered in Reach UI or via API.
+    Supports legacy 6-digit/show code organizational model, andouilette model, and ingesting files in place
+-->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="testSubflowIndexFlow"
+	name="Test SubflowIndex subflow"
+	executionLabelExpression="Test SubflowIndex subflow"
+	description=""
+	subjectDOClassName=""
+	sdkVersion="5.21"
+	showInUserInterface="true"
+	group="Ingest"
+>
+
+    <initialStepName>get subflow index</initialStepName>
+	
+	
+	<noopStep name="get subflow index"
+		executionLabelExpression="Subflow Index: ${subIndex}"
+		nextStep="get directory ingest revision number"
+	/>
+	
+	<!-- For directory ingests, add this subflow's index to base revision number -->
+	<!--<setContextData name="get directory ingest revision number"-->
+		<!--targetDataDef="revisionNumber"-->
+		<!--valueExpression="${revisionNumber + (#this.workflow.subflowIndex != null ? #this.workflow.subflowIndex : 0)}"-->
+		<!--executionLabelExpression="Directory Ingest Revision: ${revisionNumber + (#this.workflow.subflowIndex != null ? #this.workflow.subflowIndex : 0)}"-->
+		<!--nextStep="end"-->
+	<!--/>-->
+	
+	<setContextData name="get directory ingest revision number"
+		targetDataDef="revisionNumber"
+		valueExpression="${revisionNumber + (#this.workflow.subflowIndex != null ? #this.workflow.subflowIndex : 0)}"
+		executionLabelExpression="Directory Ingest Revision: ${(#this.workflow.subflowIndex != null ? #this.workflow.subflowIndex : 0)}"
+		nextStep="end"
+	/>
+
+	
+	
+	<!-- ............................................... End Steps ................................................ -->
+	<!-- Success -->
+	<noopStep name="end"	pctComplete="100" 	executionLabelExpression="Success!"/>
+	
+	<!-- Fail -->
+	<createFailureNotificationStep name="invalid file notification"
+		notificationTypeExpression="Failure"
+		notificationBodyExpression="Could not ingest file. No sourcefile found."
+		nextStep="ingest failed"
+	/>
+
+
+    <createFailureNotificationStep name="ingest collision notification"
+	    notificationTypeExpression="Failure"
+	    notificationBodyExpression="Error: ${} is already being ingested"
+	    nextStep="ingest failed"
+    />
+
+
+    <createFailureNotificationStep name="move file failure notification"
+	    notificationTypeExpression="Failure"
+	    notificationBodyExpression="Could not ingest file. Failed while moving and renaming file."
+	    nextStep="ingest failed"
+    />
+
+
+    <failWorkflowStep name="ingest failed"
+	    reasonExpression="Ingest Failed"
+	    executionLabelExpression="Ingest Failed. See above steps for error."
+    />
+	
+	
+	<!-- ........................................... Context Data Defs ............................................ -->
+	<!-- ....... User Inputs ........ -->
+	<contextDataDef name="sourceFile"		dataType="File"			userInput="true"    label="File To Ingest"  displayIndex="1"  required="true"/>
+	<!--<contextDataDef name="metadataForm"     dataType="MetadataForm" userInput="true"    />-->
+	<!--<contextDataDef name="showCode" 		dataType="String" 		label="Show Code" 	userInput="true"	displayIndex="2" required="true">-->
+        <!--<picklist>-->
+            <!--<metadataProperty>showCodes</metadataProperty>-->
+        <!--</picklist>-->
+    <!--</contextDataDef>-->
+    <contextDataDef name="episodeNumber" 	dataType="String"		label="Episode Number" 			userInput="true" required="true"	displayIndex="3"/>
+    <contextDataDef name="seasonNumber" 	dataType="Integer"		label="Season Number"			userInput="true" required="false"	displayIndex="4"/>
+    <!--<contextDataDef name="elementType" 	    dataType="String"		label="Production Element Type"	userInput="true" required="true"	displayIndex="5">-->
+        <!--<picklist>-->
+            <!--<metadataProperty>productionElementType</metadataProperty>-->
+        <!--</picklist>-->
+    <!--</contextDataDef>-->
+    <contextDataDef name="clipDescription" 	dataType="String"		label="Description"					  userInput="true" required="false"	displayIndex="6"/>
+    <contextDataDef name="categories" 		dataType="Data Object" 	label="Additional Categories"         userInput="true" required="false"	displayIndex="7">
+        <picklist>
+            <dataObjectSearch dataObjectClass="AssetCategory">
+                <searchPath>name</searchPath>
+            </dataObjectSearch>
+        </picklist>
+    </contextDataDef>
+    <contextDataDef name="sixDigit"				dataType="String"	label="Six Digit" 					userInput="true" 	required="false"  displayIndex="8"/>
+    <contextDataDef name="saveOrigName"     	dataType="Boolean"  label="Use Original Filename" 		userInput="true"  	defaultDataExpression="false" displayIndex="9"/>
+	
+	<!--Disabled manual revisions, collections and metadata form entry for now-->
+	<!--<contextDataDef name="createCollection" 	dataType="Boolean"  label="Create Collection"          userInput="false" 	defaultDataExpression="false"/>-->
+	<contextDataDef name="collections"		dataType="Data Object"	userInput="false"   label="Collections"  	displayIndex="2"  multiple="true">
+        <picklist>
+            <dataObjectSearch dataObjectClass="AssetCollection">
+                <searchPath>name</searchPath>
+            </dataObjectSearch>
+        </picklist>
+    </contextDataDef>
+	
+	<!-- ....... Optional API Inputs ........ -->
+	<contextDataDef name="ingestInPlace"        	dataType="Boolean"          defaultDataExpression="false"/>
+    <contextDataDef name="directoryIngest"        	dataType="Boolean"          defaultDataExpression="false"/>
+    <contextDataDef name="revisionNumber" 		    dataType="Integer"  defaultDataExpression="0"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="assetMaster" 			    dataType="Data Object"/>
+    <contextDataDef name="sourceFilename"        	dataType="String"       defaultDataExpression="${#filename(sourceFile)}"/>
+    <contextDataDef name="sourceFilepath"      	    dataType="File"         defaultDataExpression="${sourceFile.absolutePath}"/> <!-- Q: why does this resolve to mezzanines/filename?-->
+	<contextDataDef name="extension"        		dataType="String"       defaultDataExpression="${#extension(sourceFile)}"/>
+    <contextDataDef name="elementTypeLabel"    		dataType="String"       defaultDataExpression="${#picklistLabel('productionElementType', elementType)}"/>
+    <!--<contextDataDef name="propertyFilename"    		dataType="String"       defaultDataExpression="${#picklistLabel('propertyFilename', showCode)}"/>-->
+    <!--<contextDataDef name="baseFilename" 			dataType="String"		defaultDataExpression="${showCode}-${episodeNumber}-${elementTypeLabel}"/>-->
+    <contextDataDef name="assetName" 				dataType="String"/>
+    <contextDataDef name="repository"           	dataType="String"		defaultDataExpression="${#sysconfig('filesystem.root.emlibrary')}/Shows"/>
+    <!--<contextDataDef name="destinationFilepath"      dataType="String"		defaultDataExpression="${repository}/${showCode}/${episodeNumber}"/>-->
+    <contextDataDef name="destinationFile"        	dataType="File"/>
+    <contextDataDef name="fileToIngest"           	dataType="File"/>
+    <contextDataDef name="categoryNames" 			dataType="String" 		multiple="true" 	defaultDataExpression="Shows, ${categories?.name}"/>
+    <contextDataDef name="techUser"          		dataType="String"       defaultDataExpression="${#this.startedBy.userName}"/>
+    <contextDataDef name="medialogID"          		dataType="String"/>
+    <contextDataDef name="jsonMetadata"             dataType="JSON">
+        <description>
+            Single JSON where:
+            Keys are metadata property names
+            Values are what to set the matching property to on this asset
+        </description>
+    </contextDataDef>
+    <contextDataDef name="linkMetadata"             dataType="JSON"             multiple="true">
+        <description>
+            Array of JSONs where:
+            Each JSON has 2 Keys (propertyName and linkInfo):
+            propertyName's value is a metadata property name of type link
+            linkInfo's value is a JSON with 2 keys (title and url):
+            title's value is the display name for the link
+            url's value is the url to open when the title is clicked on
+        </description>
+    </contextDataDef>
+	
+	<!-- ....... Options ....... -->
+	<contextDataDef name="ingestSubflow"      	    dataType="String" 		    defaultDataExpression="_anyAssetIngest"/>
+    <contextDataDef name="overwriteExisting"        dataType="Boolean"          defaultDataExpression="false"/>
+    <contextDataDef name="sourceAsMezz"             dataType="Boolean"			defaultDataExpression="true"/>
+    <contextDataDef name="failOnProxiesError"       dataType="Boolean"			defaultDataExpression="false"/>
+    <contextDataDef name="asyncProxies"             dataType="Boolean"			defaultDataExpression="true"/>
+    <contextDataDef name="failOnMetadataError"      dataType="Boolean"  		defaultDataExpression="false"/>
+    <contextDataDef name="audiotoolTypes"           dataType="String"           multiple="true" defaultDataExpression="RUF, VAM, CTM"/>
+	
+	<contextDataDef name="subIndex"             dataType="Integer"          defaultDataExpression="${#this.subflowIndex != null ? #this.subflowIndex : 0}"/>
+
+</workflow>

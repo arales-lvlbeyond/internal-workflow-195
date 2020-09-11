@@ -1,0 +1,50 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="abcem_markForPreservationCollection"
+    name="abcem_Mark Collection Assets for Preservation"
+    description="Get all Assets and VideoClips in a Collection then pass to other workflows to have Marked for Preservation category set
+    Input:Collection of Assets
+    
+    Result:All Assets and VideoClips in Collection passed to other workflows"
+    executionLabelExpression="Mark Collection Assets for Preservation | Set Marked for Preservation category for all assets in ${subject.name}"
+    showInUserInterface="true"
+    subjectDOClassName="AssetCollection"
+    devWorkflow="true"
+    sdkVersion="">
+    
+    <initialStepName>pass AssetMasters</initialStepName>
+    
+    
+    <!-- Pass all asset masters to markForPreservation -->
+    <executeSubflowStep name="pass AssetMasters"
+        executionLabelExpression="Pass all asset masters to subflow to set category"
+        targetWorkflowId="abcem_markForPreservation"
+        subjectChangePath="${assetMasters}"
+        nextStep="pass clips"/>
+    
+    
+    
+    <!-- Pass all clips to markForPreservationClip -->
+    <executeSubflowStep name="pass clips" 
+        executionLabelExpression="Pass all clips to subflow to set category"
+        targetWorkflowId="abcem_markForPreservationClip"
+        subjectChangePath="${clips}"
+        nextStep="end"/>
+    
+    
+    
+    <!-- End step -->
+    <noopStep name="end"/>
+    
+    
+    
+    
+    
+    
+    <!-- ............................................... Context Data Defs ................................................ -->
+    <contextDataDef name="assetMasters" dataType="Data Object" multiple="true" defaultDataExpression="${subject.assetItems.![asset]}"/>
+    <!-- All clips -->
+    <contextDataDef name="clips" dataType="Data Object" multiple="true" defaultDataExpression="${subject.items.![videoClip]}"/>
+    
+</workflow>

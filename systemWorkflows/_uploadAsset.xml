@@ -1,0 +1,183 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_uploadAsset"
+	name="Upload Asset"
+	executionLabelExpression="Upload Asset | Asset: ${assetData.id} | File: ${fileToUpload.name}"
+	subjectDOClassName=""
+	showInUserInterface="false"
+	sdkVersion="5.4"
+	>
+	
+	<!--
+		This workflow/subflows can hopefully be replaced/refactored with a lot less leg work to create a single asset in the future
+	-->
+	
+	<initialStepName>determine how to upload</initialStepName>
+
+	
+	<noopStep name="determine how to upload"
+		executionLabelExpression="File in s3? ${fileToUpload.getAbsolutePath().startsWith('s3')} | Signiant Configured? ${signiantCliPath != null and signiantCliConfigPath != null}"
+		pctComplete="2"
+		>
+		<transition condition="${fileToUpload.getAbsolutePath().startsWith('s3')}">
+			<targetStepName>upload s3 file</targetStepName>
+		</transition>
+		<transition condition="${signiantCliPath != null and signiantCliConfigPath != null}">
+			<targetStepName>signiant upload</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>get temp upload credentials</targetStepName>
+		</transition>
+	</noopStep>
+	
+
+	<!-- ................................................ S3 Upload Steps ................................................. -->
+	<copyFileStep name="upload s3 file"
+		executionLabelExpression="uploading S3 File"
+		sourceFileExpression="${fileToUpload}"
+		targetDirectoryExpression="s3:${assetData.get('s3BucketName').textValue()}:/"
+		targetFilenameExpression="${assetData.get('s3ObjectKey').textValue()}"
+		resultDataDef="uploadedFile"
+		continueOnException="true"
+		pctComplete="99"
+		>
+		<transition condition="${uploadedFile != null}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>upload error</targetStepName>
+		</transition>
+	</copyFileStep>
+	
+
+	<!-- ............................................. Signiant Upload Steps .............................................. -->
+	<runCommandStep name="signiant upload"
+		executablePathExpression="${signiantCliPath}"
+		resultCodeDataDef="signiantCliResultCode"
+		pctComplete="99"
+		continueOnException="true"
+		>
+		<transition condition="${signiantCliResultCode != 0}">
+			<targetStepName>signiant failed</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		
+		<arg>--config-file</arg>
+		<arg>${signiantCliConfigPath}</arg>
+		<arg>--direction</arg>
+		<arg>upload</arg>
+		<arg>${fileToUpload.getAbsolutePath()}</arg>
+		<arg>sig://${assetData.get('s3ObjectKey').textValue()}</arg>
+	</runCommandStep>
+	
+	
+	<noopStep name="signiant failed"
+		executionLabelExpression="Signiant upload failed, switching to http upload."
+		pctComplete="2"
+		nextStep="get temp upload credentials"
+		/>
+	
+
+	<!-- ............................................... Http Upload Steps ................................................ -->
+	<submitHttpStep name="get temp upload credentials"
+		requestMethodExpression="GET"
+		urlExpression="${assetServiceUrl}/assets/${assetData.id}/tempUploadCredentials"
+		responsePayloadDataDef="tempUploadCredentials"
+		pctComplete="20"
+		nextStep="upload file"
+		>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+	
+
+	<groovyStep name="upload file"
+		resultDataDef="uploadSuccess"
+		continueOnException="true"
+		pctComplete="99"
+		>
+		<transition condition="${uploadSuccess}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>upload error</targetStepName>
+		</transition>
+		
+		<script>
+		<![CDATA[
+			import com.amazonaws.auth.BasicSessionCredentials
+			import com.amazonaws.services.s3.model.PutObjectRequest
+			import com.amazonaws.services.s3.transfer.TransferManager
+			import com.amazonaws.services.s3.model.CannedAccessControlList
+			import com.amazonaws.services.s3.transfer.Upload
+
+			TransferManager tm = new TransferManager(
+					new BasicSessionCredentials(
+							tempUploadCredentials.get('accessKeyId').textValue(),
+							tempUploadCredentials.get('secretAccessKey').textValue(),
+							tempUploadCredentials.get('sessionToken').textValue()))
+
+			PutObjectRequest putObjectRequest = new PutObjectRequest(assetData.get('s3BucketName').textValue(),
+					assetData.get('s3ObjectKey').textValue(), fileToUpload.getFile())
+					.withCannedAcl(CannedAccessControlList.BucketOwnerFullControl)
+
+			Upload upload = tm.upload(putObjectRequest)
+			upload.waitForCompletion()
+
+			return true
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="upload error"
+		reasonExpression="could not upload file to collaborate."
+		executionLabelExpression="could not upload file to collaborate."
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ......... Input Variables ........... -->
+	<contextDataDef name="fileToUpload"             dataType="File"/>
+	<contextDataDef name="assetData"                dataType="JSON"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="tempUploadCredentials"    dataType="JSON"/>
+	<contextDataDef name="uploadedFile"             dataType="File"/>
+	<contextDataDef name="uploadSuccess"            dataType="Boolean"      defaultDataExpression="false"/>
+	<!-- API Config -->
+	<contextDataDef name="assetServiceUrl"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.assetService.url')}"/>
+	<contextDataDef name="cloudformApiKey"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.apiKey')}"/>
+	<!-- Signiant Config -->
+	<contextDataDef name="signiantCliResultCode"    dataType="Integer"/>
+	<contextDataDef name="signiantCliPath"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.signiantCliPath')}"/>
+	<contextDataDef name="signiantCliConfigPath"    dataType="String"       defaultDataExpression="${#sysconfig('cloudform.signiantCliConfigPath')}"/>
+
+
+</workflow>

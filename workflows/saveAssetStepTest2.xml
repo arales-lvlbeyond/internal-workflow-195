@@ -1,0 +1,121 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+-->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns="http://levelsbeyond.com/schema/workflow"
+  xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-1.2.xsd"
+  id="saveAssetStepTest2"
+  name="Save Asset Step Test - 2"
+  description=""
+  executionLabelExpression="Save Asset Step 2 Total Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+  deadlineExpression=""
+  subjectDOClassName=""
+  showInUserInterface="true"
+  resultDataDef="totalTime"
+
+  >
+  <initialStepName>create video placeholder</initialStepName>
+
+  <!--    video, image, audio, document, unclassified-->
+
+  <executeSubflowStep name="create video placeholder"
+                        targetWorkflowId="createPlaceholder"
+                        resultDataDef="placeholderVideo"
+                        nextStep="ingest to video">
+        <subflowContextDataMapping parentDataDef="setSomeMetadata" subflowDataDef="setSomeMetadata"/>
+        <subflowContextDataMapping parentDataDef="videoAssetType" subflowDataDef="assetType"/>
+        <subflowContextDataMapping parentDataDef="videoAssetName" subflowDataDef="assetName"/>
+
+    </executeSubflowStep>
+
+    <setContextData name="set directories"
+      nextStep="create directories">
+      <set targetDataDef="dir1" valueExpression="/reachengine/media/mezzanines/${#uuid()}"/>
+    </setContextData>
+
+    <runCommandStep name="create directories"
+      executablePathExpression="/bin/sh"
+      nextStep="set file paths">
+      <arg>-c</arg>
+      <arg> mkdir ${dir1.absolutePath}</arg>
+    </runCommandStep>
+
+    <setContextData name="set file paths"
+      nextStep="create file">
+      <set targetDataDef="createdFile" valueExpression="${dir1.absolutePath}/createdFile.mov"/>
+    </setContextData>
+
+    <runCommandStep name="create file"
+      executionLabelExpression="Create 10mb file"
+      executablePathExpression="/usr/bin/fallocate"
+      stdoutDataDef="stdOut"
+      nextStep="ingest to video"
+      >
+      <arg>-l</arg>
+      <arg>${10*1024*1024}</arg>
+      <arg>${createdFile.absolutePath}</arg>
+    </runCommandStep>
+
+    <saveAssetStep name="ingest to video"
+     executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+     assetExpression="${placeholderVideo}"
+     contentExpression="${createdFile}"
+     contentUseExpression="${'|SOURCE|'}"
+     resultDataDef="assetVersion"
+     nextStep="decrement"/>
+
+     <setContextData name="decrement"
+      targetDataDef="counter"
+      valueExpression="${counter-1}">
+      <transition condition="${counter &gt; 0}">
+            <targetStepName>ingest to video</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>cleanup asset 1</targetStepName>
+        </transition>
+    </setContextData>
+
+               <deleteAssetStep name="cleanup asset 1"
+                assetExpression="${assetVersion.masterAsset}"
+                deleteSourceFile="true"
+                nextStep="end - set total time"
+                />
+
+
+                <setContextData name="end - set total time"
+                 targetDataDef="totalTime"
+                 valueExpression="${T(String).valueOf(#this.getStartDate().getTime() - thisExecution.getStartDate().getTime())}"/>
+
+                 <contextDataDef name="thisExecution" dataType="Data Object" defaultDataExpression="${#this}"/>
+
+                 <contextDataDef name="placeholderVideo" dataType="Data Object"/>
+
+                 <contextDataDef name="assetVersion" dataType="Data Object"/>
+
+                 <contextDataDef name="dir1" dataType="File"/>
+                 <contextDataDef name="createdFile" dataType="File" userInput="true"/>
+
+                 <contextDataDef name="counter" dataType="Integer" userInput="true" defaultDataExpression="20"/>
+
+                 <contextDataDef name="stdOut" dataType="String"/>
+                 <contextDataDef name="setSomeMetadata" dataType="Boolean" defaultDataExpression="${false}"/>
+                 <contextDataDef name="videoAssetType" dataType="String" defaultDataExpression="video"/>
+                 <contextDataDef name="videoAssetName" dataType="String" defaultDataExpression="saveAssetStepTest-video"/>
+
+                 <contextDataDef name="totalTime" dataType="String"/>
+               </workflow>

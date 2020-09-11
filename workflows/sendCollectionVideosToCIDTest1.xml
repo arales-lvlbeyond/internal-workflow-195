@@ -1,0 +1,155 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="sendCollectionVideosToCIDTest1"
+	name="Send Collection Videos to CID"
+	executionLabelExpression="Send Collection Videos to CID - ${collection.name}"
+	showInUserInterface="true"
+	subjectDOClassName="AssetCollection"
+	subjectQualifierExpression=""
+	sdkVersion=""
+	>
+	
+	<initialStepName>Find Collection Videos</initialStepName>
+	
+	<!-- Query for all videos in the Collection. We don't want to include other asset types -->
+	<queryStep name="Find Collection Videos"
+		targetDataObjectClass="VideoAssetMaster"
+		resultDataDef="videoAssets"
+		nextStep="Print Videos Found"
+		>
+		<criteria>
+		<![CDATA[
+            <criteria>
+                <and>
+                    <condition property="collectionMemberships.collection.id" op="eq" nullTargets="false">
+                        <test value="${subject.id}"/>
+                    </condition>
+                </and>
+            </criteria>
+        ]]>
+		</criteria>
+	</queryStep>
+	
+	<testStep name="Print Videos Found"
+		outputExpression="Number of Images to be Exported: ${videoAssets == null ? 0 : videoAssets.size()}"
+		pctComplete="30"
+		nextStep="query for running subflows"
+		/>
+	
+	<!-- ................................................... Queue Loop ................................................... -->
+	<queryStep name="query for running subflows"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="executingSubflows"
+		executionLabelExpression="Checking for workflows (with name = ${ingestSubflow}) that is not in a finished state"
+		devStep="true"
+		nextStep="check running subflows"
+		>
+		<criteria>
+		<![CDATA[
+            <criteria>
+                <and>
+                    <condition property="workflowVersion.workflow.key" op="eq">
+                        <test value="${ingestSubflow}"/>
+                    </condition>
+                    <condition property="status" op="in">
+                        <tests>
+                            <test value="CREATED" />
+                            <test value="QUEUED" />
+                            <test value="EXECUTING" />
+                         </tests>
+                    </condition>
+                </and>
+            </criteria>
+        ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<noopStep name="check running subflows"
+		executionLabelExpression="number of subflows (name = ${ingestSubflow}) running >>> ${executingSubflows.size()} out of ${queueLimit}"
+		devStep="true"
+		>
+		<transition condition="${ executingSubflows.size() &lt; queueLimit }">
+			<targetStepName>ready next files</targetStepName>
+		</transition>
+		<transition condition="${ true }">
+			<targetStepName>queue full</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<delayStep name="queue full"
+		delaySecondsExpression="${ queryPollInterval }"
+		executionLabelExpression="${videoAssets.size()} files remaining | Subflows running: ${executingSubflows.size()}/${queueLimit} | Waiting ${queryPollInterval} seconds."
+		nextStep="query for running subflows"
+		/>
+	
+	
+	<setContextData name="ready next files"
+		targetDataDef="nextVideos"
+		valueExpression="${videoAssets.size() &gt; batchSize ? videoAssets.subList(0, batchSize) : videoAssets.subList(0, videoAssets.size()) }"
+		executionLabelExpression="got ${nextVideos.size()} files to process"
+		nextStep="remove files from main list"
+		devStep="true"
+		/>
+	
+	
+	<groovyStep name="remove files from main list"
+		resultDataDef="videoAssets"
+		executionLabelExpression="remove ${nextVideos.size()} files from the main list"
+		nextStep="process files"
+		devStep="true"
+		>
+		<script>
+		<![CDATA[
+			videoAssets.removeAll(nextVideos)
+			return videoAssets
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<executeSubflowStep name="process files"
+		executionLabelExpression="Preparing ${nextVideos.size()} files to ingest. | ${videoAssets.size()} files remaining | Subflows running: ${executingSubflows.size()}/${queueLimit}"
+		targetWorkflowId="${ingestSubflow}"
+		subjectChangePath="${nextVideos}"
+		waitForCompletionExpression="false"
+		nextStep="check for more files"
+		/>
+	
+	
+	
+	<noopStep name="check for more files"
+		executionLabelExpression="number of files remaining >>> ${videoAssets.size()}"
+		devStep="true"
+		>
+		<transition condition="${videoAssets.size() &gt; 0}">
+			<targetStepName>query for running subflows</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<!--Processing-->
+	<contextDataDef name="collection"               dataType="Data Object"  defaultDataExpression="${subject}"/>
+	<contextDataDef name="videoAssets"              dataType="Data Object"  multiple="true"/>
+	
+	<!-- queue loop variables -->
+	<contextDataDef name="nextVideos"    		    dataType="Data Object" 	multiple="true"/>
+	<contextDataDef name="executingSubflows" 	    dataType="Data Object" 	multiple="true"/>
+	<contextDataDef name="queueLimit" 			    dataType="Integer" 		defaultDataExpression="${#sysconfig('workflows.default.ingestDirectory.queueLimit') ?: 11}"/>
+	<contextDataDef name="batchSize" 		        dataType="Integer" 		defaultDataExpression="${#sysconfig('workflows.default.ingestDirectory.batchSize') ?: 10}"/>
+	<contextDataDef name="queryPollInterval"  	    dataType="Integer" 		defaultDataExpression="${#sysconfig('workflows.default.ingestDirectory.queryPollInterval') ?: 20}"/>
+	<contextDataDef name="ingestSubflow"      	    dataType="String" 		defaultDataExpression="${#sysconfig('workflows.youtube.cidworkflow') ?: '_anyAssetIngest'}"/>
+
+
+</workflow>

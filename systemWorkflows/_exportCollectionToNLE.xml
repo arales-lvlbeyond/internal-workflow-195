@@ -1,0 +1,176 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xmlns:production="http://levelsbeyond.com/schema/workflow/production"
+          xsi:schemaLocation="
+    	    http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+
+            http://levelsbeyond.com/schema/workflow/production http://www.levelsbeyond.com/schema/production/nimbus-projects-workflow-1.5.xsd"
+          id="_exportCollectionToNLE"
+          name="Export Collection to NLE"
+          executionLabelExpression="Export Collection ${subject?.name} to ${nleType} (${contentUse} media)"
+          subjectDOClassName="AssetCollection"
+          showInUserInterface="true"
+          resultDataDef="resultFile"
+          sdkVersion="4.2">
+
+	<initialStepName>check content use for restores</initialStepName>
+
+	<noopStep name="check content use for restores">
+		<!-- 		<transition condition="${contentUse.toLowerCase() == 'mezzanine'}">
+					<targetStepName>perform restores</targetStepName>
+				</transition>
+		 -->
+		<transition condition="=true">
+			<targetStepName>export project</targetStepName>
+		</transition>
+	</noopStep>
+
+	<!-- 	<executeSubflowStep name="perform restores"
+			targetWorkflowId="${#sysconfig('workflows.assetRestoreWorkflow')}"
+			emptyTargetHandling="allow"
+			subjectChangePath="${subject.members."
+		>
+
+		</executeSubflowStep>
+	 -->
+	<production:exportProjectBin name="export project"
+	                             executionLabelExpression="Export collection ${subject.name} to project bin (${contentUse} media)"
+	                             assetBinExpression="${subject}"
+	                             nleTypeExpression="${nleType}"
+	                             targetOsExpression="${ targetOs }"
+	                             contentUseExpression="${contentUse}"
+	                             pctComplete="70"
+	                             resultDataDef="exportText"
+		>
+		<transition condition="=true">
+			<targetStepName>write project file</targetStepName>
+		</transition>
+	</production:exportProjectBin>
+
+	<copyFileStep name="write project file"
+	              executionLabelExpression="Copy project bin file to ${targetDirectory.absolutePath}"
+	              sourceFileExpression="${exportText}"
+	              targetDirectoryExpression="${targetDirectory}"
+	              targetFilenameExpression="${#baseFilename(targetFilename)}.xml"
+	              pctComplete="80"
+	              resultDataDef="resultFile"
+		>
+		<transition condition="=true">
+			<targetStepName>check whether to create an RE project</targetStepName>
+		</transition>
+	</copyFileStep>
+
+	<noopStep name="check whether to create an RE project">
+		<transition condition="${createReachProject}">
+			<targetStepName>determine what project to make</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>finish</targetStepName>
+		</transition>
+	</noopStep>
+
+	<noopStep name="determine what project to make">
+		<transition condition="${nleType== 'FCP_7'}">
+			<targetStepName>import FCP project</targetStepName>
+		</transition>
+		<transition condition="${nleType== 'PREMIERE'}">
+			<targetStepName>import Premiere project</targetStepName>
+		</transition>
+	</noopStep>
+
+	<production:importFinalCutProject name="import FCP project"
+	                                  executionLabelExpression="Create RE Project from ${nleType} project bin"
+	                                  projectXmlExpression="${exportText}"
+	                                  lockProjectExpression="${lockProject}"
+	                                  ingestExternalMediaExpression="=false"
+	                                  pctComplete="95"
+	                                  resultDataDef="project"
+		>
+		<transition condition="=true">
+			<targetStepName>apply collection categories</targetStepName>
+		</transition>
+	</production:importFinalCutProject>
+
+	<production:importPremiereProject
+		name="import Premiere project"
+		executionLabelExpression="Create RE Project from ${nleType} project bin"
+		projectXmlExpression="${exportText}"
+		lockProjectExpression="${lockProject}"
+		ingestExternalMediaExpression="=false"
+		pctComplete="95"
+		resultDataDef="project"
+		>
+		<transition condition="=true">
+			<targetStepName>apply collection categories</targetStepName>
+		</transition>
+	</production:importPremiereProject>
+
+	<nimbus:changeMetaCategoryStep name="apply collection categories"
+	                               executionLabelExpression="Apply Collection categories to the Project ${project.name}."
+	                               targetObjectExpression="${project}"
+		>
+		<transition condition="=true">
+			<targetStepName>raise project creation event</targetStepName>
+		</transition>
+		<nimbus:addCategory>${subject.metadata.categories}</nimbus:addCategory>
+	</nimbus:changeMetaCategoryStep>
+
+	<raiseWorkflowEventStep name="raise project creation event"
+	                        executionLabelExpression="Project ${project.name} has been created and checked out to ${resultFile.absolutePath}"
+	                        eventTypeExpression="ProjectCreated"
+	                        continueOnException="true"
+	                        summaryExpression="Project ${project.name} has been created and checked out to ${resultFile.absolutePath}"
+		>
+		<transition condition="=true">
+			<targetStepName>finish</targetStepName>
+		</transition>
+	</raiseWorkflowEventStep>
+
+	<noopStep name="finish"/>
+
+	<contextDataDef name="nleType" dataType="String" label="1. NLE" defaultDataExpression="FCP_7" required="true" userInput="true">
+		<picklist>
+			<!--<picklistItem value="AVID" label="Avid"/>-->
+			<picklistItem value="FCP_7" label="Final Cut Pro 7"/>
+			<!-- <picklistItem value="FCP_X" label="Final Cut Pro X"/> -->
+			<picklistItem value="PREMIERE" label="Adobe Premiere"/>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="contentUse" dataType="String" label="2. Content Type" defaultDataExpression="${#sysconfig('workflow.listExport.defaultContentUse')}" required="true" userInput="true">
+		<picklist>
+			<picklistItem value="proxy" label="Proxy"/>
+			<picklistItem value="mezzanine" label="Mezzanine"/>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="targetOs" dataType="String" label="3. Client OS" defaultDataExpression="OSX" required="true" userInput="true">
+		<picklist>
+			<picklistItem value="OSX" label="OSX"/>
+			<picklistItem value="WINDOWS" label="Windows"/>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="exportText" dataType="String"/>
+	<contextDataDef name="targetDirectory" dataType="Directory" label="4. Output Directory" defaultDataExpression="${#sysconfig('filesystem.root.projects')}" required="true" userInput="true"/>
+	<contextDataDef name="createReachProject" dataType="Boolean" label="5. Create Project" defaultDataExpression="=true" required="true" userInput="true"/>
+	<contextDataDef name="lockProject" dataType="Boolean" label="6. Lock Project" defaultDataExpression="=false" required="false" userInput="true"/>
+	<contextDataDef name="targetFilename" dataType="String" defaultDataExpression="${subject.name}.xml" required="true"/>
+	<contextDataDef name="resultFile" dataType="File"/>
+	<contextDataDef name="project" dataType="Data Object"/>
+</workflow>

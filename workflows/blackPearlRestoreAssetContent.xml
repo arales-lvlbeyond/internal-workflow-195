@@ -1,0 +1,113 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	
+	id="blackPearlRestoreAssetContent"
+	name="Restore AssetContent from Black Pearl"
+	executionLabelExpression="Restore AssetContent from Black Pearl | Restore AssetContent | ${subject.file?.absolutePath}"
+	description=""
+	subjectDOClassName="AssetContent"
+	showInUserInterface="false"
+	resultDataDef=""
+	deadlineExpression=""
+	sdkVersion=""
+>
+	
+	
+	
+	<initialStepName>check archive status</initialStepName>
+	
+	
+	
+	<!-- ................................................. CHECK ARCHIVE STATUS ................................................. -->
+	<noopStep name="check archive status"
+		executionLabelExpression="truncatedFlag = ${subject.truncatedFlag} | File exists in repo? >>> ${subject.file.exists()} at ${subject.file?.absolutePath}"
+		pctComplete="20"
+	>
+		<transition condition="${!subject.truncatedFlag OR subject.file.exists()}">
+			<targetStepName>content is already available</targetStepName>
+		</transition>
+		<transition condition="${subject.truncatedFlag AND !subject.file.exists()}">
+			<targetStepName>check restore key</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>bad asset fail</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	
+	
+	
+	
+	<!-- ................................................. CHECK RESTORE KEY .................................................... -->
+	<noopStep name="check restore key"
+		executionLabelExpression="Restore key of ${subject.file.name} >>> ${subject.restoreKey}"
+	>
+		<transition condition="${subject.restoreKey != null AND !subject.restoreKey.equals('')}">
+			<targetStepName>restore file</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>bad restore key fail</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	
+	
+	
+	
+	<!-- .................................................. RESTORE FILE ........................................................ -->
+	<executeSubflowStep name="restore file"
+		targetWorkflowId="blackPearlRestoreFileFromTape"
+		subjectChangePath="${subject}"
+		executionLabelExpression="Restore From Black Pearl ${subject.file.name}"
+		pctComplete="80"
+		nextStep="update asset content"
+	/>
+	
+	
+	
+	
+	
+	
+	<!-- .............................................. UPDATE TRUNCATED FLAG ................................................... -->
+	<saveDataObjectStep name="update asset content"
+		executionLabelExpression="Mark asset content ${subject.file.name} as restored"
+		targetDataObjectClass="AssetContent"
+		dataObjectExpression="${subject}"
+		nextStep="set asset master as available"
+	>
+		<property name="truncatedFlag">false</property>
+	</saveDataObjectStep>
+	
+	
+	
+	<saveDataObjectStep name="set asset master as available"
+		dataObjectExpression="${subject.asset}"
+		nextStep="end">
+		<property name="status">AVAILABLE</property>
+	</saveDataObjectStep>
+	
+	
+	
+	<!-- success -->
+	<failWorkflowStep name="bad asset fail"
+		reasonExpression="Truncated flag for ${subject.file.name} is set to ${subject.truncatedFlag} and the file exists in repo ${subject.file.exists()}."
+		executionLabelExpression="Truncated flag for ${subject.file.name} is set to ${subject.truncatedFlag} and the file exists in repo ${subject.file.exists()}."
+	/>
+	
+	<noopStep name="content is already available"
+		executionLabelExpression="Truncated flag is ${subject.truncatedFlag} or content is already available >>> ${subject.file.absolutePath}"
+		pctComplete="99"
+		nextStep="end"
+	/>
+	
+	<failWorkflowStep name="bad restore key fail" reasonExpression="Restore key is set to ${subject.restoreKey}"
+		executionLabelExpression="Restore key is set to ${subject.restoreKey}"
+	/>
+	
+	<noopStep name="end" pctComplete="100"/>
+
+</workflow>

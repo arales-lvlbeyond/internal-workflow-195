@@ -1,0 +1,107 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_saveAssetMetadataLink"
+	name="Save Asset Metadata Link"
+	executionLabelExpression="Save Asset Metadata Link | Property: ${propertyName} | Asset: ${asset.name}"
+	subjectDOClassName=""
+	showInUserInterface="false"
+	sdkVersion="5.21"
+	>
+	
+	<initialStepName>check link requirements</initialStepName>
+	
+	
+	<noopStep name="check link requirements"
+		executionLabelExpression="property? ${propertyName != null AND !propertyName.equals('')} | title? ${title != null AND !title.equals('')} | url? ${url != null AND !url.equals('')}"
+		pctComplete="5"
+		>
+		<transition condition="${(propertyName != null AND !propertyName.equals('')) AND (title != null AND !title.equals('')) AND (url != null AND !url.equals(''))}">
+			<targetStepName>save link</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>save link error</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<setAssociationMetadataStep name="save link"
+		targetExpression="${asset}"
+		propertyNameExpression="${propertyName}"
+		valueExpression="${linkInfoJson.toString()}"
+		executionLabelExpression="Saving ${propertyName} to >> Title: ${title} | Url: ${url}"
+		pctComplete="99"
+		>
+		<exception-transition type="MetadataServiceException">
+			<targetStepName>save link error</targetStepName>
+		</exception-transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</setAssociationMetadataStep>
+	
+	
+	<noopStep name="save link error"
+		executionLabelExpression="could not save link metadata. | Fail? ${failOnError}"
+		>
+		<transition condition="${failOnError}">
+			<targetStepName>error saving link</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"	pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="error saving link"
+		reasonExpression="Error saving link. Check workflow steps for errors."
+		executionLabelExpression="Error saving link. Check workflow steps for errors."
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input Variables .......... -->
+	<contextDataDef name="asset"        dataType="Data Object"/>
+	<contextDataDef name="failOnError"  dataType="Boolean"          defaultDataExpression="true"/>
+	<contextDataDef name="linkJson"     dataType="JSON">
+		<description>
+			Array of JSONs where:
+				Each JSON has 2 Keys (propertyName and linkInfo):
+					propertyName's value is a metadata property name of type link
+					linkInfo's value is a JSON with 2 keys (title and url):
+						title's value is the display name for the link
+						url's value is the url to open when the title is clicked on
+		</description>
+	</contextDataDef>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="propertyName" dataType="String"           defaultDataExpression="${linkJson?.get('propertyName')?.asText()}"/>
+	<contextDataDef name="linkInfoJson" dataType="JSON"             defaultDataExpression="${linkJson?.get('linkInfo')}"/>
+	<contextDataDef name="title"        dataType="String"           defaultDataExpression="${linkInfoJson?.get('title')?.asText()}"/>
+	<contextDataDef name="url"          dataType="String"           defaultDataExpression="${linkInfoJson?.get('url')?.asText()}"/>
+	
+</workflow>

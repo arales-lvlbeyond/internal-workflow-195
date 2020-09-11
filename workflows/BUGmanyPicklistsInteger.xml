@@ -1,0 +1,98 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="BUGmanyPicklistsInteger"
+	name="BUG Many Picklists Integer"
+	executionLabelExpression="BUG Many Picklists Integer"
+	description=""
+	resultDataDef=""
+	showInUserInterface="true"
+	subjectDOClassName=""
+	subjectQualifierExpression=""
+	adminOnly="true"
+	devWorkflow="true"
+	sdkVersion="">
+	
+	<initialStepName>show the things</initialStepName>
+
+	<noopStep name="show the things"
+		executionLabelExpression="Integer: ${integerValue}"
+		nextStep="end" />
+	
+	
+	
+	<noopStep name="end"/>
+	
+	<!-- Input -->
+	<contextDataDef name="integerValue"           dataType="Integer"    label="1. Input Integer value"          userInput="true">
+		<picklist>
+			<picklistItem value="00"/>
+			<picklistItem value="01"/>
+			<picklistItem value="02"/>
+			<picklistItem value="03"/>
+			<picklistItem value="04"/>
+			<picklistItem value="05"/>
+			<picklistItem value="06"/>
+			<picklistItem value="07"/>
+			<picklistItem value="08"/>
+			<picklistItem value="09"/>
+			<picklistItem value="10"/>
+			<picklistItem value="11"/>
+			<picklistItem value="12"/>
+			<picklistItem value="13"/>
+			<picklistItem value="14"/>
+			<picklistItem value="15"/>
+			<picklistItem value="16"/>
+			<picklistItem value="17"/>
+			<picklistItem value="18"/>
+			<picklistItem value="19"/>
+			<picklistItem value="20"/>
+			<picklistItem value="21"/>
+			<picklistItem value="22"/>
+			<picklistItem value="23"/>
+			<picklistItem value="24"/>
+			<picklistItem value="25"/>
+			<picklistItem value="26"/>
+			<picklistItem value="27"/>
+			<picklistItem value="28"/>
+			<picklistItem value="29"/>
+			<picklistItem value="30"/>
+			<picklistItem value="31"/>
+			<picklistItem value="32"/>
+			<picklistItem value="33"/>
+			<picklistItem value="34"/>
+			<picklistItem value="35"/>
+			<picklistItem value="36"/>
+			<picklistItem value="37"/>
+			<picklistItem value="38"/>
+			<picklistItem value="39"/>
+			<picklistItem value="40"/>
+			<picklistItem value="41"/>
+			<picklistItem value="42"/>
+			<picklistItem value="43"/>
+			<picklistItem value="44"/>
+			<picklistItem value="45"/>
+			<picklistItem value="46"/>
+			<picklistItem value="47"/>
+			<picklistItem value="48"/>
+			<picklistItem value="49"/>
+			<picklistItem value="50"/>
+			<picklistItem value="51"/>
+			<picklistItem value="52"/>
+			<picklistItem value="53"/>
+			<picklistItem value="54"/>
+			<picklistItem value="55"/>
+			<picklistItem value="56"/>
+			<picklistItem value="57"/>
+			<picklistItem value="58"/>
+			<picklistItem value="59"/>
+		</picklist>
+	</contextDataDef>
+	
+	
+	
+	<!-- Internal -->
+	
+
+</workflow>

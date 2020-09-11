@@ -1,0 +1,95 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_emailCollectionImages"
+	name="Email Collection Images"
+	executionLabelExpression="Email Collection Images | Collection: ${subject.name}"
+	subjectDOClassName="AssetCollection"
+	showInUserInterface="true"
+	sdkVersion="5.21"
+	>
+	
+	<initialStepName>verify images and proxies</initialStepName>
+	
+	
+	<noopStep name="verify images and proxies"
+		executionLabelExpression="Images exist in collection? ${collectionImageAssets != null AND collectionImageAssets.size() &gt; 0} | All images' proxy file exists? ${imageAssetsWithoutProxy == null OR imageAssetsWithoutProxy.size() == 0}"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		>
+		<transition condition="${collectionImageAssets == null OR collectionImageAssets.size() == 0}">
+			<targetStepName>no images in collection</targetStepName>
+		</transition>
+		<transition condition="${imageAssetsWithoutProxy == null OR imageAssetsWithoutProxy.size() == 0}">
+			<targetStepName>email image proxies</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>one or more proxies do not exist</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<emailStep name="email image proxies"
+		executionLabelExpression="emailing ${filesToExport.size()} images to ${emailList.size()} addresses | List: ${emailList.toString()}"
+		pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+		emailAddressesExpression="${emailList}"
+		attachmentsExpression="${filesToExport}"
+		subjectExpression="${emailSubject}"
+		nextStep="end"
+		>
+		<body>
+${emailBody}
+		</body>
+	</emailStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="no images in collection"
+		executionLabelExpression="${subject.name} has no image assets"
+		reasonExpression="${subject.name} has no image assets"
+		/>
+	
+	
+	<failWorkflowStep name="one or more proxies do not exist"
+		executionLabelExpression="${imageAssetsWithoutProxy != null ? imageAssetsWithoutProxy.size() : '0'} / ${collectionImageAssets != null ? collectionImageAssets.size() : '0'} images are missing proxies. Check contextData for the list of assets."
+		reasonExpression="${subject.name} is missing a proxy file"
+		/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<contextDataDef name="emailList"                dataType="Email"        multiple="true"     userInput="true"    required="true"     label="Send To"             displayIndex="1"/>
+	<contextDataDef name="emailSubject"             dataType="String"                           userInput="true"    required="true"     label="Email Subject"       displayIndex="2"/>
+	<contextDataDef name="emailBody"                dataType="String"                           userInput="true"                        label="Email Body"          displayIndex="3"/>
+	
+	<!-- .......... PROCESSING .......... -->
+	<contextDataDef name="collection"               dataType="Data Object"  defaultDataExpression="${subject}"/>
+	<contextDataDef name="startedByUser"            dataType="Data Object"  defaultDataExpression="${#this.startedBy}"/>
+	<contextDataDef name="collectionImageAssets"    dataType="Data Object"  multiple="true"     defaultDataExpression="${subject?.assetItems?.![asset]?.?[assetType.equals('Image')]}"/>
+	<contextDataDef name="imageAssetsWithProxy"     dataType="Data Object"  multiple="true"     defaultDataExpression="${collectionImageAssets?.?[proxy != null AND proxy?.file?.exists()]}"/>
+	<contextDataDef name="imageAssetsWithoutProxy"  dataType="Data Object"  multiple="true"     defaultDataExpression="${collectionImageAssets?.?[proxy == null OR !proxy?.file?.exists()]}"/>
+	<contextDataDef name="filesToExport"            dataType="File"         multiple="true"     defaultDataExpression="${imageAssetsWithProxy?.![proxy?.file]}"/>
+	<contextDataDef name="wfExe"                    dataType="Data Object"  defaultDataExpression="${#this}"/>
+
+</workflow>

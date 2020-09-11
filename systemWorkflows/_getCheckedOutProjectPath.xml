@@ -1,0 +1,65 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="
+    http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-2.3.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-1.5.xsd
+    "
+
+    id="_getCheckedOutProjectPath"
+    name="Retrieve Checked Out Project Path"
+    executionLabelExpression="Get project path"
+    description=" "
+    subjectDOClassName="Project"
+    showInUserInterface="false" 
+    deadlineExpression=""
+    resultDataDef="projectLocationReturn">
+
+    <initialStepName>is project locked</initialStepName>
+
+    <noopStep name="is project locked">
+        <transition condition="${subject.projectAsset.dateLocked == null}">
+            <targetStepName>fail</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>set check out location</targetStepName>
+        </transition>
+    </noopStep>
+
+    <setContextData
+        name="set check out location"
+        targetDataDef="projectLocationString"
+        valueExpression="${#sysconfig('filesystem.root.checkOutRoot')}/${workflow.startedBy.username}/${subject.id}/${subject.name}.prproj"
+        >
+
+        <transition condition="true">
+            <targetStepName>set return</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData
+        name="set return"
+        targetDataDef="projectLocationReturn"
+        valueExpression="${#mapPath(projectLocationString, targetOS)}" >
+
+        <transition condition="true">
+            <targetStepName>project path</targetStepName>
+        </transition>
+    </setContextData>
+
+    <noopStep name="project path" executionLabelExpression="Project: ${projectLocationReturn}">
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </noopStep>
+
+    <noopStep name="end"/>
+
+    <failWorkflowStep reasonExpression="project is not locked, please use check out" name="fail" executionLabelExpression="project is not locked, please use check out"/>
+
+    <contextDataDef name="checkOutLocation" dataType="String"/>
+    <contextDataDef name="projectLocationString" dataType="String"/>
+    <contextDataDef name="targetOS" dataType="String" defaultDataExpression="mac"/>
+    <contextDataDef name="projectLocationReturn" dataType="String"/>
+
+</workflow>

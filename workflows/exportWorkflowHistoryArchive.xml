@@ -1,0 +1,1095 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://levelsbeyond.com/schema/workflow"
+        xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+        xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+        id="exportWorkflowHistoryArchive"
+        name="Export Workflow History Archive for Download"
+        executionLabelExpression="Create Workflow Archive for Download"
+        description=""
+        resultDataDef="readmeJson"
+        showInUserInterface="false"
+        adminOnly="true"
+        devWorkflow="true"
+        subjectDOClassName=""
+        subjectQualifierExpression=""
+        hasDownload="true"
+        sdkVersion="">
+
+    <initialStepName>check if workflow is running</initialStepName>
+
+    <queryStep name="check if workflow is running"
+               targetDataObjectClass="WorkflowExecution"
+               resultDataDef="currentExecutions"
+               executionLabelExpression="Is a workflow running on this file already? ${currentExecutions.size() != 0}"
+               pctComplete="5"
+    >
+        <transition condition="${currentExecutions.size() == 0}">
+            <targetStepName>create workflow repo</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>workflow is running</targetStepName>
+        </transition>
+
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="workflowVersion.workflow.key" op="eq">
+                            <test value="${ #this.workflow.workflowVersion.workflow.key }" />
+                        </condition>
+                        <condition property="uuid" op="noteq">
+                            <test value="${ #this.workflow.uuid }" />
+                        </condition>
+                        <condition property="status" op="in">
+                            <tests>
+                                <test value="CREATED" />
+                                <test value="QUEUED" />
+                                <test value="EXECUTING" />
+                            </tests>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+
+    <groovyStep name="create workflow repo"
+                resultDataDef="directoryToZip">
+        <transition condition="${exportWorkflows}">
+            <targetStepName>export workflow history</targetStepName>
+        </transition>
+        <transition condition="${exportWorkflowStats}">
+            <targetStepName>export workflow stats</targetStepName>
+        </transition>
+        <transition condition="${exportConfig}">
+            <targetStepName>export config</targetStepName>
+        </transition>
+        <transition condition="${exportMetadata}">
+            <targetStepName>export metadata</targetStepName>
+        </transition>
+        <transition condition="${exportMetadataGroups}">
+            <targetStepName>export metadata groups</targetStepName>
+        </transition>
+        <transition condition="${exportMetadataForms}">
+            <targetStepName>export forms</targetStepName>
+        </transition>
+        <transition condition="${exportCategories}">
+            <targetStepName>export categories</targetStepName>
+        </transition>
+        <transition condition="${exportWorkflowExecutions}">
+            <targetStepName>export workflow executions</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>zip up contents</targetStepName>
+        </transition>
+        <script>
+            <![CDATA[
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+            import java.io.File
+            import java.nio.file.Files
+            import java.nio.file.Paths
+            import java.nio.file.Path
+            import java.nio.file.StandardOpenOption
+            import java.nio.file.attribute.PosixFilePermissions
+            import java.nio.file.attribute.FileTime
+
+            Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+
+            Path baseRepositoryPath = Paths.get(repoDir.absolutePath)
+            def attr = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwxr-x---"))
+            Files.createDirectories(baseRepositoryPath, attr)
+
+            logger.debug("Creating repository ${baseRepositoryPath.toString()}")
+
+            void execCommand(def env, def dir, def command) {
+                command.execute(env, new File(dir.toString())).with {
+                    Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+                    StringWriter output = new StringWriter()
+                    StringWriter error = new StringWriter()
+                    //wait for process ended and catch stderr and stdout.
+                    it.waitForProcessOutput(output, error)
+                    //check there is no error
+                    logger.debug("error=$error")
+                    logger.debug("output=$output")
+                    logger.debug("code=${it.exitValue()}")
+                }
+            }
+
+            execCommand(null, baseRepositoryPath, [gitPath, "init"])
+            // Set config requirements locally so git is happy
+            execCommand(null, baseRepositoryPath, [gitPath, "config", "user.email", userEmail])
+            execCommand(null, baseRepositoryPath, [gitPath, "config", "user.name", userName])
+
+            return baseRepositoryPath.toString()
+            ]]>
+        </script>
+    </groovyStep>
+
+
+    <groovyStep name="export workflow history"
+                resultDataDef="groovyResult">
+        <transition condition="${exportWorkflowStats}">
+            <targetStepName>export workflow stats</targetStepName>
+        </transition>
+        <transition condition="${exportConfig}">
+            <targetStepName>export config</targetStepName>
+        </transition>
+        <transition condition="${exportMetadata}">
+            <targetStepName>export metadata</targetStepName>
+        </transition>
+        <transition condition="${exportMetadataGroups}">
+            <targetStepName>export metadata groups</targetStepName>
+        </transition>
+        <transition condition="${exportMetadataForms}">
+            <targetStepName>export forms</targetStepName>
+        </transition>
+        <transition condition="${exportCategories}">
+            <targetStepName>export categories</targetStepName>
+        </transition>
+        <transition condition="${exportWorkflowExecutions}">
+            <targetStepName>export workflow executions</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>zip up contents</targetStepName>
+        </transition>
+        <script>
+            <![CDATA[
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.routeto1.data.query.SortDirection
+            import com.levelsbeyond.jdbi.DBIFactory
+            import com.levelsbeyond.service.properties.DynamicPropertiesBusinessService
+            import com.levelsbeyond.service.inventory.MetadataService
+            import com.levelsbeyond.studio.service.form.MetadataFormBusinessService
+            import com.levelsbeyond.api.metadata.MetadataFieldDTO
+            import com.levelsbeyond.api.Result
+            import com.levelsbeyond.api.inventory.MetadataFieldCollection
+            import java.sql.ResultSet
+            import java.sql.Timestamp
+            import java.sql.SQLException
+            import org.skife.jdbi.v2.StatementContext
+            import org.skife.jdbi.v2.tweak.ResultSetMapper
+            import org.skife.jdbi.v2.DBI
+            import org.skife.jdbi.v2.Handle
+            import org.skife.jdbi.v2.ResultIterator
+            import org.skife.jdbi.v2.sqlobject.Bind
+            import org.skife.jdbi.v2.sqlobject.SqlQuery
+            import org.skife.jdbi.v2.sqlobject.customizers.Mapper
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+            import java.text.SimpleDateFormat
+            import java.io.File
+            import java.nio.file.Files
+            import java.nio.file.Paths
+            import java.nio.file.Path
+            import java.nio.file.StandardOpenOption
+            import java.nio.file.attribute.PosixFilePermissions
+            import java.nio.file.attribute.FileTime
+            import groovy.json.JsonOutput
+            import groovy.json.JsonSlurper
+
+            Path baseRepositoryPath = Paths.get(repoDir.absolutePath)
+            def attr = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwxr-x---"))
+
+            Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+
+            logger.debug("Exporting workflow history to repository ${baseRepositoryPath.toString()}")
+
+            public class WorkflowVersion {
+
+                Long id
+                Long versionId
+                String name
+                String keyMD
+                String version
+                java.sql.Timestamp dateCreated
+                String workflowXml
+                String description
+                Boolean systemWorkflowFlag
+
+                static SimpleDateFormat simpleDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss,SSSZ")
+                static SimpleDateFormat touchDateFormat = new SimpleDateFormat("yyyyMMddHHmm.ss")
+                static SimpleDateFormat gitDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+
+                public WorkflowVersion(Long id, Long versionId, String name, String keyMD, String version, Date dateCreated, String workflowXml, String description, Boolean systemWorkflowFlag) {
+                    this.id = id
+                    this.versionId = versionId
+                    this.name = name
+                    this.keyMD = keyMD
+                    this.version = version
+                    this.dateCreated = dateCreated
+                    this.workflowXml = workflowXml
+                    this.description = description
+                    this.systemWorkflowFlag = systemWorkflowFlag
+                }
+
+                public void setId(Long id) {
+                    this.id = id
+                }
+
+                public Long getId() {
+                    return id
+                }
+
+                public void setVersionId(Long versionId) {
+                    this.versionId = versionId
+                }
+
+                public Long getVersionId() {
+                    return versionId
+                }
+
+                public void setName(String name) {
+                    this.name = name
+                }
+
+                public String getName() {
+                    return name
+                }
+
+                public void setKeyMD(String keyMD) {
+                    this.keyMD = keyMD
+                }
+
+                public String getKeyMD() {
+                    return keyMD
+                }
+
+                public void setVersion(String version) {
+                    this.version = version
+                }
+
+                public String getVersion() {
+                    return version
+                }
+
+                public void setDateCreated(java.sql.Timestamp dateCreated) {
+                    this.dateCreated = dateCreated
+                }
+
+                public java.sql.Timestamp getDateCreated() {
+                    return dateCreated
+                }
+
+                public void setWorkflowXml(String workflowXml) {
+                    this.workflowXml = workflowXml
+                }
+
+                public String getWorkflowXml() {
+                    return workflowXml
+                }
+
+                public void setDescription(String description) {
+                    this.description = description
+                }
+
+                public String getDescription() {
+                    return description
+                }
+
+                public void setSystemWorkflowFlag(Boolean flag) {
+                    this.systemWorkflowFlag = flag
+                }
+
+                public Boolean getSystemWorkflowFlag() {
+                    return systemWorkflowFlag
+                }
+
+                public String getDateCreatedString() {
+                    return dateCreated == null ? "NULL" : simpleDateFormat.format(dateCreated)
+                }
+
+                public String getDateCreatedGitString() {
+                    return dateCreated == null ? "NULL" : gitDateFormat.format(dateCreated)
+                }
+
+                public String getDateCreatedTouchString() {
+                    return dateCreated == null ? "NULL" : touchDateFormat.format(dateCreated)
+                }
+
+                @Override
+                public String toString() {
+                    return String.format("%s {id=%d, versionId=%d, name=\"%s\", keyMD=\"%s\", version=%s, dateCreated=%s, gitDate=%s, touchDate=%s, systemWorkflow=%s}",
+                        getClass().getName(), getId(), getVersionId(), getName(), getKeyMD(), getVersion(), getDateCreatedString(), getDateCreatedGitString(), getDateCreatedTouchString(),
+                        getSystemWorkflowFlag() ? 'true' : 'false')
+                }
+            }
+
+
+            public class WorkflowVersionMapper implements ResultSetMapper<WorkflowVersion> {
+                @Override
+                public WorkflowVersion map(int idx, ResultSet rs, StatementContext ctx) throws SQLException {
+                    return new WorkflowVersion(rs.getLong("id"), rs.getLong("version_id"), rs.getString("name"),
+                        rs.getString("key_m_d"), rs.getString("version"), rs.getTimestamp("date_created"), rs.getString("workflow_xml"), rs.getString("description"),
+                        rs.getBoolean("system_workflow_flag"))
+                }
+            }
+
+            public interface WorkflowVersionDAO {
+
+                // Get all workflow versions from oldest to newest
+                @SqlQuery("SELECT workflow.id AS id, workflow_version.id AS version_id, name, key_m_d, version, workflow_version.date_created AS date_created, workflow_xml, description, system_workflow_flag FROM workflow LEFT JOIN workflow_version ON workflow.id = workflow_version.workflow_workflow_id ORDER BY workflow_version.date_created ASC")
+                @Mapper(WorkflowVersionMapper.class)
+                ResultIterator<WorkflowVersion> getAllWorkflowVersions();
+            }
+
+            void execCommand(def env, def dir, def command) {
+                command.execute(env, new File(dir.toString())).with {
+                    Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+                    StringWriter output = new StringWriter()
+                    StringWriter error = new StringWriter()
+                    //wait for process ended and catch stderr and stdout.
+                    it.waitForProcessOutput(output, error)
+                    //check there is no error
+                    logger.debug("error=$error")
+                    logger.debug("output=$output")
+                    logger.debug("code=${it.exitValue()}")
+                }
+            }
+
+            for (WorkflowVersion workflowVersion : ApplicationContextHolder.getApplicationContext().getBean(DBIFactory.class).getDbi().onDemand(WorkflowVersionDAO.class).getAllWorkflowVersions()) {
+                Path directoryPath = Paths.get(repoDir.absolutePath, workflowVersion.getSystemWorkflowFlag() ? "systemWorkflows" : "workflows")
+                String filename = workflowVersion.keyMD + ".xml"
+                Path filePath = directoryPath.resolve(filename)
+                Path commitMessagePath = directoryPath.resolve("commitMessage.txt")
+                logger.debug(workflowVersion.toString())
+                logger.debug("Writing to " + filePath.toString())
+                try {
+                    def envp = []
+                    def authdate = "GIT_AUTHOR_DATE=\"${workflowVersion.getDateCreatedGitString()}\""
+                    def committerdate = "GIT_COMMITTER_DATE=\"${workflowVersion.getDateCreatedGitString()}\""
+
+                    Files.createDirectories(directoryPath, attr)
+                    Files.write(filePath, (workflowVersion.getWorkflowXml()?:"").getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+                    Files.setLastModifiedTime(filePath, FileTime.fromMillis(workflowVersion.getDateCreated()?.getTime() ?: System.currentTimeMillis()))
+
+                    System.getenv().each { key, val ->
+                        envp.add("$key=\"$val\"")
+                    }
+
+                    logger.debug(authdate)
+                    logger.debug(committerdate)
+                    envp.add(authdate)
+                    envp.add(committerdate)
+                    Files.write(commitMessagePath, "${workflowVersion.getName()} (${workflowVersion.getKeyMD()}) - Version ${workflowVersion.getVersion()}".getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+                    execCommand(envp, directoryPath, [gitPath, "add", "${filename}"])
+                    execCommand(envp, repoDir, ['/bin/rm', '-f', '.git/COMMIT_EDITMSG'])
+                    execCommand(envp, directoryPath, [gitPath, "commit", "-a", "-F", "commitMessage.txt"])
+                    // The command below failed on a customer system so I'm using the slower two command method above.
+                    // execCommand(envp, directoryPath, ["/bin/sh", "-c", /git add ${filename} && git commit -a -F commitMessage.txt/])
+                    Files.deleteIfExists(commitMessagePath)
+                }
+                catch (IOException ioe) {
+                    try {
+                        logger.error(ioe.toString())
+                    }
+                    catch (Exception e) {
+                        // Ignore
+                    }
+                }
+            }
+
+            return true
+            ]]>
+        </script>
+    </groovyStep>
+
+    <groovyStep name="export workflow stats"
+                resultDataDef="groovyResult">
+        <transition condition="${exportConfig}">
+            <targetStepName>export config</targetStepName>
+        </transition>
+        <transition condition="${exportMetadata}">
+            <targetStepName>export metadata</targetStepName>
+        </transition>
+        <transition condition="${exportMetadataGroups}">
+            <targetStepName>export metadata groups</targetStepName>
+        </transition>
+        <transition condition="${exportMetadataForms}">
+            <targetStepName>export forms</targetStepName>
+        </transition>
+        <transition condition="${exportCategories}">
+            <targetStepName>export categories</targetStepName>
+        </transition>
+        <transition condition="${exportWorkflowExecutions}">
+            <targetStepName>export workflow executions</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>zip up contents</targetStepName>
+        </transition>
+        <script>
+            <![CDATA[
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.routeto1.data.query.SortDirection
+            import com.levelsbeyond.jdbi.DBIFactory
+            import com.levelsbeyond.service.properties.DynamicPropertiesBusinessService
+            import com.levelsbeyond.service.inventory.MetadataService
+            import com.levelsbeyond.studio.service.form.MetadataFormBusinessService
+            import com.levelsbeyond.api.metadata.MetadataFieldDTO
+            import com.levelsbeyond.api.Result
+            import com.levelsbeyond.api.inventory.MetadataFieldCollection
+            import java.sql.ResultSet
+            import java.sql.Timestamp
+            import java.sql.SQLException
+            import org.skife.jdbi.v2.StatementContext
+            import org.skife.jdbi.v2.tweak.ResultSetMapper
+            import org.skife.jdbi.v2.DBI
+            import org.skife.jdbi.v2.Handle
+            import org.skife.jdbi.v2.ResultIterator
+            import org.skife.jdbi.v2.sqlobject.Bind
+            import org.skife.jdbi.v2.sqlobject.SqlQuery
+            import org.skife.jdbi.v2.sqlobject.customizers.Mapper
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+            import java.text.SimpleDateFormat
+            import java.io.File
+            import java.nio.file.Files
+            import java.nio.file.Paths
+            import java.nio.file.Path
+            import java.nio.file.StandardOpenOption
+            import java.nio.file.attribute.PosixFilePermissions
+            import java.nio.file.attribute.FileTime
+            import groovy.json.JsonOutput
+            import groovy.json.JsonSlurper
+
+            Path baseRepositoryPath = Paths.get(repoDir.absolutePath)
+            def attr = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwxr-x---"))
+
+            Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+
+            logger.debug("Exporting workflow history to repository ${baseRepositoryPath.toString()}")
+
+            public class WorkflowExecutionCount {
+                Long executionCount
+                String keyMD
+
+                public WorkflowExecutionCount(Long executionCount, String keyMD) {
+                    this.executionCount = executionCount
+                    this.keyMD = keyMD
+                }
+
+                public void setExecutionCount(Long executionCount) {
+                    this.executionCount = executionCount
+                }
+
+                public Long getExecutionCount() {
+                    return executionCount
+                }
+
+                public void setKeyMD(String keyMD) {
+                    this.keyMD = keyMD
+                }
+
+                public String getKeyMD() {
+                    return keyMD
+                }
+
+                @Override
+                public String toString() {
+                    return String.format("| %d | [%s](workflows/%s.xml) |", executionCount, keyMD, keyMD)
+                }
+            }
+
+            public class WorkflowExecutionCountMapper implements ResultSetMapper<WorkflowExecutionCount> {
+                @Override
+                public WorkflowExecutionCount map(int idx, ResultSet rs, StatementContext ctx) throws SQLException {
+                    return new WorkflowExecutionCount(rs.getLong("execution_count"), rs.getString("key_m_d"))
+                }
+            }
+            public interface WorkflowExecutionCountDAO {
+                @SqlQuery("select count(*) as execution_count, key_m_d from workflow_execution left join workflow_version on workflow_version.id = workflow_execution.workflow_version_id left join workflow on workflow_version.workflow_workflow_id = workflow.id where workflow.system_workflow_flag = false and workflow.enabled_flag = true group by workflow.id order by execution_count desc")
+                @Mapper(WorkflowExecutionCountMapper.class)
+                ResultIterator<WorkflowExecutionCount> getWorkflowExecutionCounts();
+            }
+
+            void execCommand(def env, def dir, def command) {
+                command.execute(env, new File(dir.toString())).with {
+                    Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+                    StringWriter output = new StringWriter()
+                    StringWriter error = new StringWriter()
+                    //wait for process ended and catch stderr and stdout.
+                    it.waitForProcessOutput(output, error)
+                    //check there is no error
+                    logger.debug("error=$error")
+                    logger.debug("output=$output")
+                    logger.debug("code=${it.exitValue()}")
+                }
+            }
+
+            // Add a readme file with the execution counts for the non-system workflows
+            String output = "## Execution counts\n\n| Count | keyMD |\n| --- | --- |\n"
+            for (WorkflowExecutionCount weCount : ApplicationContextHolder.getApplicationContext().getBean(DBIFactory.class).getDbi().onDemand(WorkflowExecutionCountDAO.class).getWorkflowExecutionCounts()) {
+                output += weCount.toString() + "\n"
+            }
+            Files.write(baseRepositoryPath.resolve("README.md"), output.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+            execCommand(null, baseRepositoryPath, [gitPath, "add", "README.md"])
+            execCommand(null, baseRepositoryPath, ['/bin/rm', '-f', '.git/COMMIT_EDITMSG'])
+            execCommand(null, baseRepositoryPath, [gitPath, "commit", "-am", "Added README with workflow execution counts."])
+
+            return true
+            ]]>
+        </script>
+    </groovyStep>
+
+
+    <groovyStep name="export config"
+                resultDataDef="groovyResult">
+        <transition condition="${exportMetadata}">
+            <targetStepName>export metadata</targetStepName>
+        </transition>
+        <transition condition="${exportMetadataGroups}">
+            <targetStepName>export metadata groups</targetStepName>
+        </transition>
+        <transition condition="${exportMetadataForms}">
+            <targetStepName>export forms</targetStepName>
+        </transition>
+        <transition condition="${exportCategories}">
+            <targetStepName>export categories</targetStepName>
+        </transition>
+        <transition condition="${exportWorkflowExecutions}">
+            <targetStepName>export workflow executions</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>zip up contents</targetStepName>
+        </transition>
+        <script>
+            <![CDATA[
+            import groovy.json.JsonSlurper
+            import groovy.json.JsonOutput
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+            import java.io.File
+            import java.nio.file.Files
+            import java.nio.file.Paths
+            import java.nio.file.Path
+            import java.nio.file.StandardOpenOption
+            import java.nio.file.StandardCopyOption
+            import java.nio.file.attribute.PosixFilePermissions
+            import java.nio.file.attribute.FileTime
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.routeto1.data.query.SortDirection
+            import com.levelsbeyond.jdbi.DBIFactory
+            import com.levelsbeyond.service.properties.DynamicPropertiesBusinessService
+            import com.levelsbeyond.service.inventory.MetadataService
+            import com.levelsbeyond.studio.service.form.MetadataFormBusinessService
+            import com.levelsbeyond.api.metadata.MetadataFieldDTO
+            import com.levelsbeyond.api.Result
+            import com.levelsbeyond.api.inventory.MetadataFieldCollection
+
+
+            Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+
+            Path baseRepositoryPath = Paths.get(repoDir.absolutePath)
+            def attr = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwxr-x---"))
+            Files.createDirectories(baseRepositoryPath, attr)
+
+            logger.debug("Adding configuration files and properties to repository ${baseRepositoryPath.toString()}")
+
+            void execCommand(def env, def dir, def command) {
+                command.execute(env, new File(dir.toString())).with {
+                    Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+                    StringWriter output = new StringWriter()
+                    StringWriter error = new StringWriter()
+                    //wait for process ended and catch stderr and stdout.
+                    it.waitForProcessOutput(output, error)
+                    //check there is no error
+                    logger.debug("error=$error")
+                    logger.debug("output=$output")
+                    logger.debug("code=${it.exitValue()}")
+                }
+            }
+
+            files = [
+                "/usr/local/tomcat/lib/localContext.xml",
+                "/usr/local/tomcat/lib/local.reach-engine.properties",
+                "/usr/local/tomcat/lib/log4j.properties",
+                "/usr/local/tomcat/lib/dynamic.reach-engine.properties",
+                "/reachengine/tomcat/lib/localContext.xml",
+                "/reachengine/tomcat/lib/local.reach-engine.properties",
+                "/reachengine/tomcat/lib/log4j.properties",
+                "/reachengine/tomcat/lib/dynamic.reach-engine.properties",
+                "/reachengine/wfruntime/conf/local.wferuntime.properties",
+                "/reachengine/wfruntime/conf/local-applicationContext.xml",
+                "/reachengine/wfruntime/conf/log4j.properties",
+                "/reachengine/wfruntime/conf/mime-type.properties",
+                "/reachengine/wfruntime/conf/local.wferuntime.properties",
+                "/reachengine/wfruntime/conf/jetty-config.xml",
+                "/reachengine/wfruntime/conf/log4j.properties",
+                "/reachengine/wfruntime/conf/dynamic.wferuntime.properties",
+                "/reachengine/wfruntime/conf/local-applicationContext.xml",
+                "/etc/fstab"
+            ]
+
+            files.each { file ->
+                Path filePath = Paths.get(file)
+                if (Files.exists(filePath)) {
+                    Files.copy(filePath, baseRepositoryPath.resolve(filePath.getFileName().toString()), StandardCopyOption.REPLACE_EXISTING)
+                    execCommand(null, baseRepositoryPath, [gitPath, "add", filePath.getFileName().toString()])
+                    execCommand(null, baseRepositoryPath, ['/bin/rm', '-f', '.git/COMMIT_EDITMSG'])
+                    execCommand(null, baseRepositoryPath, [gitPath, "commit", "-am", "Added property file - " + filePath.toAbsolutePath().toString()])
+                }
+            }
+
+            def json = JsonOutput.toJson(ApplicationContextHolder.getApplicationContext().getBean(DynamicPropertiesBusinessService.class).getAllProperties())
+            String jsonString = JsonOutput.prettyPrint(json)
+            Files.write(baseRepositoryPath.resolve("dynamic.properties.json"), jsonString.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+            execCommand(null, baseRepositoryPath, [gitPath, "add", "dynamic.properties.json"])
+            execCommand(null, baseRepositoryPath, ['/bin/rm', '-f', '.git/COMMIT_EDITMSG'])
+            execCommand(null, baseRepositoryPath, [gitPath, "commit", "-am", "Added generated property file - dynamic.properties.json"])
+
+            return true
+            ]]>
+        </script>
+    </groovyStep>
+
+
+    <groovyStep name="export metadata"
+                resultDataDef="groovyResult">
+        <transition condition="${exportMetadataGroups}">
+            <targetStepName>export metadata groups</targetStepName>
+        </transition>
+        <transition condition="${exportMetadataForms}">
+            <targetStepName>export forms</targetStepName>
+        </transition>
+        <transition condition="${exportCategories}">
+            <targetStepName>export categories</targetStepName>
+        </transition>
+        <transition condition="${exportWorkflowExecutions}">
+            <targetStepName>export workflow executions</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>zip up contents</targetStepName>
+        </transition>
+        <script>
+            <![CDATA[
+            import groovy.json.JsonSlurper
+            import groovy.json.JsonOutput
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+            import java.io.File
+            import java.nio.file.Files
+            import java.nio.file.Paths
+            import java.nio.file.Path
+            import java.nio.file.StandardOpenOption
+            import java.nio.file.attribute.PosixFilePermissions
+            import java.nio.file.attribute.FileTime
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.routeto1.data.query.SortDirection
+            import com.levelsbeyond.jdbi.DBIFactory
+            import com.levelsbeyond.service.properties.DynamicPropertiesBusinessService
+            import com.levelsbeyond.service.inventory.MetadataService
+            import com.levelsbeyond.api.metadata.MetadataFieldDTO
+            import com.levelsbeyond.api.Result
+            import com.levelsbeyond.api.inventory.MetadataFieldCollection
+
+
+            Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+
+            Path baseRepositoryPath = Paths.get(repoDir.absolutePath)
+            def attr = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwxr-x---"))
+            Files.createDirectories(baseRepositoryPath, attr)
+
+            logger.debug("Adding metadata as JSON to repository ${baseRepositoryPath.toString()}")
+
+            void execCommand(def env, def dir, def command) {
+                command.execute(env, new File(dir.toString())).with {
+                    Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+                    StringWriter output = new StringWriter()
+                    StringWriter error = new StringWriter()
+                    //wait for process ended and catch stderr and stdout.
+                    it.waitForProcessOutput(output, error)
+                    //check there is no error
+                    logger.debug("error=$error")
+                    logger.debug("output=$output")
+                    logger.debug("code=${it.exitValue()}")
+                }
+            }
+
+            MetadataService metadataService = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class)
+            MetadataFieldCollection fields = MetadataFieldCollection.builder().setRows(metadataService.getMetadataFields().results()).build()
+
+            json = JsonOutput.toJson(fields)
+
+
+            Path metadataDirPath = baseRepositoryPath.resolve("metadata")
+            String metadataFieldsFilename = "metadataFields.json"
+            Path metadataFilePath = metadataDirPath.resolve(metadataFieldsFilename)
+
+            Files.createDirectories(metadataDirPath, attr)
+            Files.write(metadataFilePath, JsonOutput.prettyPrint(json).getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+            execCommand(null, metadataDirPath, [gitPath, "add", metadataFieldsFilename])
+
+            // Add picklist items
+            Path metadataFieldDirPath = metadataDirPath.resolve("fields")
+            Files.createDirectories(metadataFieldDirPath, attr)
+            fields.getRows().each { field ->
+                if (['lookup', 'picklist'].contains(field.getType())) {
+                    String metadataItemFilename = "${field.getName()}.json"
+                    Path metadataItemsFilePath = metadataFieldDirPath.resolve(metadataItemFilename)
+                    def fieldJson = new JsonSlurper().parseText(JsonOutput.toJson(field))
+                    fieldJson.picklistItems = new JsonSlurper().parseText(JsonOutput.toJson(metadataService.getItemsAsPicklistDTO(field.getId(), "", 90210, 0)))
+                    Files.write(metadataItemsFilePath, JsonOutput.prettyPrint(JsonOutput.toJson(fieldJson)).getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+                    execCommand(null, metadataFieldDirPath, [gitPath, "add", metadataItemFilename])
+                }
+            }
+
+            execCommand(null, baseRepositoryPath, ['/bin/rm', '-f', '.git/COMMIT_EDITMSG'])
+            execCommand(null, baseRepositoryPath, [gitPath, "commit", "-am", "Added metadata fields"])
+
+            return true
+            ]]>
+        </script>
+    </groovyStep>
+
+    <groovyStep name="export metadata groups"
+                resultDataDef="groovyResult">
+        <transition condition="${exportMetadataForms}">
+            <targetStepName>export forms</targetStepName>
+        </transition>
+        <transition condition="${exportCategories}">
+            <targetStepName>export categories</targetStepName>
+        </transition>
+        <transition condition="${exportWorkflowExecutions}">
+            <targetStepName>export workflow executions</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>zip up contents</targetStepName>
+        </transition>
+        <script>
+            <![CDATA[
+            import groovy.json.JsonSlurper
+            import groovy.json.JsonOutput
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+            import java.io.File
+            import java.nio.file.Files
+            import java.nio.file.Paths
+            import java.nio.file.Path
+            import java.nio.file.StandardOpenOption
+            import java.nio.file.attribute.PosixFilePermissions
+            import java.nio.file.attribute.FileTime
+            import com.levelsbeyond.util.APIResourceUtil
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.levelsbeyond.service.metadata.group.MetadataGroupService
+            import com.levelsbeyond.api.metadata.MetadataGroupAndFieldsDTO
+            import com.levelsbeyond.api.metadata.MetadataDTOProjections
+
+            Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+
+            Path baseRepositoryPath = Paths.get(repoDir.absolutePath)
+            def attr = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwxr-x---"))
+            Files.createDirectories(baseRepositoryPath, attr)
+
+            MetadataGroupService metadataGroupService = ApplicationContextHolder.getApplicationContext().getBean(MetadataGroupService.class)
+            MetadataDTOProjections metadataDTOProjections = ApplicationContextHolder.getApplicationContext().getBean(MetadataDTOProjections.class)
+
+            logger.debug("Adding metadata groups as JSON to repository ${baseRepositoryPath.toString()}")
+
+            void execCommand(def env, def dir, def command) {
+                command.execute(env, new File(dir.toString())).with {
+                    Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+                    StringWriter output = new StringWriter()
+                    StringWriter error = new StringWriter()
+                    //wait for process ended and catch stderr and stdout.
+                    it.waitForProcessOutput(output, error)
+                    //check there is no error
+                    logger.debug("error=$error")
+                    logger.debug("output=$output")
+                    logger.debug("code=${it.exitValue()}")
+                }
+            }
+
+            def metadataGroups = metadataDTOProjections.toMetadataGroupDTOResults(metadataGroupService.find(new APIResourceUtil.RangeRequestParams(0, 90210, null), null, null, null)).results()
+            Path metadataDirPath = baseRepositoryPath.resolve("metadata")
+            String metadataGroupsFilename = "metadataGroups.json"
+            Path metadataFilePath = metadataDirPath.resolve(metadataGroupsFilename)
+
+            Files.createDirectories(metadataDirPath, attr)
+            Files.write(metadataFilePath, JsonOutput.prettyPrint(JsonOutput.toJson(metadataGroups)).getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+            execCommand(null, metadataDirPath, [gitPath, "add", metadataGroupsFilename])
+
+            Path metadataGroupDirPath = metadataDirPath.resolve("groups")
+            Files.createDirectories(metadataGroupDirPath, attr)
+
+            metadataGroups.each { group ->
+                String filename = group.getName().replaceAll("[\\W]", "_") + "_" + group.getId() + ".json"
+                Path filePath = metadataGroupDirPath.resolve(filename)
+                def json = new JsonSlurper().parseText(JsonOutput.toJson(group))
+                json.fields = new JsonSlurper().parseText(JsonOutput.toJson(metadataDTOProjections.toMetadataFieldDTOs(metadataGroupService.findFields(Long.parseLong(group.getId())))))
+                Files.write(filePath, JsonOutput.prettyPrint(JsonOutput.toJson(json)).getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+                execCommand(null, metadataGroupDirPath, [gitPath, "add", filename])
+            }
+
+            execCommand(null, baseRepositoryPath, ['/bin/rm', '-f', '.git/COMMIT_EDITMSG'])
+            execCommand(null, baseRepositoryPath, [gitPath, "commit", "-am", "Added metadata groups"])
+
+            return true
+            ]]>
+        </script>
+    </groovyStep>
+
+    <groovyStep name="export forms"
+                resultDataDef="groovyResult">
+        <transition condition="${exportCategories}">
+            <targetStepName>export categories</targetStepName>
+        </transition>
+        <transition condition="${exportWorkflowExecutions}">
+            <targetStepName>export workflow executions</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>zip up contents</targetStepName>
+        </transition>
+        <script>
+            <![CDATA[
+            import groovy.json.JsonSlurper
+            import groovy.json.JsonOutput
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+            import java.io.File
+            import java.nio.file.Files
+            import java.nio.file.Paths
+            import java.nio.file.Path
+            import java.nio.file.StandardOpenOption
+            import java.nio.file.attribute.PosixFilePermissions
+            import java.nio.file.attribute.FileTime
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.levelsbeyond.studio.service.form.MetadataFormBusinessService
+            import com.routeto1.data.query.SortDirection
+
+
+            Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+
+            Path baseRepositoryPath = Paths.get(repoDir.absolutePath)
+            def attr = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwxr-x---"))
+            Files.createDirectories(baseRepositoryPath, attr)
+
+            logger.debug("Adding metadata forms as JSON to repository ${baseRepositoryPath.toString()}")
+
+            void execCommand(def env, def dir, def command) {
+                command.execute(env, new File(dir.toString())).with {
+                    Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+                    StringWriter output = new StringWriter()
+                    StringWriter error = new StringWriter()
+                    //wait for process ended and catch stderr and stdout.
+                    it.waitForProcessOutput(output, error)
+                    //check there is no error
+                    logger.debug("error=$error")
+                    logger.debug("output=$output")
+                    logger.debug("code=${it.exitValue()}")
+                }
+            }
+
+            Path metadataDirPath = baseRepositoryPath.resolve("metadata")
+            String metadataFormsFilename = "metadataForms.json"
+            Path metadataFormsFilePath = metadataDirPath.resolve(metadataFormsFilename)
+
+            MetadataFormBusinessService formService = ApplicationContextHolder.getApplicationContext().getBean(MetadataFormBusinessService.class)
+            def forms = formService.getForms(90210, 0, "name", SortDirection.ASC, '').results()
+            Files.write(metadataFormsFilePath, JsonOutput.prettyPrint(JsonOutput.toJson(forms)).getBytes())
+            execCommand(null, metadataDirPath, [gitPath, "add", metadataFormsFilename])
+
+            Path metadataFormsDirPath = metadataDirPath.resolve('forms')
+            Files.createDirectories(metadataFormsDirPath, attr)
+
+            forms.each { form ->
+                String formFilename = "${form.getName()}.json"
+                Path formFilePath = metadataFormsDirPath.resolve(formFilename)
+                def formJson = new JsonSlurper().parseText(JsonOutput.toJson(form))
+                def fieldsForForms = formService.fieldsForForm(form.getId(), 90210, 0, false, true)
+                if (fieldsForForms.isPresent()) {
+                    formJson.fields = new JsonSlurper().parseText(JsonOutput.toJson(fieldsForForms.get()))
+                    Files.write(formFilePath, JsonOutput.prettyPrint(JsonOutput.toJson(formJson)).getBytes())
+                    execCommand(null, metadataFormsDirPath, [gitPath, "add", formFilename])
+                }
+            }
+
+            execCommand(null, baseRepositoryPath, ['/bin/rm', '-f', '.git/COMMIT_EDITMSG'])
+            execCommand(null, baseRepositoryPath, [gitPath, "commit", "-am", "Added metadata forms"])
+            return true
+            ]]>
+        </script>
+    </groovyStep>
+
+    <groovyStep name="export categories"
+                resultDataDef="groovyResult">
+        <transition condition="${exportWorkflowExecutions}">
+            <targetStepName>export workflow executions</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>zip up contents</targetStepName>
+        </transition>
+        <script>
+            <![CDATA[
+            import groovy.json.JsonSlurper
+            import groovy.json.JsonOutput
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+            import java.io.File
+            import java.nio.file.Files
+            import java.nio.file.Paths
+            import java.nio.file.Path
+            import java.nio.file.StandardOpenOption
+            import java.nio.file.attribute.PosixFilePermissions
+            import java.nio.file.attribute.FileTime
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.levelsbeyond.service.category.CategoriesService
+            import com.levelsbeyond.util.APIResourceUtil
+            import com.levelsbeyond.api.category.CategoryDTO
+
+            Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+
+            Path baseRepositoryPath = Paths.get(repoDir.absolutePath)
+            def attr = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwxr-x---"))
+            Files.createDirectories(baseRepositoryPath, attr)
+
+            logger.debug("Adding categories as JSON to repository ${baseRepositoryPath.toString()}")
+
+            void execCommand(def env, def dir, def command) {
+                command.execute(env, new File(dir.toString())).with {
+                    Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+                    StringWriter output = new StringWriter()
+                    StringWriter error = new StringWriter()
+                    //wait for process ended and catch stderr and stdout.
+                    it.waitForProcessOutput(output, error)
+                    //check there is no error
+                    logger.debug("error=$error")
+                    logger.debug("output=$output")
+                    logger.debug("code=${it.exitValue()}")
+                }
+            }
+
+            Path metadataDirPath = baseRepositoryPath.resolve("metadata")
+            String metadataCategoriesFilename = "categories.json"
+            Path metadataCategoriesFilePath = metadataDirPath.resolve(metadataCategoriesFilename)
+
+            CategoriesService categoriesService = ApplicationContextHolder.getApplicationContext().getBean(CategoriesService.class)
+            def categories = categoriesService.findAll("", new APIResourceUtil.RangeRequestParams(0, 90210, null), null, null, false).results()
+            Files.write(metadataCategoriesFilePath, JsonOutput.prettyPrint(JsonOutput.toJson(categories)).getBytes())
+            execCommand(null, metadataDirPath, [gitPath, "add", metadataCategoriesFilename])
+            execCommand(null, baseRepositoryPath, ['/bin/rm', '-f', '.git/COMMIT_EDITMSG'])
+            execCommand(null, baseRepositoryPath, [gitPath, "commit", "-am", "Added categories"])
+            return true
+            ]]>
+        </script>
+    </groovyStep>
+
+    <groovyStep name="export workflow executions"
+                resultDataDef="groovyResult"
+                nextStep="zip up contents">
+        <script>
+            <![CDATA[
+            import groovy.json.JsonSlurper
+            import groovy.json.JsonOutput
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+            import java.io.File
+            import java.nio.file.Files
+            import java.nio.file.Paths
+            import java.nio.file.Path
+            import java.nio.file.StandardOpenOption
+            import java.nio.file.attribute.PosixFilePermissions
+            import java.nio.file.attribute.FileTime
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.levelsbeyond.service.workflow.DataObjectWorkflowExecutionService
+            import com.levelsbeyond.plugin.workflow.api.data.WorkflowExecutionDTO
+            import com.levelsbeyond.api.workflow.WorkflowExecutionFilterParams
+            import com.levelsbeyond.util.APIResourceUtil
+
+            Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+
+            Path baseRepositoryPath = Paths.get(repoDir.absolutePath)
+            def attr = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwxr-x---"))
+            Files.createDirectories(baseRepositoryPath, attr)
+
+            logger.debug("Adding workflow executions as JSON to repository ${baseRepositoryPath.toString()}")
+
+            void execCommand(def env, def dir, def command) {
+                command.execute(env, new File(dir.toString())).with {
+                    Logger logger = LoggerFactory.getLogger("GroovyWorkflow")
+                    StringWriter output = new StringWriter()
+                    StringWriter error = new StringWriter()
+                    //wait for process ended and catch stderr and stdout.
+                    it.waitForProcessOutput(output, error)
+                    //check there is no error
+                    logger.debug("error=$error")
+                    logger.debug("output=$output")
+                    logger.debug("code=${it.exitValue()}")
+                }
+            }
+
+            Path workflowExecutionPath = baseRepositoryPath.resolve("workflowExecutions")
+            Files.createDirectories(workflowExecutionPath, attr)
+            String executionsFilename = "executions.json"
+            Path executionsFilePath = workflowExecutionPath.resolve(executionsFilename)
+
+            DataObjectWorkflowExecutionService workflowExecutionService = ApplicationContextHolder.getApplicationContext().getBean(DataObjectWorkflowExecutionService.class)
+            def executions = workflowExecutionService.getWorkflowExecutions(WorkflowExecutionFilterParams.builder().setFetchLimit(90210).setFetchOffset(0).setDevWorkflowFlag(true).setVerbose(false).build())
+            Files.write(executionsFilePath, JsonOutput.prettyPrint(JsonOutput.toJson(executions)).getBytes())
+            execCommand(null, workflowExecutionPath, [gitPath, "add", executionsFilename])
+            // Extract context data defs here.
+
+            execCommand(null, baseRepositoryPath, ['/bin/rm', '-f', '.git/COMMIT_EDITMSG'])
+            execCommand(null, baseRepositoryPath, [gitPath, "commit", "-am", "Added workflow executions"])
+            return true
+            ]]>
+        </script>
+    </groovyStep>
+
+
+    <compressFileStep name="zip up contents"
+                      sourceFilesExpression="${directoryToZip}"
+                      executionLabelExpression="${directoryToZip.name} is zipped up"
+                      targetDirectoryExpression="${tempdir}"
+                      resultDataDef="zippedFile"
+                      nextStep="download zipped file" />
+
+    <setWorkflowDownloadStep name="download zipped file" sourceFileExpression="${zippedFile}" continueOnException="true" executionLabelExpression="Download ${zippedFile.name}">
+        <transition condition="${directoryToZip.exists()}">
+            <targetStepName>remove temp directory</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>fin</targetStepName>
+        </transition>
+    </setWorkflowDownloadStep>
+
+    <runCommandStep name="remove temp directory"
+                    executionLabelExpression="Remove ${directoryToZip.absolutePath}"
+                    executablePathExpression="/bin/rm"
+                    continueOnException="true"
+                    nextStep="notify download ready">
+        <arg>-rf</arg>
+        <arg>${directoryToZip.absolutePath}</arg>
+    </runCommandStep>
+
+    <createSuccessNotificationStep name="notify download ready" continueOnException="true" notificationTypeExpression="success" notificationBodyExpression="Your download is available on the status tab." nextStep="fin" />
+
+    <noopStep name="fin" />
+
+    <failWorkflowStep name="workflow is running" reasonExpression="The workflow is already running" />
+
+    <!-- User inputs -->
+    <contextDataDef name="repoName"     dataType="String" userInput="true" label="Repository Name" displayIndex="1"  required="true"/>
+    <contextDataDef name="userEmail"    dataType="Email" userInput="true" label="User email address" displayIndex="2" required="true" />
+    <contextDataDef name="userName"     dataType="String" userInput="true" label="User name" displayIndex="3" required="true" />
+    <contextDataDef name="exportWorkflows" dataType="Boolean" userInput="true" label="Export workflow history" displayIndex="4"/>
+    <contextDataDef name="exportWorkflowStats" dataType="Boolean" userInput="true" label="Export workflow usage stats" displayIndex="5"/>
+    <contextDataDef name="exportConfig"    dataType="Boolean" userInput="true" label="Export configuration files and properties" displayIndex="6"/>
+    <contextDataDef name="exportMetadata"  dataType="Boolean" userInput="true" label="Export Metadata Fields" displayIndex="7"/>
+    <contextDataDef name="exportMetadataGroups" dataType="Boolean" userInput="true" label="Export Metadata Groups" displayIndex="8"/>
+    <contextDataDef name="exportMetadataForms"      dataType="Boolean" userInput="true" label="Export Forms" displayIndex="9"/>
+    <contextDataDef name="exportCategories"     dataType="Boolean" userInput="true" label="Export Categories" displayIndex="10"/>
+    <contextDataDef name="exportWorkflowExecutions"     dataType="Boolean" userInput="false" label="Export Workflow Executions" displayIndex="11" defaultDataExpression="false"/>
+
+    <!-- internal -->
+    <contextDataDef name="tempdir"       dataType="Directory"   defaultDataExpression="${#sysconfig('filesystem.root.temp')}" />
+    <contextDataDef name="repoDir"      dataType="Directory"    defaultDataExpression="${T(java.nio.file.Paths).get(tempdir.absolutePath, repoName)}" />
+    <contextDataDef name="readmeJson"   dataType="JSON" />
+    <contextDataDef name="directoryToZip" dataType="Directory" />
+    <contextDataDef name="zippedFile"   dataType="Directory" />
+    <contextDataDef name="metadataFields" dataType="JSON" />
+
+    <contextDataDef name="groovyResult" dataType="Boolean" hidden="true" />
+    <contextDataDef name="currentExecutions"            dataType="Data Object"          multiple="true"/>
+    <contextDataDef name="gitPath" dataType="String" defaultDataExpression="${#sysconfig('git.path')?:'/usr/bin/git'}" />
+
+</workflow>

@@ -1,0 +1,178 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_getCollaborateAssetMetadata"
+	name="Get Collaborate Asset Metadata"
+	executionLabelExpression="Get Collaborate Asset Metadata | Collaborate Asset Id: ${assetData.id}"
+	description=""
+	subjectDOClassName=""
+	showInUserInterface="false"
+	resultDataDef="metadataForm"
+	deadlineExpression=""
+	sdkVersion="5.4"
+	>
+
+	
+	<initialStepName>validate metadata usage</initialStepName>
+	
+	
+	<noopStep name="validate metadata usage"
+		executionLabelExpression="Metadata schema supplied? ${metadataSchemaId != null} | Categories? ${ ingestForm != null? ingestForm?.categories != null AND ingestForm?.categories?.size() &gt; 0 : 'false'}"
+		pctComplete="2"
+		>
+		<transition condition="${metadataSchemaId != null}">
+			<targetStepName>get schema data</targetStepName>
+		</transition>
+		<transition condition="${ingestForm?.categories != null AND ingestForm?.categories?.size() &gt; 0}">
+			<targetStepName>create metadata json</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<submitHttpStep name="get schema data"
+		urlExpression="${metadataSearchServiceUrl}/schemas/${metadataSchemaId}"
+		requestMethodExpression="GET"
+		responsePayloadDataDef="metadataSchemaData"
+		continueOnException="true"
+		pctComplete="33"
+		>
+		<transition condition="${metadataSchemaData != null}">
+			<targetStepName>get asset metadata</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>metadata error</targetStepName>
+		</transition>
+		
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+	
+
+	<submitHttpStep name="get asset metadata"
+		urlExpression="${metadataSearchServiceUrl}/metadata/${assetData.metadataId}"
+		requestMethodExpression="GET"
+		responsePayloadDataDef="metadata"
+		continueOnException="true"
+		pctComplete="66"
+		>
+		<transition condition="${metadata != null}">
+			<targetStepName>create metadata json</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>metadata error</targetStepName>
+		</transition>
+		
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+
+	
+	<groovyStep name="create metadata json"
+		resultDataDef="metadataForm"
+		pctComplete="99"
+		>
+		<transition condition="${metadataForm != null AND !metadataForm.toString().equals('{}')}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>metadata error</targetStepName>
+		</transition>
+		<script>
+		<![CDATA[
+			import groovy.json.*
+			import org.slf4j.Logger
+			import org.slf4j.LoggerFactory
+			
+			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+			
+			def metadataMap = [:]
+			metadataMap.put("source","Collaborate")
+			metadataMap.put("categories",[])
+			metadataMap.put("metadata",[:])
+			
+			try{
+				if(ingestForm.categories != null && ingestForm.categories?.size() > 0){
+						for(category in ingestForm.categories)
+							metadataMap.categories.push(category.id.toString())
+				}
+				if(metadataSchemaData != null){
+					metadataSchemaData.schemaData.get('properties').fields().each {
+					    def value = metadata.get(it.getKey())
+					    if(value != null)
+					        metadataMap.metadata.put(it.getKey(), value)
+					}
+				}
+			}
+			catch(Exception e){
+				log.error("error formatting collaborate metadata >>> ${e}")
+				return null
+			}
+
+			return metadataMap
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<noopStep name="metadata error"
+		executionLabelExpression="could not extract/format metadata. | fail? ${failOnError}"
+		>
+		<transition condition="${failOnError}">
+			<targetStepName>error extracting metadata</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<noopStep name="end"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="error extracting metadata"
+		reasonExpression="error extracting/formatting metadata."
+		executionLabelExpression="error extracting/formatting metadata."
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input Variables .......... -->
+	<contextDataDef name="ingestForm"               dataType="Data Object"/>
+	<contextDataDef name="assetData"                dataType="JSON"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="failOnError"              dataType="Boolean"      defaultDataExpression="${#sysconfig('workflows.default.collaborate.ingestAsset.metadata.failOnError') != null? #sysconfig('workflows.default.collaborate.ingestAsset.metadata.failOnError') : true}"/>
+	<!-- formatted metadata to return -->
+	<contextDataDef name="metadataForm"             dataType="MetadataForm"/>
+	<!-- metadata returned from APIs -->
+	<contextDataDef name="metadata"                 dataType="JSON"/>
+	<contextDataDef name="metadataSchemaData"       dataType="JSON"/>
+	<!-- matching collaborate form id for the ingest form given -->
+	<contextDataDef name="metadataSchemaId"         dataType="Integer"      defaultDataExpression="${ingestForm?.cloudformSchemaId != null? ingestForm?.cloudformSchemaId : null}"/>
+	<!-- API Config -->
+	<contextDataDef name="metadataSearchServiceUrl" dataType="String"       defaultDataExpression="${#sysconfig('cloudform.metadataSearchService.url')}"/>
+	<contextDataDef name="assetServiceUrl"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.assetService.url')}"/>
+	<contextDataDef name="cloudformApiKey"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.apiKey')}"/>
+</workflow>

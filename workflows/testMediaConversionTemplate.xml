@@ -1,0 +1,55 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="testMediaConversionTemplate"
+	name="Test Media Conversion Template"
+	executionLabelExpression="Test Media Conversion Template"
+	subjectDOClassName=""
+	showInUserInterface="true"
+	sdkVersion=""
+	>
+	
+	<initialStepName>evaluate dataDefs</initialStepName>
+	
+
+	<groovyStep name="evaluate dataDefs"
+		resultDataDef="success"
+		>
+		<script>
+		<![CDATA[
+			return true
+		]]>
+		</script>
+	</groovyStep>
+	
+	<!--<contextDataDef name="conversionId"       dataType="String"      userInput="true" required="true"/>-->
+	<!--<contextDataDef name="conversionTemplate" dataType="Data Object" defaultDataExpression="[com_levelsbeyond_persistence_domain_media_conversion_MediaConversionTemplate.${conversionId}]"/>-->
+	<!--<contextDataDef name="conversionInfo"     dataType="JSON"        defaultDataExpression="${conversionTemplate.conversionInfo}"/>-->
+	<!--<contextDataDef name="success"            dataType="Boolean"     defaultDataExpression="false"/>-->
+	
+	<contextDataDef name="conversionTemplate"     dataType="Data Object" userInput="true" required="true">
+		<picklist>
+			<dataObjectSearch dataObjectClass="VideoContentTemplate">
+				<searchPath>name</searchPath>
+			</dataObjectSearch>
+		</picklist>
+	</contextDataDef>
+
+</workflow>

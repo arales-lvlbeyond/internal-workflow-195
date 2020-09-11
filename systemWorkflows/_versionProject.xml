@@ -1,0 +1,90 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          id="_versionProject"
+          name="Update NLE Project Version"
+          executionLabelExpression="Update NLE project ${project.name} to version ${newAssetVersion.versionNumber}"
+          subjectDOClassName="Project"
+          devWorkflow="true"
+          showInUserInterface="false"
+          resultDataDef="project"
+          sdkVersion="4.2">
+
+	<initialStepName>update project version</initialStepName>
+
+	<setContextData name="update project version"
+	                valueExpression="${#setAssetVersion(projectAsset, newAssetVersion)}"
+	                targetDataDef="currentAssetVersion"
+	                pctComplete="5">
+		<transition condition="${newAssetVersion.equals(currentAssetVersion)}">
+			<targetStepName>set project file</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</setContextData>
+
+	<setContextData name="set project file"
+	                valueExpression="${#assetService().getAssetContent(newAssetVersion, 'projectSource')?.file}"
+	                targetDataDef="projectFile"
+	                pctComplete="10">
+		<transition condition="=true">
+			<targetStepName>set project xml file</targetStepName>
+		</transition>
+	</setContextData>
+
+	<setContextData name="set project xml file"
+	                valueExpression="${#assetService().getAssetContent(newAssetVersion, 'projectXML')?.file}"
+	                targetDataDef="projectXmlFile"
+	                pctComplete="15">
+		<transition condition="=true">
+			<targetStepName>import project</targetStepName>
+		</transition>
+	</setContextData>
+
+	<executeSubflowStep name="import project"
+	                    targetWorkflowId="_importProject"
+	                    subjectChangePath="${project}"
+	                    resultDataDef="project"
+	                    pctComplete="50">
+		<transition condition="=true">
+			<targetStepName>end</targetStepName>
+		</transition>
+
+		<subflowContextDataMapping subflowDataDef="project" parentDataDef="project"/>
+		<subflowContextDataMapping subflowDataDef="projectFile" parentDataDef="projectFile"/>
+		<subflowContextDataMapping subflowDataDef="projectXmlFile" parentDataDef="projectXmlFile"/>
+		<subflowContextDataMapping subflowDataDef="projectXml" parentDataDef="projectXml"/>
+		<subflowContextDataMapping subflowDataDef="keepLocked" parentDataDef="keepLocked"/>
+		<subflowContextDataMapping subflowDataDef="ingestExternalMedia" parentDataDef="ingestExternalMedia"/>
+	</executeSubflowStep>
+
+	<noopStep name="end"/>
+
+	<contextDataDef name="projectFile" dataType="File"/>
+	<contextDataDef name="projectXmlFile" dataType="File"/>
+	<contextDataDef name="projectXml" dataType="XML" defaultDataExpression="${projectXmlFile}"/>
+	<contextDataDef name="project" dataType="Data Object" defaultDataExpression="${subject}"/>
+	<contextDataDef name="projectAsset" dataType="Data Object" defaultDataExpression="${project?.projectAsset}"/>
+	<contextDataDef name="newAssetVersion" dataType="Data Object" required="true"/>
+	<contextDataDef name="currentAssetVersion" dataType="Data Object" defaultDataExpression="${projectAsset?.currentVersion}"/>
+	<contextDataDef name="keepLocked" dataType="Boolean" defaultDataExpression="false"/>
+	<contextDataDef name="ingestExternalMedia" dataType="Boolean" defaultDataExpression="=false"></contextDataDef>
+</workflow>

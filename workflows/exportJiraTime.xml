@@ -1,0 +1,219 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="exportJiraTime"
+	name="Export Jira time"
+	executionLabelExpression="Exporting Jira data from ${csvFile.name}"
+	subjectDOClassName=""
+	showInUserInterface="true"
+	resultDataDef=""
+	sdkVersion=""
+>
+
+    <initialStepName>convert csv to jsons</initialStepName>
+
+	<setContextData name="convert csv to jsons"
+		targetDataDef="jsonEntries"
+		valueExpression="${#convertCsvToJson(csvFile.absolutePath)}"
+		nextStep="get labels"
+	/>
+
+    <submitHttpStep name="get labels"
+	    urlExpression="${labelsUrl}"
+	    requestMethodExpression="GET"
+	    responsePayloadDataDef="labelsResponse"
+	    nextStep="get projects"
+    >
+		<requestHeader name="Authorization">${auth}</requestHeader>
+	</submitHttpStep>
+
+    <submitHttpStep name="get projects"
+	    urlExpression="${projectsUrl}"
+	    requestMethodExpression="GET"
+	    responsePayloadDataDef="projectsResponse"
+	    nextStep="query for running subflows"
+    >
+		<requestHeader name="Authorization">${auth}</requestHeader>
+	</submitHttpStep>
+	
+	<!-- ................................................ Start Queue Loop ................................................ -->
+	<queryStep name="query for running subflows"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="executingSubflows"
+		executionLabelExpression="checking for workflows (with name = ${subflowName}) that are not in a finished state"
+		devStep="true"
+	>
+		<transition condition="${executingSubflows == null}">
+			<targetStepName>ready next subflows</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>check running subflows</targetStepName>
+		</transition>
+
+		<criteria>
+			<![CDATA[
+            <criteria>
+                <and>
+                    <condition property="workflowVersion.workflow.name" op="eq">
+                        <test value="${subflowName}"/>
+                    </condition>
+                    <condition property="status" op="in">
+                        <tests>
+                            <test value="CREATED" />
+                            <test value="QUEUED" />
+                            <test value="EXECUTING" />
+                         </tests>
+                    </condition>
+                </and>
+            </criteria>
+            ]]>
+		</criteria>
+	</queryStep>
+
+
+
+	<noopStep name="check running subflows"
+		executionLabelExpression="number of subflows (name = ${subflowName}) running >>> ${executingSubflows.size()} out of ${queueLimit}"
+		devStep="true"
+	>
+		<transition condition="${ executingSubflows.size() &lt; queueLimit }">
+			<targetStepName>ready next subflows</targetStepName>
+		</transition>
+		<transition condition="${ true }">
+			<targetStepName>queue full</targetStepName>
+		</transition>
+	</noopStep>
+
+
+
+	<delayStep name="queue full"
+		delaySecondsExpression="${ queryPollInterval }"
+		executionLabelExpression="${ executingSubflows.size() }/${ queueLimit } running subflows (name = ${subflowName}). Waiting ${queryPollInterval} seconds. ${jsonEntries.size()} remaining collections."
+		nextStep="query for running subflows"
+	/>
+
+
+
+	<setContextData name="ready next subflows"
+		targetDataDef="nextEntries"
+		valueExpression="${jsonEntries.size() &gt; subflowLimit ? jsonEntries.subList(0, subflowLimit) : jsonEntries.subList(0, jsonEntries.size()) }"
+		executionLabelExpression="got ${nextEntries.size()} subflows to process"
+		nextStep="remove subflows from main list"
+		devStep="true"
+	/>
+
+
+
+	<groovyStep name="remove subflows from main list"
+		resultDataDef="jsonEntries"
+		executionLabelExpression="remove ${nextEntries.size()} subflows from the main list"
+		nextStep="check for type of export"
+		devStep="true"
+	>
+		<script>
+			<![CDATA[
+			def success = jsonEntries.removeAll(nextEntries);
+			
+			if(success)
+			{return jsonEntries;}
+			else
+			{return null;}
+			]]>
+		</script>
+	</groovyStep>
+
+	<noopStep name="check for type of export"
+		executionLabelExpression="Export to Azure? | ${exportToAzure}"
+	>
+		<transition condition="${exportToAzure == true}">
+			<targetStepName>process subflows azure</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>process subflows</targetStepName>
+		</transition>
+	</noopStep>
+
+	<executeSubflowStep name="process subflows"
+		executionLabelExpression="${executingSubflows.size()}/${queueLimit} running subflows (name = ${subflowName}). Preparing ${nextEntries.size()} subflows to process. ${jsonEntries.size()} remaining subflows"
+		targetWorkflowId="createTimelyEvent"
+		subjectChangePath="${nextEntries}"
+		subflowTargetDataDef="jsonEntry"
+		waitForCompletionExpression="false"
+		nextStep="check for more subflows"
+	>
+		<subflowContextDataMapping parentDataDef="projectsResponse" 	subflowDataDef="projectsResponse"/>
+		<subflowContextDataMapping parentDataDef="labelsResponse" 	subflowDataDef="labelsResponse"/>
+	</executeSubflowStep>
+	
+	<executeSubflowStep name="process subflows azure"
+		executionLabelExpression="${executingSubflows.size()}/${queueLimit} running subflows (name = ${subflowName}). Preparing ${nextEntries.size()} subflows to process. ${jsonEntries.size()} remaining subflows"
+		targetWorkflowId="createAzureTimelyEvent"
+		subjectChangePath="${nextEntries}"
+		subflowTargetDataDef="jsonEntry"
+		waitForCompletionExpression="false"
+		nextStep="check for more subflows"
+	>
+		<subflowContextDataMapping parentDataDef="projectsResponse" 	subflowDataDef="projectsResponse"/>
+		<subflowContextDataMapping parentDataDef="labelsResponse" 	subflowDataDef="labelsResponse"/>
+	</executeSubflowStep>
+
+
+
+	<noopStep name="check for more subflows"
+		executionLabelExpression="number of subflows remaining >>> ${jsonEntries.size()}"
+		devStep="true"
+	>
+		<transition condition="${jsonEntries.size() &gt; 0}">
+			<targetStepName>query for running subflows</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	<!-- ................................................. End Queue Loop ................................................. -->
+	
+	
+	<noopStep name="end"/>
+
+
+
+
+	<!-- INPUT -->
+	<contextDataDef name="exportToAzure"        dataType="Boolean"      defaultDataExpression="true"/>
+
+	<contextDataDef name="queueLimit" 			dataType="Integer" 		defaultDataExpression="10"/>
+	<contextDataDef name="subflowLimit" 		dataType="Integer" 		defaultDataExpression="5"/>
+	<contextDataDef name="queryPollInterval"  	dataType="Integer" 		defaultDataExpression="2"/>
+
+	<contextDataDef name="executingSubflows" 	dataType="Data Object" 	multiple="true"/>
+	<contextDataDef name="subflowName"      	dataType="String" 		defaultDataExpression="Create Timely Event"/>
+	<contextDataDef name="nextEntries"    		dataType="JSON" 		multiple="true"/>
+
+    <contextDataDef name="auth" dataType="String" defaultDataExpression="Bearer 4581bda3879607039a12facb1905ba8d5a733acfdbea39dd31cdd25592d1802d"/>
+    <contextDataDef name="labelsUrl" dataType="String" defaultDataExpression="https://api.timelyapp.com/1.1/715456/labels"/>
+    <contextDataDef name="projectsUrl" dataType="String" defaultDataExpression="https://api.timelyapp.com/1.1/715456/projects"/>
+    <contextDataDef name="projectsResponse" dataType="JSON" multiple="true"/>
+    <contextDataDef name="labelsResponse" dataType="JSON" multiple="true"/>
+
+    <contextDataDef name="csvFile" dataType="File" userInput="true"/>
+    <contextDataDef name="jsonEntries" dataType="JSON" multiple="true" defaultDataExpression="${#convertCsvToJson(csvFile)}"/>
+
+</workflow>

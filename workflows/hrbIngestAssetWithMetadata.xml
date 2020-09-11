@@ -1,0 +1,155 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"    
+    xsi:schemaLocation="
+        http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-3.1.xsd
+        http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-1.5.xsd        
+        "
+        
+ id="hrbIngestAssetWithMetadata"
+ name="HERB Ingest Asset With Metadata"
+ executionLabelExpression="Ingest Asset into repository"
+ description="This workflow will use the default anyAssetIngest but require users to enter specified metadata fileds before ingesting.
+ Updated by Jason Perr on 01-30-2015"
+ subjectDOClassName=""
+ showInUserInterface="true"
+ deadlineExpression="">
+    
+    <initialStepName>check for dir meta</initialStepName>
+    
+    <noopStep name="check for dir meta">
+        <transition condition="${jsonMetaFromInput != null}">
+            <targetStepName>Ingest With Meta</targetStepName>
+        </transition>
+        <transition condition="${ true }">
+            <targetStepName>set jsonMetaFromInputString</targetStepName>
+        </transition>
+    </noopStep>
+    
+    <setContextData name="set jsonMetaFromInputString"
+        targetDataDef="jsonMetaFromInputString"
+        executionLabelExpression="keywords is ${keywords} camera is ${camera} and shotLocation is ${shotLocation}"
+        valueExpression="{'producer' : '${#picklistLabel('producer', producer)}', 'agency' : '${#picklistLabel('agency', agency)}', 'keywords' : '${keywords}', 'camera' : '${camera}', 'shotLocation' : '${shotLocation}'}"
+        >
+        
+        <transition condition="${true}">            
+            <targetStepName>set jsonMetaFromInput</targetStepName>
+        </transition>
+        
+    </setContextData>
+    
+    <setContextData name="set jsonMetaFromInput"
+        targetDataDef="jsonMetaFromInput"
+        valueExpression="${jsonMetaFromInputString}"
+        >
+        
+        <transition condition="${true}">            
+            <targetStepName>Ingest With Meta</targetStepName>
+        </transition>
+        
+    </setContextData>
+	
+	<executeSubflowStep  name="Ingest With Meta"
+	    targetWorkflowId="hrbAnyAssetIngest"
+	    resultDataDef="assetVersion"
+	    >
+	    <transition condition="true">
+	        <targetStepName>end</targetStepName>
+	    </transition>
+	    
+	    <subflowContextDataMapping parentDataDef="jsonMetaFromInput" subflowDataDef="jsonMetadata"/>
+	    <subflowContextDataMapping parentDataDef="skipMezzanineFlag" subflowDataDef="skipMezzanineFlag"/>
+	    <subflowContextDataMapping parentDataDef="fileToIngest" subflowDataDef="fileToIngest"/>
+	    <subflowContextDataMapping parentDataDef="allowDuplicateNamesFlag" subflowDataDef="allowDuplicateNamesFlag"/>
+	    <subflowContextDataMapping subflowDataDef="newCategory" parentDataDef="newCategory"/>
+	    <subflowContextDataMapping parentDataDef="createdCollection" subflowDataDef="createdCollection"/>
+	    <subflowContextDataMapping parentDataDef="archiveOnIngest" subflowDataDef="archiveOnIngest"/>
+		<subflowContextDataMapping parentDataDef="generateProxyLater" subflowDataDef="generateProxyLater"/>
+	</executeSubflowStep>
+  
+    
+	<noopStep name="end"></noopStep>		
+	
+	<!-- User input fields -->
+	
+    <contextDataDef name="newCategory" dataType="Data Object" label="01. Category" required="true" userInput="true">
+        <picklist>
+            <dataObjectSearch dataObjectClass="AssetCategory">
+                <searchPath>name</searchPath>
+            </dataObjectSearch>
+        </picklist>
+    </contextDataDef>	
+    
+    <contextDataDef name="createdCollection" dataType="Data Object" label="02. Collection" required="false" userInput="true">
+        <picklist>
+            <dataObjectSearch dataObjectClass="AssetCollection">
+                <searchPath>name</searchPath>
+            </dataObjectSearch>
+        </picklist>
+    </contextDataDef>
+    
+    <contextDataDef name="mediaType" dataType="String"/>
+    <contextDataDef name="assetVersion" dataType="Data Object" ></contextDataDef>
+    <contextDataDef name="asset" dataType="Data Object" ></contextDataDef>   
+    <contextDataDef name="archiveOnIngest" dataType="String" label="Archive After Ingest? " userInput="true">
+        <picklist>
+            <picklistItem value="yes"/>
+            <picklistItem value="no"/>
+        </picklist>
+    </contextDataDef>
+	
+	<contextDataDef name="generateProxyLater" dataType="Boolean"	label="Generate Proxy Later?: "		userInput="true"/>
+
+    
+	<!-- CUSTOM METADATA FIELDS SECTION START -->
+    
+    <contextDataDef name="producer" dataType="String" label="04: Producer" userInput="true">
+        <picklist>
+            <metadataProperty>producer</metadataProperty>
+        </picklist>
+    </contextDataDef>
+    
+    <!--<contextDataDef name="description" dataType="String" label="Description: " userInput="true"></contextDataDef>-->
+    <contextDataDef name="agency" dataType="String"  label="03. Agency" userInput="true">
+        <picklist>
+            <metadataProperty>agency</metadataProperty>
+        </picklist>
+    </contextDataDef>
+    
+    <contextDataDef name="keywords" dataType="String"  label="05. Keywords" userInput="true"/>
+    <contextDataDef name="camera" dataType="String"  label="06. Camera Info" userInput="true"/>
+    <contextDataDef name="shotLocation" dataType="String"  label="07. Shot Location" userInput="true"/>
+    
+
+  
+    <contextDataDef name="jsonMetaFromInputString" dataType="String"></contextDataDef>
+    <contextDataDef name="jsonMetaFromInput" dataType="JSON"></contextDataDef>
+
+    <!-- CUSTOM METADATA FIELDS SECTION END -->
+	
+    <contextDataDef name="allowDuplicateNamesFlag" label="Allow Duplicate File Names" dataType="Boolean" userInput="true"
+        defaultDataExpression="${false}">
+        <description>
+            Optionally, ignore name collisions with already ingested assets.
+            False by default.
+        </description>
+    </contextDataDef>
+    
+    <contextDataDef name="skipMezzanineFlag" label="Use Source as Mezzanine" dataType="Boolean" userInput="false" defaultDataExpression="${true}">
+        <description>
+            For video ingests, determines whether to create a separate mezzanine file or to use the source as the mezzanine.
+            True by default.
+        </description>
+    </contextDataDef>
+    <contextDataDef dataType="File" name="fileToIngest" label="File" required="true" userInput="true">
+        <description>
+            The file to ingest into the repository.  Must be provided when starting the workflow.
+        </description>
+    </contextDataDef>
+    
+    <contextDataDef name="filePath" dataType="String" defaultDataExpression="${#absPath(fileToIngest)}"></contextDataDef>
+    <contextDataDef name="movTypeExtracted" dataType="String"></contextDataDef>
+    <contextDataDef name="movType" dataType="XML"></contextDataDef>
+    
+    
+</workflow>

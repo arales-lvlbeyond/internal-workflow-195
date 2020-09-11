@@ -1,0 +1,130 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="
+    http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-2.3.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-1.5.xsd
+    "
+    id="assetReportToCSV"
+    name="Export RQL Search Results"
+    executionLabelExpression="Export Search Results for RQL ${rqlInpout}"
+    description="Export RQL search results to a CSV file"
+    subjectDOClassName=""
+    showInUserInterface="true"
+    >
+
+    <initialStepName>find assets</initialStepName>
+
+	<groovyStep name="find assets"
+				executionLabelExpression="${message}"
+	    resultDataDef="message"
+	    nextStep="end">
+
+	    <script>
+	    <![CDATA[
+		    import com.levelsbeyond.service.inventory.InventorySearchService
+		    import com.levelsbeyond.api.inventory.InventorySearchResponse
+		    import com.levelsbeyond.api.inventory.InventorySearchResult
+		    import com.routeto1.spring.ApplicationContextHolder
+		    import com.fasterxml.jackson.databind.JsonNode
+		    import com.csvreader.CsvWriter
+
+		    // ------------------------------- CODE EXECUTION -------------------------------
+		    InventorySearchService inventorySearchService = ApplicationContextHolder.getApplicationContext().getBean(InventorySearchService.class)
+
+		    int offset = 0
+
+
+		    char delimiter = ','
+		    CsvWriter csvOutput = new CsvWriter(new FileWriter(newCSVPath, true), delimiter)
+		    def rMsg = "Success"
+
+			try {
+		    csvOutput.write("FileName")
+		    csvOutput.write("SourcePath")
+		    csvOutput.write("ClemsonID")
+		    csvOutput.write("USCID")
+			csvOutput.endRecord()
+
+
+		    boolean moreToFetch = true
+		    while (moreToFetch) {
+			    String rqlString = rqlInput + " OFFSET " + offset + " SIZE " + batchSize
+
+				InventorySearchResponse response = inventorySearchService.search(rqlString,
+						null, new ArrayList(), null, null, null, null, null);
+				if (response == null) {
+					moreToFetch = false
+					rMsg = "response was null"
+				} else {
+					Collection<InventorySearchResult> esResults = response.getResults()
+
+					if (esResults == null) {
+						rMsg = "results was null"
+						moreToFetch = false
+					} else {
+						moreToFetch = esResults.size() == batchSize;
+
+						for (InventorySearchResult result : esResults) {
+
+							def metadata = result.metadata
+							csvOutput.write(metadata.containsKey("filename") ? metadata.get("filename") : "")
+							csvOutput.write(metadata.containsKey("sourceFilePath") ? metadata.get("sourceFilePath") : "")
+							csvOutput.write(metadata.containsKey("assetIdClemson") ? metadata.get("assetIdClemson") : "")
+							csvOutput.write(metadata.containsKey("assetIdUSC") ? metadata.get("assetIdUSC") : "")
+							csvOutput.endRecord()
+						}
+
+						offset += batchSize
+					}
+			    }
+		    }
+
+
+		    } catch (Exception e) {
+				csvOutput.close()
+				return e.getMessage();
+			}
+			csvOutput.close()
+
+		    return rMsg
+		    ]]>
+	    </script>
+    </groovyStep>
+
+
+	<noopStep name="end"
+			  executionLabelExpression="Result at ${newCSVPath}"
+			  pctComplete="100"/>
+
+
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input Variables .......... -->
+	<contextDataDef name="rqlInput" dataType="String" userInput="true" required="true" label="1. RQL:"/>
+	<contextDataDef name="exportDirectory" 			dataType="Directory" 	userInput="true"	required="true" label="2. Export Directory"/>
+	<contextDataDef name="newCSVPath"        dataType="String"     defaultDataExpression="${exportDirectory.absolutePath}/${#formatDate('yyyyMMddHHmmss', #newDate())}rqlResults.csv"/>
+	<contextDataDef name="batchSize"          dataType="Integer"                              defaultDataExpression="500"/>
+	<contextDataDef name="message"          dataType="String"/>
+
+
+	<!-- ....... Processing Variables ........ -->
+
+</workflow>

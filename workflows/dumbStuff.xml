@@ -1,0 +1,18 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.5.xsd"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    id="dumbStuff"
+    name="dumb stuff"
+    subjectDOClassName=""
+    showInUserInterface="false"
+    sdkVersion=""
+	>
+
+    <initialStepName>end</initialStepName>
+
+    <noopStep name="end"/>
+    
+    <garbageStep name="do not use"/>
+
+</workflow>

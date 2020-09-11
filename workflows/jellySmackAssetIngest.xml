@@ -1,0 +1,32 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns="http://levelsbeyond.com/schema/workflow"
+xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+id="jellySmackAssetIngest"
+name="Ux Test"
+executionLabelExpression="Any Asset Ingest | File: ${fileToIngest.absolutePath}"
+description=""
+subjectDOClassName="AssetMaster"
+resultDataDef=""
+deadlineExpression=""
+showInUserInterface="true"
+sdkVersion="5.21">
+
+<initialStepName>save data</initialStepName>
+
+<saveDataObjectStep name="save data"
+    executionLabelExpression="Saving source specific metadata to metadataForm"
+    dataObjectExpression="${asset.metadata}"
+    nextStep="end">
+    <property name="uXTest">${metadata}</property>
+</saveDataObjectStep>
+
+<noopStep name="end"/>
+
+
+<contextDataDef name="asset" dataType="Data Object" defaultDataExpression="${subject}"/>
+    <contextDataDef name="metadata" dataType="MetadataForm" userInput="true" required="true"/>
+
+</workflow>
+
+

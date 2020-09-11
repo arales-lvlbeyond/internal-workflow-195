@@ -1,0 +1,35 @@
+<workflow xmlns="http://levelsbeyond.com/schema/workflow" id="someTest" name="Some Test" subjectDOClassName="" sdkVersion="">
+    <initialStepName>be groovy</initialStepName>
+
+    <groovyStep name="be groovy" resultDataDef="thingie" nextStep="fin" >
+        <script>
+            <![CDATA[
+            import groovy.json.JsonSlurper
+            def rval = ""
+            def slurpslurp = new JsonSlurper().parseText(foo.toString())
+            slurpslurp.each { key, val ->
+                rval += key + ' bananan ' + val + " with cheese\n"
+            }
+                return rval
+            ]]>
+        </script>
+    </groovyStep>
+
+    <noopStep name="fin" />
+
+    <contextDataDef name="foo" dataType="JSON">
+        <defaultDataExpression>
+            <![CDATA[
+                {
+                    "foo" : "one",
+                    "bar" : "two",
+                    "baz" : ["this", "is", "a", "test"],
+                    "banana" : { "wut" : "is this" }
+                }
+            ]]>
+        </defaultDataExpression>
+    </contextDataDef>
+
+    <contextDataDef name="somethingElse" dataType="String" defaultDataExpression="${foo.toString()}" />
+    <contextDataDef name="thingie" dataType="String" />
+</workflow>

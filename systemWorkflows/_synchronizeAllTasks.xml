@@ -1,0 +1,267 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_synchronizeAllTasks"
+	name="Synchronize All Tasks"
+	executionLabelExpression="Synchronize All Tasks | Collaborate Configured? ${!collabNotConfigured}"
+	description=""
+	showInUserInterface="false"
+	subjectDOClassName=""
+	resultDataDef=""
+	deadlineExpression=""
+	sdkVersion="5.4"
+	devWorkflow="true"
+	>
+
+	
+	<initialStepName>check if workflow is running</initialStepName>
+	
+
+	<!-- ................................................. Initial Steps .................................................. -->
+	<queryStep name="check if workflow is running"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="currentExecutions"
+		executionLabelExpression="Is a workflow running already? ${currentExecutions.size() != 0}"
+		pctComplete="1"
+		>
+		<transition condition="${currentExecutions.size() == 0}">
+			<targetStepName>check collaborate config</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>workflow is running</targetStepName>
+		</transition>
+		
+		<criteria>
+		<![CDATA[
+	        <criteria>
+	            <and>
+	                <condition property="workflowVersion.workflow.key" op="eq">
+	                    <test value="${ #this.workflow.workflowVersion.workflow.key }" />
+	                </condition>
+	                <condition property="uuid" op="noteq">
+	                    <test value="${ #this.workflow.uuid }" />
+	                </condition>
+	                <condition property="status" op="in">
+	                    <tests>
+	                        <test value="CREATED" />
+	                        <test value="QUEUED" />
+	                        <test value="EXECUTING" />
+	                    </tests>
+	                </condition>
+	            </and>
+	        </criteria>
+        ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<noopStep name="check collaborate config"
+		executionLabelExpression="Is collaborate configured? ${!collabNotConfigured}"
+		pctComplete="2"
+		>
+		<transition condition="${collabNotConfigured}">
+			<targetStepName>collaborate config log</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>find tasks to sync</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<testStep name="collaborate config log"
+		outputExpression="
+			Reach Engine Cloudform is not properly configured.
+			Current Required Properties and Values for Debug:
+			cloudform.apiKey=${#sysconfig('cloudform.apiKey')}
+			cloudform.analyticsService.url=${#sysconfig('cloudform.analyticsService.url')}
+			cloudform.assetService.url=${#sysconfig('cloudform.assetService.url')}
+			cloudform.deliveryService.url=${#sysconfig('cloudform.deliveryService.url')}
+			cloudform.metadataSearchService.url=${#sysconfig('cloudform.metadataSearchService.url')}
+			cloudform.securityService.url=${#sysconfig('cloudform.securityService.url')}
+			cloudform.scratchImportDirectory=${#sysconfig('cloudform.scratchImportDirectory')}
+		"
+		executionLabelExpression="check log for collaborate configuration details"
+		nextStep="collaborate config error"
+		/>
+	
+	
+	<!-- replace this step with one that gets all ready to sync tasks when _synchronizeTaskHidden can be replaced -->
+	<queryStep name="find tasks to sync"
+		targetDataObjectClass="AssetCollectionTask"
+		resultDataDef="tasks"
+		pctComplete="10"
+		>
+		<transition condition="${tasks.size() &gt; 0}">
+			<targetStepName>query for running subflows</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>no tasks to sync</targetStepName>
+		</transition>
+		
+		<criteria>
+		<![CDATA[
+			<criteria>
+				<and>
+					<condition property="needsSynchronization" op="eq">
+						<test value="true"/>
+					</condition>
+					<condition property="taskId" op="notnull" />
+				</and>
+			</criteria>
+		]]>
+		</criteria>
+	</queryStep>
+	
+
+	<!-- ............................................. Synchronize Queue Loop ............................................. -->
+	<!-- Change workflow.key from _synchronizeTaskHidden to _synchronizeTask when _synchronizeTaskHidden can be replaced -->
+	<queryStep name="query for running subflows"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="executingSubflows"
+		executionLabelExpression="checking for workflows (with key = _synchronizeTask) that are not in a finished state"
+		devStep="true"
+		nextStep="check running subflows"
+		>
+		<criteria>
+		<![CDATA[
+            <criteria>
+                <and>
+                    <condition property="workflowVersion.workflow.key" op="eq">
+                        <test value="_synchronizeTaskHidden"/>
+                    </condition>
+                    <condition property="status" op="in">
+                        <tests>
+                            <test value="CREATED" />
+                            <test value="QUEUED" />
+                            <test value="EXECUTING" />
+                         </tests>
+                    </condition>
+                </and>
+            </criteria>
+        ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<noopStep name="check running subflows"
+		executionLabelExpression="number of subflows (key = _synchronizeTask) running >>> ${executingSubflows.size()} out of ${queueLimit}"
+		devStep="true"
+		>
+		<transition condition="${ executingSubflows.size() &lt; queueLimit }">
+			<targetStepName>ready next tasks</targetStepName>
+		</transition>
+		<transition condition="${ true }">
+			<targetStepName>queue full</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<delayStep name="queue full"
+		delaySecondsExpression="${ queryPollInterval }"
+		executionLabelExpression="${tasks.size()} tasks remaining | Subflows running: ${executingSubflows.size()}/${queueLimit} | Waiting ${queryPollInterval} seconds."
+		nextStep="query for running subflows"
+		/>
+	
+	
+	<setContextData name="ready next tasks"
+		targetDataDef="nextTasks"
+		valueExpression="${tasks.size() &gt; batchSize ? tasks.subList(0, batchSize) : tasks.subList(0, tasks.size()) }"
+		executionLabelExpression="got ${nextTasks.size()} tasks to process"
+		nextStep="remove tasks from main list"
+		devStep="true"
+		/>
+	
+	
+	<groovyStep name="remove tasks from main list"
+		resultDataDef="tasks"
+		executionLabelExpression="remove ${nextTasks.size()} tasks from the main list"
+		nextStep="synchronize tasks"
+		devStep="true"
+		>
+		<script>
+		<![CDATA[
+	        tasks.removeAll(nextTasks)
+	        return tasks
+     	]]>
+		</script>
+	</groovyStep>
+	
+	
+	<!-- Change workflowId from _synchronizeTaskHidden to _synchronizeTask when _synchronizeTaskHidden can be replaced -->
+	<executeSubflowStep name="synchronize tasks"
+		targetWorkflowId="_synchronizeTaskHidden"
+		executionLabelExpression="Preparing ${nextTasks.size()} tasks to sync. | ${tasks.size()} tasks remaining | Subflows running: ${executingSubflows.size()}/${queueLimit}"
+		subjectChangePath="${nextTasks}"
+		waitForCompletionExpression="false"
+		nextStep="check for more tasks"
+		/>
+	
+	
+	<noopStep name="check for more tasks"
+		executionLabelExpression="number of tasks remaining >>> ${tasks.size()}"
+		devStep="true"
+		>
+		<transition condition="${tasks.size() &gt; 0}">
+			<targetStepName>query for running subflows</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<noopStep name="no tasks to sync"
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="workflow is running"
+		executionLabelExpression="Workflow already executing"
+		reasonExpression="Workflow already executing"
+		/>
+	
+	
+	<failWorkflowStep name="collaborate config error"
+		reasonExpression="collaborate configurations are invalid"
+		executionLabelExpression="collaborate configurations are invalid"
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="tasks"                dataType="Data Object"  multiple="true"/>
+	<contextDataDef name="currentExecutions" 	dataType="Data Object" 	multiple="true"/>
+	<!-- long expression to make sure all the required configurations for collaborate are present -->
+	<contextDataDef name="collabNotConfigured"  dataType="Boolean"      defaultDataExpression="${#sysconfig('cloudform.apiKey') == null OR #sysconfig('cloudform.apiKey') == '' OR #sysconfig('cloudform.analyticsService.url') == null OR #sysconfig('cloudform.analyticsService.url') == '' OR #sysconfig('cloudform.assetService.url') == null OR #sysconfig('cloudform.assetService.url') == '' OR #sysconfig('cloudform.deliveryService.url') == null OR #sysconfig('cloudform.deliveryService.url') == '' OR #sysconfig('cloudform.metadataSearchService.url') == null OR #sysconfig('cloudform.metadataSearchService.url') == '' OR #sysconfig('cloudform.securityService.url') == null OR #sysconfig('cloudform.securityService.url') == '' OR #sysconfig('cloudform.scratchImportDirectory') == null OR #sysconfig('cloudform.scratchImportDirectory') == ''}"/>
+	<!-- queue loop variables -->
+	<contextDataDef name="nextTasks"    		dataType="Data Object" 	multiple="true"/>
+	<contextDataDef name="executingSubflows" 	dataType="Data Object" 	multiple="true"/>
+	<contextDataDef name="queueLimit" 			dataType="Integer" 		defaultDataExpression="${#sysconfig('workflows.default.collaborate.syncTasks.queueLimit') != null? #sysconfig('workflows.default.collaborate.syncTasks.queueLimit') : 11}"/>
+	<contextDataDef name="batchSize" 		    dataType="Integer" 		defaultDataExpression="${#sysconfig('workflows.default.collaborate.syncTasks.batchSize') != null? #sysconfig('workflows.default.collaborate.syncTasks.batchSize') : 10}"/>
+	<contextDataDef name="queryPollInterval"  	dataType="Integer" 		defaultDataExpression="${#sysconfig('workflows.default.collaborate.syncTasks.queryPollInterval') != null? #sysconfig('workflows.default.collaborate.syncTasks.queryPollInterval') : 60}"/>
+	
+</workflow>

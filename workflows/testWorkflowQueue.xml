@@ -1,0 +1,118 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="testWorkflowQueue"
+          name="Test Workflow Queue"
+          executionLabelExpression="Test Workflow Queue"
+          description=""
+          showInUserInterface="true"
+          subjectDOClassName="AssetCollection"
+          subjectQualifierExpression=""
+          sdkVersion="">
+
+    <initialStepName>check if workflow is already running</initialStepName>
+
+    <queryStep
+            name="check if workflow is already running"
+            devStep="true"
+            targetDataObjectClass="WorkflowExecution"
+            resultDataDef="currentExecutions">
+        <transition condition="${currentExecutions.size() &lt; executionLimit}">
+            <targetStepName>gather assets</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>check start times</targetStepName>
+        </transition>
+        <criteria>
+            <![CDATA[
+				<criteria>
+					<and>
+						<condition property="workflowVersion.workflow.key" op="eq">
+							<test value="${ #this.workflow.workflowVersion.workflow.key }" />
+						</condition>
+						<condition property="uuid" op="noteq">
+							<test value="${ #this.workflow.uuid }" />
+						</condition>
+						<condition property="status" op="in">
+							<tests>
+								<test value="CREATED" />
+								<test value="QUEUED" />
+								<test value="EXECUTING" />
+							</tests>
+						</condition>
+					</and>
+				</criteria>
+			]]>
+        </criteria>
+    </queryStep>
+
+    <groovyStep
+            name="check start times"
+            devStep="true"
+            resultDataDef="queueNumber">
+        <transition condition="${queueNumber &lt; executionLimit}">
+            <targetStepName>gather assets</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>output queue message</targetStepName>
+        </transition>
+        <script>
+            <![CDATA[
+            totalBeforeThis = 0
+            for (i = 0; i < currentExecutions.size(); i++) {
+                if (currentExecutions[i].startDate.before(thisWorkflow.startDate)) {
+                    totalBeforeThis++
+                }
+            }
+            return totalBeforeThis
+            ]]>
+        </script>
+    </groovyStep>
+
+    <noopStep
+            name="output queue message"
+            executionLabelExpression="Workflow QUEUED: ${queueNumber - executionLimit} workflows in front of this workflow. Delaying ${delaySeconds} before next check."
+            nextStep="delay a bit"/>
+
+    <delayStep
+            name="delay a bit"
+            devStep="true"
+            delaySecondsExpression="${delaySeconds}"
+            nextStep="update check workflow counter"/>
+
+    <setContextData
+            name="update check workflow counter"
+            devStep="true"
+            targetDataDef="counter"
+            valueExpression="${counter + 1}">
+        <transition condition="${counter &lt; limit}">
+            <targetStepName>check if workflow is already running</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>notify too many attempts</targetStepName>
+        </transition>
+    </setContextData>
+
+    <delayStep
+            name="gather assets"
+            delaySecondsExpression="10"
+            nextStep="end"/>
+
+    <failWorkflowStep name="notify too many attempts" reasonExpression="notify too many attempts"/>
+
+    <noopStep name="end"/>
+
+    <!-- Input -->
+
+
+    <!-- Internal -->
+    <contextDataDef name="currentExecutions" dataType="Data Object" multiple="true"/>
+    <contextDataDef name="executionLimit" dataType="Integer" defaultDataExpression="2"/>
+    <contextDataDef name="counter" dataType="Integer" defaultDataExpression="0"/>
+    <contextDataDef name="delaySeconds" dataType="Integer" defaultDataExpression="5"/>
+    <contextDataDef name="limit" dataType="Integer" defaultDataExpression="500"/>
+    <contextDataDef name="thisWorkflow" dataType="Data Object" defaultDataExpression="${#this}"/>
+    <contextDataDef name="queueNumber" dataType="Integer" defaultDataExpression="0"/>
+
+</workflow>

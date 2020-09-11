@@ -1,0 +1,229 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.5.xsd"
+    id="migrateDAMAssetsMagic"
+    name="Migrate DAM Assets Magic"
+    executionLabelExpression="Migrate DAM Assets"
+    description=""
+    subjectDOClassName=""
+    showInUserInterface="false"
+    deadlineExpression=""
+    sdkVersion="5.23"
+    resultDataDef="">
+
+
+
+    <initialStepName>check for csv extension</initialStepName>
+
+    <noopStep
+        name="check for csv extension"
+        executionLabelExpression="file is a csv? ${#extension(csvFile) == 'csv'}"
+        devStep="true"
+    >
+        <transition condition="${#extension(csvFile) == 'csv'}">
+            <targetStepName>copy csv file</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>fail not csv</targetStepName>
+        </transition>
+    </noopStep>
+
+
+    <copyFileStep
+        name="copy csv file"
+        executionLabelExpression="placing file (${csvFile.name}) in temp"
+        sourceFileExpression="${csvFile}"
+        targetDirectoryExpression="${tempDir}"
+        createTargetDirectoryFlag="true"
+        resultDataDef="tempCsvFilePath"
+        devStep="true"
+        nextStep="extract csv data"
+    />
+
+
+    <groovyStep
+        name="extract csv data"
+        resultDataDef="assetJsons"
+        executionLabelExpression="extract data from csv: ${csvFile.name}"
+        devStep="true"
+        nextStep="delete temp csv"
+    >
+        <script>
+            <![CDATA[
+            import com.csvreader.CsvReader
+            import java.nio.charset.Charset
+
+            // get csv data
+            char delimiter = ','
+            CsvReader csvData = new CsvReader(tempCsvFilePath,delimiter,Charset.forName("UTF-8"))
+            csvData.readHeaders()
+
+            // parse csv data
+            def headers = csvData.getHeaders()
+            def assetJsons = new ArrayList()
+            while (csvData.readRecord()) {
+                def assetJson = [:]
+                for (header in headers) {
+                    assetJson.put(header, csvData.get(header).replaceAll("\"", "'"))
+                }
+                assetJsons.add(assetJson)
+            }
+            return assetJsons
+            ]]>
+        </script>
+    </groovyStep>
+
+
+    <deleteFileStep
+        name="delete temp csv"
+        sourceFilesExpression="${tempCsvFilePath}"
+        continueOnException="true"
+        devStep="true"
+        nextStep="query for running subflows"
+    />
+
+
+    <!-- ...................................... Begin Process CSV JSON Loop ............................................ -->
+    <queryStep
+        name="query for running subflows"
+        targetDataObjectClass="WorkflowExecution"
+        resultDataDef="executingSubflows"
+        executionLabelExpression="checking for workflows (with id = ${createAssetSubflow} that are not in a finished state"
+        devStep="true"
+    >
+        <transition condition="${executingSubflows == null or executingSubflows.size() &lt; queueLimit}">
+            <targetStepName>ready next items</targetStepName>
+        </transition>
+        <transition condition="${ true }">
+            <targetStepName>queue full</targetStepName>
+        </transition>
+
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="workflowVersion.workflow.key" op="eq">
+                            <test value="${migrationSubflow}"/>
+                        </condition>
+                        <condition property="status" op="in">
+                            <tests>
+                                <test value="CREATED" />
+                                <test value="QUEUED" />
+                                <test value="EXECUTING" />
+                            </tests>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+
+
+    <delayStep
+        name="queue full"
+        delaySecondsExpression="${queuePollInterval}"
+        executionLabelExpression="${executingSubflows.size()}/${queueLimit} running subflows (id = ${createAssetSubflow}). Waiting ${queuePollInterval} seconds. ${assetJsons.size()} remaining items."
+        nextStep="query for running subflows"
+        devStep="true"
+    />
+
+
+    <setContextData
+        name="ready next items"
+        targetDataDef="nextAssetJsons"
+        valueExpression="${assetJsons.size() &gt; batchSize ? assetJsons.subList(0, batchSize) : assetJsons.subList(0, assetJsons.size()) }"
+        executionLabelExpression="got ${nextAssetJsons.size()} items to process"
+        nextStep="remove next items from main list"
+        devStep="true"
+    />
+
+
+    <groovyStep
+        name="remove next items from main list"
+        resultDataDef="assetJsons"
+        executionLabelExpression="remove ${nextAssetJsons.size()} items from the main list"
+        nextStep="process items"
+        devStep="true"
+    >
+        <script>
+    <![CDATA[
+            def success = assetJsons.removeAll(nextAssetJsons)
+            if (success) {
+                return assetJsons
+            } else {
+                return null
+            }
+            ]]>
+</script>
+    </groovyStep>
+
+
+    <executeSubflowStep
+        name="process items"
+        targetWorkflowId="${migrationSubflow}"
+        subjectChangePath="${nextAssetJsons}"
+        subflowTargetDataDef="assetJson"
+        executionLabelExpression="Processing ${nextAssetJsons.size()} assets. | ${assetJsons.size()} remaining items."
+        devStep="true"
+        waitForCompletionExpression="false"
+    >
+        <transition condition="${assetJsons.size() &gt; 0}">
+            <targetStepName>query for running subflows</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>copy csv to completed</targetStepName>
+        </transition>
+
+    </executeSubflowStep>
+
+
+    <copyFileStep name="copy csv to completed"
+        executionLabelExpression="placing file (${csvFile.name}) in completed folder"
+        sourceFileExpression="${csvFile}"
+        targetDirectoryExpression="${completedDir}"
+        createTargetDirectoryFlag="true"
+        devStep="true"
+        nextStep="delete csv"
+    />
+
+
+    <deleteFileStep name="delete csv"
+        sourceFilesExpression="${csvFile}"
+        continueOnException="true"
+        devStep="true"
+        nextStep="end"
+    />
+
+
+    <!-- .................................................. End Steps .................................................. -->
+    <noopStep name="end"/>
+
+
+    <failWorkflowStep name="fail not csv"
+        executionLabelExpression="the file uploaded was not a .csv file. Please re-check your formatting"
+        reasonExpression="the file uploaded was not a .csv file. Please re-check your formatting"
+    />
+
+
+    <!-- .............................................. Context Data Defs .............................................. -->
+    <contextDataDef name="migrationDirectory" dataType="String"   defaultDataExpression="${#sysconfig('workflow.migration.directory')}"/>
+    <contextDataDef name="completedDir" dataType="String"       defaultDataExpression="${#sysconfig('workflow.completed.csv.directory')}"/>
+    <!-- .......... Processing .......... -->
+    <contextDataDef name="migrationSubflow"   dataType="String"           defaultDataExpression="processMigrationItems"/>
+    <contextDataDef name="tempDir"              dataType="String"           defaultDataExpression="${#sysconfig('filesystem.root.temp')}/${#uuid().toString()}"/>
+    <contextDataDef name="tempCsvFilePath"      dataType="String"/>
+    <contextDataDef name="assetJsons"           dataType="JSON"             hidden="true" multiple="true"/>
+    <!--............ Queuing................ -->
+    <contextDataDef name="executingSubflows"    dataType="Data Object"      multiple="true"/>
+    <contextDataDef name="queuePollInterval"    dataType="Integer"          defaultDataExpression="5"/>
+    <contextDataDef name="queueLimit"           dataType="Integer"          defaultDataExpression="51"/>
+    <contextDataDef name="batchSize"            dataType="Integer"          defaultDataExpression="${#sysconfig('workflow.migration.batchSize') ?: 30}"/>
+    <contextDataDef name="nextAssetJsons"       dataType="JSON"             multiple="true"/>
+    <contextDataDef name="completedCounter"     dataType="Integer"          defaultDataExpression="0"/>
+    <contextDataDef name="asset"                dataType="String"           defaultDataExpression="${subject?.name}"/>
+    <contextDataDef name="csvFile"              dataType="File"/>
+
+
+
+</workflow>
+

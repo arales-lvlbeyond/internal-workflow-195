@@ -1,0 +1,95 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns="http://levelsbeyond.com/schema/workflow"
+      xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+      xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+      id="timecodeFunctionTest"
+      name="Timecode Function Test"
+      executionLabelExpression="Timecode Function Test | Start: ${startDate}"
+      showInUserInterface="true"
+      subjectDOClassName=""
+      subjectQualifierExpression=""
+	resultDataDef="success"
+      sdkVersion="">
+
+    <initialStepName>calculate timecode start</initialStepName>
+
+	
+    <setContextData name="calculate timecode start"
+        targetDataDef="generatedStartTimecode"
+        valueExpression="${#timecode(startTime, startOffset, frameRate, isDropFrame)}"
+        nextStep="calculate timecode end"
+        />
+    
+	
+    <setContextData name="calculate timecode end"
+        targetDataDef="generatedEndTimecode"
+        valueExpression="${#timecode(startTime, endOffset, frameRate, isDropFrame)}"
+        nextStep="check values"
+        />
+	
+	
+	<noopStep name="check values">
+		<transition condition="${generatedStartTimecode.equals(expectedStartTimecode) AND generatedEndTimecode.equals(expectedEndTimecode)}">
+			<targetStepName>success</targetStepName>
+		</transition>
+		<transition condition="${!generatedStartTimecode.equals(expectedStartTimecode) AND !generatedEndTimecode.equals(expectedEndTimecode)}">
+			<targetStepName>both start and end incorrect</targetStepName>
+		</transition>
+		<transition condition="${!generatedStartTimecode.equals(expectedStartTimecode)}">
+			<targetStepName>start incorrect</targetStepName>
+		</transition>
+		<transition condition="${!generatedEndTimecode.equals(expectedEndTimecode)}">
+			<targetStepName>end incorrect</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>unknown error</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<setContextData name="success"
+		targetDataDef="success"
+		valueExpression="true"
+		/>
+    
+	
+    <failWorkflowStep name="both start and end incorrect"
+	    reasonExpression="both start and end incorrect"
+        />
+    
+	
+    <failWorkflowStep name="start incorrect"
+	    reasonExpression="start incorrect"
+        />
+	
+	
+	<failWorkflowStep name="end incorrect"
+		reasonExpression="end incorrect"
+		/>
+	
+	
+	<failWorkflowStep name="unknown error"
+		reasonExpression="unknown error"
+		/>
+	
+	
+	<!-- given -->
+	<contextDataDef name="startTime"                    dataType="Double"       defaultDataExpression="0"/>
+	<contextDataDef name="startOffset"                  dataType="Double"       defaultDataExpression="4906.94"/>
+	<contextDataDef name="endOffset"                    dataType="Double"       defaultDataExpression="4976.83"/>
+	<contextDataDef name="frameRate"                    dataType="Double"       defaultDataExpression="29.97"/>
+	<contextDataDef name="isDropFrame"                  dataType="Boolean"      defaultDataExpression="false"/>
+	
+	<!-- expected -->
+	<contextDataDef name="expectedStartTimecode"        dataType="String"       defaultDataExpression="01:21:46:28"/>
+	<contextDataDef name="expectedEndTimecode"          dataType="String"       defaultDataExpression="01:22:56:25"/>
+	
+	<!-- calculated -->
+	<contextDataDef name="generatedStartTimecode"       dataType="String"/>
+	<contextDataDef name="generatedEndTimecode"         dataType="String"/>
+	
+	<!-- extra -->
+	<contextDataDef name="startDate"                    dataType="Date/Time"    defaultDataExpression="${#newDate()}"/>
+	<contextDataDef name="success"                      dataType="Boolean"      defaultDataExpression="false"/>
+	
+</workflow>

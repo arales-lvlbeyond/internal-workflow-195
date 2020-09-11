@@ -1,0 +1,159 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.5.xsd"
+    id="recreateAllTimelineThumbnails"
+    name="Recreate All Timeline Thumbnails"
+    executionLabelExpression="Recreate All Timeline Thumbnails | Started: ${startTime} | Timelines Completed: ${fetchOffset}"
+    description=""
+    subjectDOClassName=""
+    showInUserInterface="true"
+    deadlineExpression=""
+    group="Migration"
+    sdkVersion="">
+    
+    
+    <initialStepName>get timelines</initialStepName>
+    
+    
+    <queryStep name="get timelines"
+        executionLabelExpression="get timelines: ${fetchOffset + 1} to ${fetchOffset + fetchLimit} | Returned ${queriedTimelines.size()} results"
+        targetDataObjectClass="Timeline"
+        resultDataDef="queriedTimelines"
+        fetchLimitExpression="${fetchLimit}"
+        fetchOffsetExpression="${fetchOffset}">
+        
+        <transition condition="${queriedTimelines.size() &gt; 0}">
+            <targetStepName>query for running subflows</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </queryStep>
+    
+    
+    <!-- Begin Queue loop for fetched Timelines -->
+    <queryStep
+        name="query for running subflows"
+        targetDataObjectClass="WorkflowExecution"
+        resultDataDef="executingSubflows"
+        executionLabelExpression="checking for workflows (with id = ${subflowID} that are not in a finished state"
+        devStep="true">
+        <transition condition="${queriedTimelines.size() > 0 AND (executingSubflows == null or executingSubflows.size() &lt; queueLimit)}">
+            <targetStepName>ready next items</targetStepName>
+        </transition>
+        <transition condition="${executingSubflows.size() == 0 AND queriedTimelines.size() == 0}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <transition condition="${ true }">
+            <targetStepName>queue full</targetStepName>
+        </transition>
+        
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="workflowVersion.workflow.key" op="eq">
+                            <test value="${subflowID}"/>
+                        </condition>
+                        <condition property="status" op="in">
+                            <tests>
+                                <test value="CREATED" />
+                                <test value="QUEUED" />
+                                <test value="EXECUTING" />
+                             </tests>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+    
+    
+    <delayStep
+        name="queue full"
+        delaySecondsExpression="${queuePollInterval}"
+        executionLabelExpression="${executingSubflows.size()}/${queueLimit} running subflows (id = ${subflowID}). Waiting ${queuePollInterval} seconds. ${queriedTimelines.size()} remaining items."
+        nextStep="query for running subflows"
+        devStep="true"/>
+    
+    
+    <setContextData
+        name="ready next items"
+        targetDataDef="currentTimelines"
+        valueExpression="${queriedTimelines.size() &gt; batchSize ? queriedTimelines.subList(0, batchSize) : queriedTimelines.subList(0, queriedTimelines.size()) }"
+        executionLabelExpression="got ${currentTimelines.size()} items to process"
+        nextStep="remove next timelines from main list"
+        devStep="true"/>
+    
+    
+    <groovyStep
+        name="remove next timelines from main list"
+        resultDataDef="queriedTimelines"
+        executionLabelExpression="remove ${currentTimelines.size()} items from the main list"
+        nextStep="create timeline thumbnails"
+        devStep="true">
+        <script>
+            <![CDATA[
+            def success = queriedTimelines.removeAll(currentTimelines)
+            if (success) {
+                return queriedTimelines
+            } else {
+                return null
+            }
+            ]]>
+        </script>
+    </groovyStep>
+    
+    <executeSubflowStep name="create timeline thumbnails"
+        executionLabelExpression="creating thumbnail for timelines: ${nextBatchOffset} to ${nextBatchOffset + currentTimelines.size() - 1} | (${subflowLimit} executing at a time)"
+        targetWorkflowId="${subflowID}"
+        subjectChangePath="${currentTimelines}"
+        subflowExecutionLimitExpression="${subflowLimit}"
+        nextStep="set next asset range"
+    />
+    
+    <setContextData name="set next asset range"
+        devStep="true"
+    >
+        <transition condition="${queriedTimelines.size() &gt; 0}">
+            <targetStepName>query for running subflows</targetStepName>
+        </transition>
+        <transition condition="${processAll}">
+            <targetStepName>set new offset</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+
+        <set targetDataDef="nextBatchOffset">${ nextBatchOffset + currentTimelines.size()}</set>
+    </setContextData>
+    
+    <setContextData name="set new offset"
+        targetDataDef="fetchOffset"
+        valueExpression="${fetchOffset + fetchLimit}"
+        devStep="true"
+        nextStep="get timelines"/>
+    
+    
+    <noopStep name="end"/>
+    
+    
+    <!--...............................context data defs..........................-->
+    <contextDataDef name="queriedTimelines" dataType="Data Object"  multiple="true"/>
+    <contextDataDef name="currentTimelines" dataType="Data Object"  multiple="true" />
+    
+    <contextDataDef name="startTime"        dataType="Date/Time"    defaultDataExpression="${#newDate()}"/>
+    <contextDataDef name="fetchLimit"       dataType="Integer"      userInput="true"    label="Fetch Limit (defaults to 10000):" defaultDataExpression="10000"/>
+    <contextDataDef name="fetchOffset"      dataType="Integer"      userInput="true"    label="fetchOffset (defaults at 0):" defaultDataExpression="0"/>
+    <contextDataDef name="subflowLimit"     dataType="Integer"      defaultDataExpression="50"/>
+    <contextDataDef name="processAll"       dataType="Boolean"      userInput="true"    defaultDataExpression="true" />
+    
+    <contextDataDef name="nextBatchOffset"  dataType="Integer"      defaultDataExpression="${fetchOffset + 1}" />
+    <contextDataDef name="subflowID"        dataType="String"       defaultDataExpression="dryRunSubflow" />
+    
+    <!-- Queue data defs -->
+    <contextDataDef name="batchSize"            dataType="Integer"          defaultDataExpression="4" />
+    <contextDataDef name="queuePollInterval"    dataType="Integer"          defaultDataExpression="30"/>
+    <contextDataDef name="queueLimit"           dataType="Integer"          defaultDataExpression="5"/>
+    <contextDataDef name="executingSubflows"    dataType="Data Object"      multiple="true"/>
+</workflow>

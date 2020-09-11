@@ -1,0 +1,291 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="processMigrationItems"
+    name="process Migration Items"
+    executionLabelExpression="process migration items"
+    description=""
+    resultDataDef="failedAssetEmailBody"
+    showInUserInterface="false"
+    subjectDOClassName=""
+    subjectQualifierExpression=""
+    sdkVersion="5.21">
+
+
+    <initialStepName>construct file name</initialStepName>
+
+
+    <!--.........................................Construct filename from csv...........................................-->
+    <setContextData
+        name="construct file name"
+        targetDataDef="fileName"
+        executionLabelExpression="Constructed Asset Name: ${fileName}"
+        devStep="true"
+        valueExpression="${assetJson.get('Filename')?.asText() ?: null}">
+        <transition condition="${fileName != null}">
+            <targetStepName>set file path</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>fail on filename</targetStepName>
+        </transition>
+    </setContextData>
+
+    <!--............................File path is used to ascertain whether asset actually exists.....................-->
+
+    <setContextData name="set file path"
+        targetDataDef="fileToIngest"
+        executionLabelExpression="Constructed fileToIngest Name: ${fileToIngest}"
+        devStep="true"
+        valueExpression="${filePath + '/' + fileName}"
+        continueOnException="true">
+    <transition condition="${fileToIngest.exists()}">
+        <targetStepName>extract iptc data</targetStepName>
+    </transition>
+    <transition condition="true">
+        <targetStepName>add to fail list</targetStepName>
+    </transition>
+    </setContextData>
+
+    <setContextData
+        name="add to fail list"
+        targetDataDef="failedAssetEmailBody"
+        valueExpression="${fileName}"
+        nextStep="end"/>
+
+    <!--csv, Json, and exif metadata handling -->
+
+    <runCommandStep name="extract iptc data"
+        executablePathExpression="${exifToolPath}"
+        continueOnException="true"
+        stdoutDataDef="exifResponse"
+        nextStep="set exifDate"
+    >
+        <arg>-iptc</arg>
+        <arg>-j</arg>
+        <arg>-all</arg>
+        <arg>${fileToIngest.absolutePath}</arg>
+    </runCommandStep>
+
+    <setContextData name="set exifDate"
+        targetDataDef="exifDate"
+        nextStep="set result"
+        devStep="true"
+        valueExpression="${exifDate != null ? exifDate[0].replace(':', '/') : null}"/>
+
+    <setContextData name="set result"
+        executionLabelExpression="Combining exif and csv metadata"
+        targetDataDef="combinedJson"
+        nextStep="evaluate photographer"
+        valueExpression="{date : '${exifDate != null  ? #formatDate('YYYY-MM-dd', exifDate) : csvDate != null ? #formatDate('YYYY-MM-dd', csvDate[0]) : null}', caption : '${exifResponse.hasNonNull('Description') ? exifResponse.get('Description')?.asText() : assetJson.hasNonNull('Caption/Description') ? assetJson.get('Caption/Description').asText() : null}', assetSize : '${exifResponse.hasNonNull('FileSize') ? exifResponse.get('FileSize')?.asText() : null}', photographer : '${exifResponse.hasNonNull('Artist') ? exifResponse.get('Artist')?.asText() : assetJson.hasNonNull('Photographer') ? assetJson.get('Photographer').asText() : null}', city : '${exifResponse.hasNonNull('City') ? exifResponse.get('City')?.asText() : assetJson.hasNonNull('City') ? assetJson.get('City').asText() : null}', state : '${exifResponse.hasNonNull('State') ? exifResponse.get('State')?.asText() : assetJson.hasNonNull('State') ? assetJson.get('State').asText() : null}', country : '${exifResponse.hasNonNull('Country') ? exifResponse.get('Country')?.asText() : assetJson.hasNonNull('Country') ? assetJson.get('Country').asText() : null}', assetUsageRights : '${exifResponse.hasNonNull('Rights') ? exifResponse.get('Rights')?.asText() : null}', mISCComment : '${assetJson.hasNonNull('Keywords') ? assetJson.get('Keywords')?.asText() : null}', creatorEmail : '${exifResponse.hasNonNull('CreatorWorkEmail') ? exifResponse.get('CreatorWorkEmail')?.asText() : null}', creatorWebsite : '${exifResponse.hasNonNull('CreatorWorkURL') ? exifResponse.get('CreatorWorkURL')?.asText() : null}', sublocation : '${exifResponse.hasNonNull('Sub-location') ? exifResponse.get('Sub-location')?.asText() : null}', imageWidth : '${assetJson.hasNonNull('Width') ? assetJson.get('Width')?.asText() : null}', assetHeight : '${assetJson.hasNonNull('Height') ? assetJson.get('Height')?.asText() : null}', waiverNotes : '${assetJson.hasNonNull('Waiver Notes') ? assetJson.get('Waiver Notes')?.asText() : null}', people : '${assetJson.hasNonNull('Leadership/Influential People') ? assetJson.get('Leadership/Influential People')?.asText() : null}',assetNotes : '${assetJson.hasNonNull('Asset Notes') ? assetJson.get('Asset Notes')?.asText() : null}', playerAction : '${assetJson.hasNonNull('Player Action') ? assetJson.get('Player Action')?.asText() : null}', playerAction : '${assetJson.hasNonNull('Player Action') ? assetJson.get('Player Action')?.asText() : null}', photographer : '${exifResponse.hasNonNull('Photographer') ? exifResponse.get('Photographer')?.asText() : assetJson.hasNonNull('Photographer') ? assetJson.get('Photographer').asText() : null}', event : '${exifResponse.hasNonNull('Events') ? exifResponse.get('Events')?.asText() : assetJson.hasNonNull('Events') ? assetJson.get('Events').asText() : null}'}"/>
+
+
+    <noopStep name="evaluate photographer"
+        devStep="true"
+        executionLabelExpression="Picklist ${'photographer' | Item ${combinedJson.hasNonNull('photographer') ? combinedJson.get('photographer').asText() : null}">
+        <transition condition="${!combinedJson.hasNonNull('photographer') OR #picklistItemExists( 'photographer' , (combinedJson.get('photographer').asText() ) )}">
+            <targetStepName>evaluate picklists</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>save picklist photographer</targetStepName>
+        </transition>
+    </noopStep>
+
+    <addPickListItemStep name="save picklist photographer" propertyName="photographer" pickListLabel="${combinedJson.get('photographer').asText()}"   nextStep="evaluate picklists"/>
+
+    <groovyStep name="evaluate picklists"
+        resultDataDef="return"
+        nextStep="save asset">
+        <script>
+            <![CDATA[
+            import groovy.json.JsonSlurper
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.levelsbeyond.service.inventory.MetadataService
+            import com.levelsbeyond.service.metadata.field.MetadataFieldService
+            import com.levelsbeyond.api.workflow.PicklistItemDTOV3
+            import com.levelsbeyond.workflow.sdk.function.PicklistItemExistsFunction
+            import com.levelsbeyond.workflow.sdk.function.GetPicklistValueFunction
+            import com.routeto1.util.StringUtils
+
+            // reachengine services
+            def metadataService = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class);
+            def metadataFieldService = ApplicationContextHolder.getApplicationContext().getBean(MetadataFieldService.class);
+
+            def fileJson = new JsonSlurper().parseText(jsonString.toString())
+            fileJson.each { propertyName, label ->
+                def hibernateMetaFieldObject = metadataFieldService.find(propertyName)
+                if (hibernateMetaFieldObject.isPresent()) {
+                    def metaField = hibernateMetaFieldObject.get()
+                    if (metaField.list) {
+                        if (!PicklistItemExistsFunction.picklistItemExists(propertyName, label)) {
+                            metadataService.addItem(
+                                metaField,
+                                PicklistItemDTOV3.builder()
+                                    .setId(StringUtils.toCamelCase(label))
+                                    .setDisplayName(label)
+                                    .build())
+                        }
+                    }
+                }
+
+            }
+
+            return
+            ]]>
+        </script>
+    </groovyStep>
+
+
+
+    <!--..................................ingest file ............................................-->
+
+
+    <saveAssetStep name="save asset"
+        executionLabelExpression="Ingesting file ${fileToIngest.name}"
+        contentUseExpression="${skipMezzanineFlag ? '|SOURCE|MEZZANINE|' : 'SOURCE'}"
+        contentExpression="${fileToIngest}"
+        resultDataDef="assetVersion"
+        nextStep="save picklist metadata"
+    />
+
+    <saveDataObjectStep name="save picklist metadata"
+        dataObjectExpression="${assetVersion.MasterAsset.metadata}"
+        jsonValuesDataDef="picklistJson"
+        nextStep="save asset metadata"/>
+
+    <saveDataObjectStep
+        name="save asset metadata"
+        executionLabelExpression="Setting metadata on asset: ${assetMaster}"
+        dataObjectExpression="${assetVersion.MasterAsset.metadata}"
+        nextStep="create proxies"
+        jsonValuesDataDef="combinedJson">
+    </saveDataObjectStep>
+
+
+
+
+    <executeSubflowStep name="create proxies"
+        targetWorkflowId="${proxiesSubflow}"
+        subjectChangePath="${assetMaster.MasterAsset}"
+        waitForCompletionExpression="false"
+        executionLabelExpression="Creating proxies"
+        pctComplete="99"
+        nextStep="reindex"
+    >
+        <subflowContextDataMapping parentDataDef="failOnProxiesError"       subflowDataDef="failOnError"/>
+        <!-- create -->
+        <subflowContextDataMapping parentDataDef="prioritiesJson"           subflowDataDef="prioritiesJson"/>
+        <subflowContextDataMapping parentDataDef="createMezz"               subflowDataDef="createMezz"/>
+        <subflowContextDataMapping parentDataDef="createProxy"              subflowDataDef="createProxy"/>
+        <subflowContextDataMapping parentDataDef="createThumbVideo"         subflowDataDef="createThumbVideo"/>
+        <subflowContextDataMapping parentDataDef="createThumb"              subflowDataDef="createThumb"/>
+        <!-- file -->
+        <subflowContextDataMapping parentDataDef="mezzFile"                 subflowDataDef="mezzFile"/>
+        <subflowContextDataMapping parentDataDef="proxyFile"                subflowDataDef="proxyFile"/>
+        <subflowContextDataMapping parentDataDef="thumbFile"                subflowDataDef="thumbFile"/>
+        <subflowContextDataMapping parentDataDef="thumbVideoFile"           subflowDataDef="thumbVideoFile"/>
+        <!-- creation templates/args -->
+        <subflowContextDataMapping parentDataDef="videoMezzTemplate"        subflowDataDef="videoMezzTemplate"/>
+        <subflowContextDataMapping parentDataDef="videoProxyTemplate"       subflowDataDef="videoProxyTemplate"/>
+        <subflowContextDataMapping parentDataDef="videoThumbVideoTemplate"  subflowDataDef="videoThumbVideoTemplate"/>
+        <subflowContextDataMapping parentDataDef="videoThumbnailPercentage" subflowDataDef="videoThumbnailPercentage"/>
+        <subflowContextDataMapping parentDataDef="audioProxyTemplate"       subflowDataDef="audioProxyTemplate"/>
+        <subflowContextDataMapping parentDataDef="imageProxyArguments"      subflowDataDef="imageProxyArguments"/>
+        <subflowContextDataMapping parentDataDef="imageThumbArguments"      subflowDataDef="imageThumbArguments"/>
+        <subflowContextDataMapping parentDataDef="documentProxyArguments"   subflowDataDef="documentProxyArguments"/>
+        <subflowContextDataMapping parentDataDef="documentThumbArguments"   subflowDataDef="documentThumbArguments"/>
+    </executeSubflowStep>
+
+
+    <raiseWorkflowEventStep name="reindex"
+        eventTypeExpression="ensureIndexed"
+        executionLabelExpression="Ensure Asset Indexed"
+        nextStep="end">
+        <property name="indexTargetRef">${assetMaster}</property>
+    </raiseWorkflowEventStep>
+
+    <!--...................................................End steps.................................................-->
+
+    <noopStep name="end"/>
+
+
+    <failWorkflowStep
+        name="fail copy"
+        executionLabelExpression="There was an error copying the file. Please check logs."
+        reasonExpression="There was an error copying the file. Please check logs."/>
+
+    <failWorkflowStep
+        name="fail on filename"
+        executionLabelExpression="no discernible name was found for the file"
+        reasonExpression="no discernible file name found for the file"/>
+
+
+
+    <!--..................................................context data defs..........................................-->
+
+
+
+    <contextDataDef name="migrationDirectory"      dataType="String"         defaultDataExpression="${#sysconfig('workflow.migration.directory')}"/>
+    <contextDataDef name="failedAssetEmailBody"    dataType="String"/>
+    <!--.................................................File variables..............................................-->
+    <contextDataDef name="fileToIngest"            dataType="File"/>
+    <contextDataDef name="filePath"                dataType="String"         defaultDataExpression="${#sysconfig('workflow.migration.directory')}"/>
+    <contextDataDef name="fileName"                dataType="String"         required="true"/>
+    <contextDataDef name="assetVersion"            dataType="Data Object"/>
+    <contextDataDef name="assetMaster"             dataType="Data Object"    defaultDataExpression="${assetVersion?.masterAsset}"/>
+    <contextDataDef name="reachengineRepo"         dataType="Directory"      defaultDataExpression="${#sysconfig('filesystem.root.sources')}"/>
+    <contextDataDef name="skipMezzanineFlag"       dataType="Boolean"        defaultDataExpression="${true}"/>
+    <!--...............................................exif and Json variables......................................-->
+    <contextDataDef name="exifToolPath"            dataType="File"          required="true"      hidden="true" defaultDataExpression="${ #sysconfig('exif.path') }"/>
+    <contextDataDef name="exifResponse"            dataType="JSON"          defaultDataExpression="{}"/>
+    <contextDataDef name="assetJson"               dataType="JSON"          defaultDataExpression="{}"/>
+    <contextDataDef name="combinedJson"            dataType="JSON"/>
+    <contextDataDef name="exifDate"                dataType="String"        multiple="true"       hidden="true"  defaultDataExpression="${ exifResponse.hasNonNull('CreateDate') AND exifResponse.get('CreateDate') != null ? #splitString(exifResponse.get('CreateDate').asText(), ' ', true, true) : null }"/>
+    <contextDataDef name="csvDate"                 dataType="String"        multiple="true"       hidden="true"  defaultDataExpression="${ assetJson.hasNonNull('Capture Date') AND assetJson.get('Capture Date') != null ? #splitString(assetJson.get('Capture Date').asText(), ' ', true, true) : null }"/>
+    <contextDataDef name="picklistJson"            dataType="JSON"          hidden="true">
+        <defaultDataExpression>
+            <![CDATA[
+                {
+            "season": "${assetJson.hasNonNull('Season') ? assetJson.get('Season').asText() : null}",
+            "typeOfEvent": "${assetJson.hasNonNull('Type of Event') ? assetJson.get('Type of Event').asText() : null}",
+            "waiverStatus": "${assetJson.hasNonNull('Waiver Status') ? assetJson.get('Waiver Status').asText() : null}",
+            "gameday": "${assetJson.hasNonNull('Game Day') ? assetJson.get('Game Day').asText() : null}",
+            "players": "${assetJson.hasNonNull('Players And Coaching Staff') ? assetJson.get('Players And Coaching Staff').asText() : null}",
+            "photographer": "${assetJson.hasNonNull('Players And Coaching Staff') ? assetJson.get('Players And Coaching Staff').asText() : null}"
+             }
+            ]]>
+        </defaultDataExpression>
+    </contextDataDef>
+    <contextDataDef name="jsonString"              dataType="String"        hidden="true" defaultDataExpression="${picklistJson.toString()}"/>
+    <contextDataDef name="return"                  dataType="String"        hidden="true"/>
+    <!--...................................................proxies...................................................-->
+    <contextDataDef name="proxiesSubflow"          dataType="String"        defaultDataExpression="${#sysconfig('workflows.default.ingestAsset.proxiesWorkflow') ?: '_createProxiesAnyAsset'}"/>
+    <contextDataDef name="failOnProxiesError"      dataType="Boolean"/>
+    <!-- create proxies? (defaults in subflows) -->
+    <contextDataDef name="prioritiesJson"          dataType="JSON">
+        <description>
+            A JSON with the structure:
+            {"mezzanine":w, "proxy":x, "thumbnailVideo":y, "thumbnail":z}
+        </description>
+    </contextDataDef>
+    <contextDataDef name="createMezz"               dataType="Boolean"/>
+    <contextDataDef name="createProxy"              dataType="Boolean"/>
+    <contextDataDef name="createThumb"              dataType="Boolean"/>
+    <contextDataDef name="createThumbVideo"         dataType="Boolean"/>
+    <!-- supply a file for proxies? -->
+    <contextDataDef name="mezzFile"                 dataType="File"/>
+    <contextDataDef name="proxyFile"                dataType="File"/>
+    <contextDataDef name="thumbFile"                dataType="File"/>
+    <contextDataDef name="thumbVideoFile"           dataType="File"/>
+    <!-- Templates/Args for proxies creation (defaults in subflows) -->
+    <contextDataDef name="videoMezzTemplate"    	dataType="String"/>
+    <contextDataDef name="videoProxyTemplate"    	dataType="String"/>
+    <contextDataDef name="videoThumbVideoTemplate"  dataType="String"/>
+    <contextDataDef name="videoThumbnailPercentage" dataType="Integer"/>
+    <contextDataDef name="audioProxyTemplate"       dataType="String"/>
+    <contextDataDef name="imageProxyArguments"      dataType="String"/>
+    <contextDataDef name="imageThumbArguments"      dataType="String"/>
+    <contextDataDef name="documentProxyArguments"   dataType="String"/>
+    <contextDataDef name="documentThumbArguments"   dataType="String"/>
+
+</workflow>

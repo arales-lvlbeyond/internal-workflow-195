@@ -1,0 +1,360 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	
+	id="blackPearlRestoreCollection"
+	name="Restore Collection from Black Pearl"
+	executionLabelExpression="Restore Collection from Black Pearl | Restore Collection >>> ${subject.name}"
+	description=""
+	subjectDOClassName="AssetCollection"
+	showInUserInterface="true"
+	sdkVersion="">
+	
+	
+	
+	<initialStepName>check archive status</initialStepName>
+	
+	<!-- ................................................. CHECK ARCHIVE STATUS ................................................. -->
+	<setContextData name="check archive status"
+		pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }"
+		executionLabelExpression="Filtering assets to only ones with truncatedFlag == true and where the file exists | Found ${archivedAssetContents.size()}">
+		<transition condition="${archivedAssetContents != null AND archivedAssetContents.size() &gt; 0}">
+			<targetStepName>check restore key</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>no assets to restore</targetStepName>
+		</transition>
+		<set targetDataDef="archivedAssetContents">${contentToRestore.?[ !file.exists() AND truncatedFlag == true]}</set>
+	</setContextData>
+	
+	
+	
+	
+	<setContextData name="check restore key"
+		pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }"
+		executionLabelExpression="Filtering out asset contents with invalid restore keys | Found ${validRestoreKeyContents.size()}">
+		<transition condition="${validRestoreKeyContents != null AND validRestoreKeyContents.size() &gt; 0}">
+			<targetStepName>restore assets</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>no valid restore keys</targetStepName>
+		</transition>
+		<set targetDataDef="validRestoreKeyContents">${archivedAssetContents.?[ restoreKey != null AND !restoreKey.equals('')]}</set>
+		<set targetDataDef="restoreKeys">${archivedAssetContents.?[ restoreKey != null AND !restoreKey.equals('')].![restoreKey]}</set>
+	</setContextData>
+	
+	
+	
+	
+	
+	
+	<!-- .................................................... RESTORE ASSETS ..................................................... -->
+	<groovyStep name="restore assets"
+		pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }"
+		executionLabelExpression="Restore file ${subject.name} from Black Pearl at ${url} in bucket ${bPBucket}"
+		resultDataDef="restoreResponse">
+		<transition condition="${restoreResponse.contains('ERROR')}">
+			<targetStepName>restore failed</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>display restore response</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+				import com.google.common.base.Joiner
+				import com.spectralogic.ds3client.Ds3Client
+				import com.spectralogic.ds3client.Ds3ClientBuilder
+				import com.spectralogic.ds3client.helpers.Ds3ClientHelpers
+				import com.spectralogic.ds3client.helpers.options.*
+				import com.spectralogic.ds3client.helpers.FileObjectGetter
+				import com.spectralogic.ds3client.helpers.JobRecoveryException
+				import com.spectralogic.ds3client.models.bulk.Ds3Object
+				import com.spectralogic.ds3client.models.*
+				import com.spectralogic.ds3client.models.Tape
+				import com.spectralogic.ds3client.models.TapeState
+				import com.spectralogic.ds3client.models.TapeList
+				import com.spectralogic.ds3client.models.common.Credentials
+				import com.spectralogic.ds3client.networking.FailedRequestUsingMgmtPortException
+				import com.spectralogic.ds3client.networking.FailedRequestException
+				import com.spectralogic.ds3client.commands.spectrads3.*
+				
+				
+				
+				import java.nio.file.Files
+				import java.io.IOException
+				import java.nio.file.Path
+				import java.nio.file.Paths
+				import java.util.List
+				
+				UUID jobId
+				
+				
+				
+				try {
+				
+				// .....
+				// Here there be Variables to use
+				// .....
+					
+					// use data def bpEndpoint
+					String endpoint = url
+					// use data def bpClientId
+					String id = username
+					// use data def bpClientKey
+					String key = password
+					// The bucket that we will be writing to
+				    String bucketName = bPBucket
+				
+				
+				// .....
+				// Creating the connection object for Black Pearl
+				// .....
+				
+					//Connect to the server.
+					Ds3Client client = Ds3ClientBuilder.create(endpoint, new Credentials(id, key) ).withHttps(false).build()
+					
+					// Wrap the Ds3Client with the helper functions
+					Ds3ClientHelpers helper = Ds3ClientHelpers.wrap(client, 3 , 3 )
+					
+					// Do we have access to the bucket?
+					//def bucketUserId = client.getBucketSpectraS3(new GetBucketSpectraS3Request(bucketName)).getBucketResult().getUserId().toString()
+					//println "Bucket is owned by user " + bucketUserId
+					
+				// .....
+				// Checking the bucket and its contents
+				// .....
+					
+					// Check that the bucket exists
+				    helper.ensureBucketExists(bucketName)
+					
+					// This will check if the object exists in our bucket
+					def bucketId = client.getBucketSpectraS3(new GetBucketSpectraS3Request(bucketName)).getBucketResult().getId().toString()
+				    def bucketResponse = client.getObjectsDetailsSpectraS3( new GetObjectsDetailsSpectraS3Request().withBucketId(bucketId) )
+				    def bucketList = bucketResponse.getS3ObjectListResult().getS3Objects()
+				    
+				    def tempRestoreKeys = restoreKeys.clone()
+				    // loop through objects
+				    for(item in bucketList)
+				    {
+				    	// loop through restore keys for each object
+				    	for( restoreKey in tempRestoreKeys )
+				    	{
+					    	// if the object matches a restore key, remove the restore key
+					    	if(item.getName().equals(restoreKey) )
+					    	{
+					    		tempRestoreKeys.remove(restoreKey)
+					    		break
+					    	}
+					    }
+				    }
+				    if(tempRestoreKeys.size() > 0)
+				    {
+				    	println( "ERROR: Object was not found for every restore key. " + tempRestoreKeys.size() + " restore keys were unmatched." )
+				    	return "ERROR: Object was not found for every restore key. " + tempRestoreKeys.size() + " restore keys were unmatched."
+				    }
+					
+				// .....
+				// Setting up the objects for restore
+				// .....
+					
+				    // Path root to output to
+				    Path outputDir = Paths.get(fileDir)
+				    
+				    // Creates a list of objects.
+				    def objList = new ArrayList<Ds3Object>()
+				    
+				    for(restoreKey in restoreKeys)
+				    {
+					    def objName = restoreKey
+					    def obj = new Ds3Object(objName)
+					    objList.add( obj )
+				    }
+				    
+				    // Create a job to get an object from a bucket
+				    def job = helper.startReadJob(bucketName, objList)
+				    jobId = job.getJobId()
+				    
+					// Used for testing a network interruption or power outage
+					//throw new IOException('Simulating an interruption')
+					
+				    // Start the write job
+				    job.transfer(new FileObjectGetter(outputDir))
+				    
+				    //return the name of the obj so
+				    println( restoreKeys.size() + " objects were restored successfully")
+				    return "" + restoreKeys.size() + " objects were restored successfully"
+					
+					
+					
+				} catch (final UnknownHostException e) {
+				    println("Invalid Endpoint Server Name or IP Address")
+				    return "ERROR: Invalid Endpoint Server Name or IP Address"
+				    // Catch unknown host exceptions.
+				    
+				} catch (final FailedRequestUsingMgmtPortException e) {
+				    println("Attempted data access on management port -- check endpoint")
+				    return "ERROR: Attempted data access on management port -- check endpoint"
+				    // Catch failed requests with unexpected status codes.
+				    
+				} catch (final FailedRequestException e) {
+					// If this is invalid authorization.
+					if(e.getResponseString().contains('permission for bucket') )
+					{
+						def xml = e.getResponseString()
+						def error = new XmlSlurper().parseText(xml)
+						println("For the configured bucket " + error.Resource + " the error message is " + error.Message + ". Please adjust bucket permissions or use a different bucket.")
+						return "ERROR: User does not have permission to access configured bucket " + error.Resource
+					}
+					if (e.getStatusCode() == 409) {
+						println("ERROR: The tape with the desired object needs to be inserted into Black Pearl. Insert the tape(s) mentioned here: " + e.getResponseString() )
+						return "ERROR: The tape with the desired object needs to be inserted into Black Pearl. Insert the tape(s) mentioned here: " + e.getResponseString()
+					// Else unexpected status code.
+					}
+					if (e.getStatusCode() == 403) {
+						println("Invalid Access ID or Secret Key or Ensure System Clocks Match" + e.getResponseString() )
+						return "ERROR: Invalid Access ID or Secret Key or Ensure System Clocks Match"
+					// Else unexpected status code.
+					} else {
+						println("BlackPearl return an unexpected status code we did not expect " + e.getStatusCode() + " " + e.getResponseString() + ".")
+				        // e.getStatusCode() can be used to get the status code BlackPearl returned for more accurate error handling and detection
+				        String end = "ERROR: BlackPearl return an unexpected status code we did not expect " + e.getStatusCode() + " " + e.getResponseString() + "."
+				        return end
+					}
+					
+				} catch (final IOException e) {
+				
+					try {
+					 
+					 	println('Attempting to recover job')
+					 
+						String endpoint = url
+						String id = username
+						String key = password
+					    String bucketName = bPBucket
+					    Path outputDir = Paths.get(fileDir)
+					
+						//Connect to the server.
+						Ds3Client client = Ds3ClientBuilder.create(endpoint, new Credentials(id, key) ).withHttps(false).build()
+						
+						// Wrap the Ds3Client with the helper functions
+						Ds3ClientHelpers helper = Ds3ClientHelpers.wrap(client, 3 , 3 )
+					
+				        // Ask the server for all unsent chunks from job
+				        Ds3ClientHelpers.Job recoverJob = helper.recoverReadJob(jobId)
+				
+				        recoverJob.transfer(new FileObjectGetter(outputDir))
+				        
+				        println( restoreKeys.size() + " objects were restored successfully")
+				    	return "" + restoreKeys.size() + " objects were restored successfully"
+				
+				    } catch (JobRecoveryException er) {
+				
+				        println("Could not recover Job " + jobId)
+				        er.printStackTrace()
+				        return "ERROR: Encountered a networking error"
+				
+					}
+				
+				        println("Encountered a networking error")
+				        println(e.printStackTrace())
+				        return "ERROR: Encountered a networking error: " + e.getResponseString()
+				}
+			]]>
+		</script>
+	</groovyStep>
+	
+	
+	
+	<!-- display response code to the UI and full response to the log -->
+	<testStep name="display restore response"
+		pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }"
+		outputExpression="restore ${restoreKeys.toString()} >>> response message: ${restoreResponse}"
+		executionLabelExpression="restore ${validRestoreKeyContents.size()} >>> response message: ${restoreResponse}"
+		pctComplete="80"
+		nextStep="update restored assets">
+	</testStep>
+	
+	
+	
+	<!-- Send each asset to be processed after the restore -->
+	<executeSubflowStep name="update restored assets"
+		pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }"
+		executionLabelExpression="Sending ${validRestoreKeyContents.size()} assets to be updated as restored"
+		targetWorkflowId="blackPearlRestoreCollectionItem"
+		subjectChangePath="${validRestoreKeyContents}"
+		subflowExecutionLimitExpression="${subflowLimit}"
+		nextStep="end"/>
+	
+	
+	
+	
+	
+	
+	<!-- ..................................................... Ending Steps ................................................ -->
+	<!-- In the collection, there were no assets with truncatedFlag == true -->
+	<testStep name="no assets to restore"
+		pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }"
+		executionLabelExpression="There were no assets to restore among the assets selected for restore"
+		outputExpression="There were no valid restore keys among the assets selected for restore | ${contentToRestore.toString()}"
+		nextStep="end"
+	/>
+	
+	
+	
+	<!-- In the collection, there were no assets in a truncated state that had valid restore keys -->
+	<testStep name="no valid restore keys"
+		pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }"
+		executionLabelExpression="There were no valid restore keys among the assets selected for restore"
+		outputExpression="There were no valid restore keys among the assets selected for restore | ${archivedAssetContents.toString()}"
+		nextStep="end"
+	/>
+	
+	
+	
+	<!-- Fail if archive was not successful -->
+	<failWorkflowStep name="restore failed"
+		pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }"
+		executionLabelExpression="The restore request failed with the following response ${restoreResponse}"
+		reasonExpression="The restore request failed with the following response ${restoreResponse}"/>
+	
+	
+	
+	<!-- success -->
+	<noopStep name="end" pctComplete="100"/>
+	
+	
+	
+	
+	
+	
+	<!-- ................................................ CONTEXT DATA DEFS ........................................... -->
+	<!-- Default Data Defs -->
+	<contextDataDef name="assetArray"               dataType="Data Object"          multiple="true"     defaultDataExpression="${subject.assetItems.![asset]}"/>
+	
+	
+	
+	
+	<!-- Processing Data Defs -->
+	<contextDataDef name="contentToRestore" 		dataType="Data Object"  		multiple="true" defaultDataExpression="${assetArray.![mezzanine]}"/>
+	<contextDataDef name="restoreKeys" 				dataType="String"  				multiple="true" />
+	<contextDataDef name="allAssets"                dataType="Data Object"          multiple="true" />
+	<contextDataDef name="archivedAssetContents"   	dataType="Data Object"          multiple="true" />
+	<contextDataDef name="validRestoreKeyContents" 	dataType="Data Object"          multiple="true" />
+	<contextDataDef name="restoreResponse" 			dataType="String" />
+	
+	
+	<!-- System Configurations -->
+	<contextDataDef name="url"             			dataType="String"       		defaultDataExpression="${#sysconfig('blackPearl.ip')}"/>
+	<contextDataDef name="username"        			dataType="String"       		defaultDataExpression="${#sysconfig('blackPearl.username')}"/>
+	<contextDataDef name="password"        			dataType="String"       		defaultDataExpression="${#sysconfig('blackPearl.password')}"/>
+	<contextDataDef name="bPBucket"        			dataType="String"       		defaultDataExpression="${#sysconfig('blackPearl.archiveBucket')}"/>
+	<contextDataDef name="fileDir" 					dataType="String" 				defaultDataExpression="${#sysconfig('blackPearl.repoRoot')}"/>
+	<contextDataDef name="subflowLimit" 			dataType="Integer" 				defaultDataExpression="${#sysconfig('blackPearl.collection.limit')}"/>
+	
+	
+	<!-- pctCompleteExpression="${ T(java.lang.Math).round(T(java.lang.Double).parseDouble( wfExe.stepExecutions.size() ) / T(java.lang.Double).parseDouble( wfExe.workflowVersion.steps.size() ) * 100) }" -->
+	<contextDataDef name="wfExe" dataType="Data Object" defaultDataExpression="${#this}"/>
+
+
+</workflow>

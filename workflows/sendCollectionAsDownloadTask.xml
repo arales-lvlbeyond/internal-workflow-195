@@ -1,0 +1,248 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="sendCollectionAsDownloadTask"
+	name="Deliver to Partner via Collaborate"
+	executionLabelExpression="Send Collection: ${subject.name} to External User"
+	subjectDOClassName="AssetCollection"
+	showInUserInterface="true"
+	sdkVersion="5.4"
+	>
+	
+	
+	<initialStepName>create workspace</initialStepName>
+	
+	
+	<!-- ................................................ Workspace Steps ................................................. -->
+	<executeSubflowStep name="create workspace"
+		targetWorkflowId="_getOrCreateWorkspace"
+		emptyTargetHandling="allow"
+		resultDataDef="workspaceId"
+		pctComplete="5"
+		nextStep="build add users request"
+		/>
+	
+	
+	<groovyStep name="build add users request"
+		resultDataDef="addUsersBody"
+		executionLabelExpression="creating request to add all users to the workspace"
+		devStep="true"
+		pctComplete="10"
+		nextStep="add users to workspace"
+		>
+		<script>
+			<![CDATA[
+			import groovy.time.TimeCategory
+			
+			def dayAfterExpiration
+			use (TimeCategory) {
+				dayAfterExpiration = expirationDate + 23.hours + 59.minutes
+			}
+			
+			def usersArray = new ArrayList()
+			for(userEmail in userEmails){
+				def userMap = [email: userEmail, expirationDate: dayAfterExpiration]
+				usersArray.add(userMap)
+			}
+			
+			return usersArray
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<submitHttpStep name="add users to workspace"
+		urlExpression="${securityServiceUrl}/workspaces/${workspaceId}"
+		requestMethodExpression="PATCH"
+		responseCodeDataDef="addUserCode"
+		executionLabelExpression="adding ${addUsersBody.size()} users to the workspace"
+		pctComplete="15"
+		>
+		<transition condition="${addUserCode == 200}">
+			<targetStepName>get users data</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>add users error</targetStepName>
+		</transition>
+		
+		<requestPayloadItem name="body">${addUsersBody.toString()}</requestPayloadItem>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+	
+	
+	<!-- .................................................. User Steps .................................................... -->
+	<!--
+		This section is required because the add user's response does not give us user data back.
+		There is also no batch get user data call, which means a subflow is required process each user individually.
+			Replace this with an httpStep if we get a batch call and remove the workflow _getUserData.
+	-->
+	<executeSubflowStep name="get users data"
+		targetWorkflowId="_getUserData"
+		subjectChangePath="${userEmails}"
+		subflowTargetDataDef="userEmail"
+		resultDataDef="addedUsersData"
+		executionLabelExpression="get user data for ${userEmails.size()} users"
+		pctComplete="25"
+		nextStep="get user ids"
+		/>
+	
+	
+	<setContextData name="get user ids"
+		targetDataDef="assignedUserIds"
+		valueExpression="${addedUsersData.![id]}"
+		devStep="true"
+		pctComplete="30"
+		nextStep="create task for each user"
+		/>
+	
+	
+	<!-- .................................................. Task Steps .................................................... -->
+	<!--
+		This subflow is required because there is no batch create task call, which means a subflow is required process each user individually.
+			Replace this with an httpStep if we get a batch call and remove the workflow _createTask.
+	-->
+	<executeSubflowStep name="create task for each user"
+		targetWorkflowId="_createTask"
+		subjectChangePath="${assignedUserIds}"
+		subflowTargetDataDef="assignedUserId"
+		resultDataDef="taskIds"
+		executionLabelExpression="creating a task for ${assignedUserIds.size()} users"
+		pctComplete="50"
+		nextStep="upload assets"
+		>
+		<subflowContextDataMapping parentDataDef="taskName"             subflowDataDef="taskName"/>
+		<subflowContextDataMapping parentDataDef="comments"             subflowDataDef="comments"/>
+		<subflowContextDataMapping parentDataDef="workspaceId"          subflowDataDef="workspaceId"/>
+		<subflowContextDataMapping parentDataDef="taskSubject"          subflowDataDef="taskSubject"/>
+		<subflowContextDataMapping parentDataDef="taskType"             subflowDataDef="taskType"/>
+	</executeSubflowStep>
+	
+	
+	<executeSubflowStep name="upload assets"
+		targetWorkflowId="uploadAssetToCollaborate"
+		subjectChangePath="${subject.items}"
+		subflowTargetDataDef="collectionItem"
+		subflowExecutionLimitExpression="${subflowLimit}"
+		pctComplete="85"
+		nextStep="link tasks to collection"
+		>
+		<subflowContextDataMapping parentDataDef="taskIds"              subflowDataDef="taskIds"/>
+		<subflowContextDataMapping parentDataDef="workspaceId"          subflowDataDef="workspaceId"/>
+		<subflowContextDataMapping parentDataDef="targetTemplateName"   subflowDataDef="targetTemplateName"/>
+	</executeSubflowStep>
+	
+	
+	<!-- ............................................... Collection Steps ................................................. -->
+	<executeSubflowStep name="link tasks to collection"
+		targetWorkflowId="_linkTaskToCollection"
+		subjectChangePath="${taskIds}"
+		subflowTargetDataDef="taskId"
+		executionLabelExpression="link ${taskIds.size()} tasks to collection"
+		pctComplete="90"
+		nextStep="create task notification data"
+		>
+		<subflowContextDataMapping parentDataDef="collection"           subflowDataDef="collection"/>
+		<subflowContextDataMapping parentDataDef="taskNeedsSync"        subflowDataDef="needsSync"/>
+	</executeSubflowStep>
+	
+	
+	<!-- .............................................. Notification Steps ................................................ -->
+	<groovyStep name="create task notification data"
+		resultDataDef="usersTaskData"
+		devStep="true"
+		pctComplete="95"
+		nextStep="send users a notification"
+		>
+		<script>
+			<![CDATA[
+			def usersData = new ArrayList()
+			addedUsersData.eachWithIndex { item, index ->
+				def userData = [userId: item.id, email: item.email, taskId: taskIds[index]]
+				usersData.push(userData)
+			}
+
+			return usersData
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<executeSubflowStep name="send users a notification"
+		targetWorkflowId="_sendTaskNotification"
+		subjectChangePath="${usersTaskData}"
+		subflowTargetDataDef="userTaskData"
+		pctComplete="99"
+		nextStep="end"
+		>
+		<subflowContextDataMapping parentDataDef="comments"             subflowDataDef="comments"/>
+		<subflowContextDataMapping parentDataDef="taskName"             subflowDataDef="taskName"/>
+		<subflowContextDataMapping parentDataDef="expirationDate"       subflowDataDef="expirationDate"/>
+	</executeSubflowStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="add users error"
+		reasonExpression="could not add users to the workspace"
+		executionLabelExpression="could not add users to the workspace"
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ......... Input Variables ........... -->
+	<contextDataDef name="taskName"             label="1: Task Name"            dataType="String"       userInput="true"    required="true"/>
+	<contextDataDef name="taskSubject"          label="2: Task Subject"         dataType="String"       userInput="true"    required="true"/>
+	<contextDataDef name="expirationDate"       label="3: Expiration Date"      dataType="Date/Time"    userInput="true"    required="true"/>
+	<contextDataDef name="userEmails"           label="4: Email Addresses"      dataType="Email"        userInput="true"    required="true"     multiple="true"/>
+	<contextDataDef name="comments"             label="5: Comments"             dataType="String"       userInput="true"/>
+	<contextDataDef name="targetTemplate"   label="6: Vantage Template"     dataType="Data Object"       userInput="true">
+		<picklist>
+			<dataObjectSearch dataObjectClass="VideoContentTemplate">
+				<searchPath>name</searchPath>
+			</dataObjectSearch>
+		</picklist>
+	</contextDataDef>
+	
+	<contextDataDef name="targetTemplateName"   dataType="String"               defaultDataExpression="${targetTemplate.name}"/>
+	
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="collection"           dataType="Data Object"          defaultDataExpression="${subject}"/>
+	<contextDataDef name="taskType"             dataType="String"               defaultDataExpression="Download Assets"/>
+	<contextDataDef name="taskNeedsSync"        dataType="Boolean"              defaultDataExpression="false"/>
+	<contextDataDef name="workspaceId"          dataType="Integer"/>
+	<contextDataDef name="assignedUserIds"      dataType="Integer"              multiple="true"/>
+	<contextDataDef name="addUsersBody"         dataType="JSON"                 multiple="true"/>
+	<contextDataDef name="addUserCode"          dataType="Integer"/>
+	<contextDataDef name="addedUsersData"       dataType="JSON"                 multiple="true"/>
+	<contextDataDef name="taskIds"              dataType="Integer"              multiple="true"/>
+	<contextDataDef name="usersTaskData"        dataType="JSON"                 multiple="true"/>
+	<!-- API Config -->
+	<contextDataDef name="securityServiceUrl"   dataType="String"               defaultDataExpression="${#sysconfig('cloudform.securityService.url')}"/>
+	<contextDataDef name="cloudformApiKey"      dataType="String"               defaultDataExpression="${#sysconfig('cloudform.apiKey')}"/>
+	<!-- other config -->
+	<contextDataDef name="subflowLimit"         dataType="Integer"              defaultDataExpression="${#sysconfig('workflows.default.collaborate.downloadTask.uploadAsset.subflowLimit') != null? #sysconfig('workflows.default.collaborate.downloadTask.uploadAsset.subflowLimit') : 5}"/>
+	
+</workflow>

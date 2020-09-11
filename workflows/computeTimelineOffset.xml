@@ -1,0 +1,92 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="computeTimelineOffset"
+    name="Compute Timeline Offset"
+    resultDataDef="timelineOffset"
+    subjectDOClassName=""
+    showInUserInterface="false"
+    sdkVersion="">
+    
+    
+    <initialStepName>compute time delta</initialStepName>
+    
+    
+    <groovyStep name="compute time delta"
+        resultDataDef="timelineOffset"
+        nextStep="end">
+        
+        <script>
+            <![CDATA[
+            import org.joda.time.DateTime
+            import org.joda.time.Period
+            import org.joda.time.DateTimeZone
+            import org.joda.time.DateTimeFieldType
+            import org.joda.time.format.DateTimeFormat
+            import org.joda.time.format.DateTimeFormatter
+            import org.joda.time.Seconds
+            import java.lang.Double
+            import java.util.ArrayList
+
+            DateTime timelineStartTime = new DateTime(displayStartDateTime).withZone(DateTimeZone.forID("America/New_York"))
+            DateTime assetStartTime
+
+            if (startTime != null) {
+                assetStartTime = new DateTime(startTime) // .withZone(DateTimeZone.forID("America/New_York"))
+            } else if (startTimecodeString != null && startTimecodeString != "") {
+                def timeParts = startTimecodeString.split(/[:;\.]/)
+                if (timeParts.length != 4) {
+                    return 0d
+                }
+                // We add 0.1 to each result before truncating to prevent FP round off errors caused by 1.0 == 0.999999999999
+                final int hours = (int) (Double.parseDouble('0.' + timeParts[0]) * (10d**timeParts[0].length()) + 0.1d)
+                final int minutes = (int) (Double.parseDouble('0.' + timeParts[1]) * (10d**timeParts[1].length()) + 0.1d)
+                final int seconds = (int) (Double.parseDouble('0.' + timeParts[2]) * (10d**timeParts[2].length()) + 0.1d)
+                final int millis = (int) (Double.parseDouble('0.' + timeParts[3]) * (framerate > 1 ? 10d**timeParts[3].length() / framerate : 1d) * 1000d + 0.1d)
+                assetStartTime = new DateTime(displayStartDateTime).withZone(DateTimeZone.forID(serverTimezone)).withHourOfDay(hours).withMinuteOfHour(minutes).withSecondOfMinute(seconds).withMillisOfSecond(millis)
+            }
+            else {
+                return 0d
+            }
+
+            Period p = new Period(timelineStartTime, assetStartTime)
+            if (p.getHours() < -10) {
+                assetStartTime = assetStartTime.plusDays(1)
+                p = new Period(timelineStartTime, assetStartTime)
+            }
+            else if (p.getHours() > 24) {
+                return 0d
+            }
+            // We add a 10th of a millisecond to the result to prevent FP round off errors caused by 1.0 == 0.999999999999
+            return ((double) p.toStandardDuration().getMillis() + 0.1d) / 1000.0d
+            ]]>
+        </script>
+    </groovyStep>
+    
+    
+    <noopStep name="end"/>
+    
+    
+    <!-- ................................................... Data Defs .................................................... -->
+    <!-- Optional input of timeline -->
+    <contextDataDef name="timeline" dataType="Data Object" defaultDataExpression="${subject}"/>
+    
+    <!-- Input fields from Timeline -->
+    <contextDataDef name="displayStartDateTime" dataType="Date/Time"
+        defaultDataExpression="${timeline?.displayStartDateTime}"/>
+    
+    <!-- Input fields for computation -->
+    <contextDataDef name="startTime" dataType="Date/Time"/> <!-- passing in the start time as a date/time -->
+    <contextDataDef name="startTimecodeString"
+        dataType="String"/> <!-- passing in the start time as a string sans date -->
+    <contextDataDef name="framerate" dataType="Double"
+        defaultDataExpression="0.0"/><!-- If this is null or <= 1 then the fractional portion of the startTimecodeString is treated as fractions of a second -->
+    
+    <!-- config -->
+    <contextDataDef name="serverTimezone" dataType="String" defaultDataExpression="${#sysconfig('server.timezone')}"/>
+    
+    <!-- Return value -->
+    <contextDataDef name="timelineOffset" dataType="Double"/>
+
+</workflow>

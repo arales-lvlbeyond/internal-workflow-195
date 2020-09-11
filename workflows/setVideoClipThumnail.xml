@@ -1,0 +1,106 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+		http://levelsbeyond.com/schema/latest
+		https://s3-us-west-2.amazonaws.com/schema.levelsbeyond.com/2.3.16.17962/studio.xsd
+	"
+	id="setVideoClipThumnail"
+	name="Set Video Clip Thumbnail"
+	executionLabelExpression="Set Video Clip Thumbnail"
+	subjectDOClassName="VideoClip"
+	showInUserInterface="true"
+	group="Migration"
+	sdkVersion="">
+
+	<initialStepName>set thumbnail</initialStepName>
+	
+	<submitHttpStep name="set thumbnail"
+		executionLabelExpression="Setting VideoClip Thumbnail to ${videoClip.name}"
+		requestMethodExpression="PUT"
+		urlExpression="${requestUrl}"
+		responsePayloadDataDef="jsonResponse"
+		responseCodeDataDef="responseCode"
+	>
+		<transition condition="${responseCode.toString().startsWith('2')}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>error setting thumbnail</targetStepName>
+		</transition>
+		<requestPayloadItem name="body">
+			${requestBody.toString()}
+		</requestPayloadItem>
+		<requestHeader name="auth_user">system</requestHeader>
+		<requestHeader name="auth_password">password</requestHeader>
+	</submitHttpStep>
+	
+	<saveDataObjectStep name="update clip"
+		executionLabelExpression="updating clip ${videoClip.name}"
+		targetDataObjectClass="VideoClip"
+		dataObjectExpression="${videoClip}"
+		nextStep="end"
+	/>
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- failure -->
+	<failWorkflowStep name="error setting thumbnail"
+		executionLabelExpression="Something went wrong when setting the thumbnail for timeline ${timeline.name}. Check the jsonResponse data def in context data to try and troubleshoot the issue."
+		reasonExpression="Something went wrong when setting the thumbnail for timeline ${timeline.name}. Check the jsonResponse data def in context data to try and troubleshoot the issue."
+	/>
+	
+	<!-- success -->
+	<noopStep name="end" />
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="videoClip"                 dataType="Data Object"  defaultDataExpression="${subject}" />
+	<contextDataDef name="clipID"                    dataType="Integer"      defaultDataExpression="${videoClip.id}"/>
+	
+	<!-- reach api data defs -->
+	<contextDataDef name="jsonResponse"             dataType="JSON"         defaultDataExpression="{}" />
+    <contextDataDef name="responseCode"             dataType="Integer" />
+	<contextDataDef name="requestUrl"               dataType="String"       defaultDataExpression="${reachUrl}/reachengine/api/inventory/videoClips/${clipID}" />
+	<contextDataDef name="requestBody"              dataType="JSON">
+		<defaultDataExpression>
+			<![CDATA[
+				{
+				    "videoId": "982",
+				    "duration": "4531.480000000002",
+				    "timecodeDuration": "01:15:31:12",
+				    "durationSeconds": "4531.480000000002",
+				    "startOffset": "13:47:27:24",
+				    "startOffsetSeconds": "43.55999999999767",
+				    "endOffset": "15:02:59:10",
+				    "endOffsetSeconds": "4575.0",
+				    "durationhhmmssff": "01:15:31:12",
+				    "id": "307",
+				    "created": "2019-10-17T16:57:44.837+0000",
+				    "lastUpdated": "2019-10-17T23:46:32.333+0000",
+				    "name": "another_test_clip - 13:47:27;24",
+				    "categories": [],
+				    "metadataId": "1000026718",
+				    "type": "video_clip"
+				}
+			]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	
+	<!-- Reach Info -->
+	<contextDataDef name="reachUrl"                 dataType="String"       defaultDataExpression="${#sysconfig('workflows.setTimelineThumbnail.reachUrl') ?: 'http://10.20.21.195:8080'}" />
+	<contextDataDef name="apiKey"                   dataType="String"       defaultDataExpression="${sysconfig('workflows.setTimelineThumbnail.apiKey')}" />
+</workflow>

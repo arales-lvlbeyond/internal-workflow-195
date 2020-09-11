@@ -1,0 +1,96 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="jsonHandling"
+	name="JSON Handling Test"
+	executionLabelExpression="JSON Handling Test | "
+	subjectDOClassName=""
+	showInUserInterface="true"
+	devWorkflow="true"
+	sdkVersion=""
+>
+	
+	<initialStepName>nothing</initialStepName>
+	
+	<groovyStep name="nothing"
+		executionLabelExpression="${array.size()} value${array.size() == 1 ? '' : 's'}: ${#joinElements(array, ', ')}"
+		resultDataDef="array"
+		nextStep="end"
+		>
+		<script>
+			import groovy.json.*
+			list = []
+			
+			list.add('A')
+			list.add('B')
+//			list.add('C')
+//			json.jsons[0].testArray[2]?.asText() ?: 'WUT'
+			return list
+		</script>
+	</groovyStep>
+	
+	<noopStep name="return list"
+		executionLabelExpression="List: ${array.size()}"
+		nextStep="end"
+	/>
+	
+	
+	<noopStep name="show missing element"
+		executionLabelExpression="${json.jsons.get(0).testArray.get(2).asText()}"
+		nextStep="end"
+	/>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<contextDataDef name="json" dataType="JSON" >
+		<defaultDataExpression>
+			<![CDATA[
+				{
+					"key1" : "value1",
+					"nullKey" : null,
+					"emptyString" : "",
+					"jsons" : [
+						{
+							"testArray" : [1, 2, 3]
+						}
+					]
+				}
+			]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	
+	<contextDataDef name="testJson"             dataType="JSON" defaultDataExpression="{}" />
+	<contextDataDef name="testVal"              dataType="String" />
+	<!--<contextDataDef name="className"            dataType="String" defaultDataExpression="${json.jsons[0].testArray.getClass().getName()}"/>-->
+	<!--<contextDataDef name="testSize"             dataType="String"      defaultDataExpression="${json.j.getClass().getName()}" />-->
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="something" dataType="String" />
+	<contextDataDef name="array"                dataType="String"   multiple="true"     defaultDataExpression="${T(java.util.Collections).emptyList()}" />
+	
+	<contextDataDef name="nullCheckVal"         dataType="Boolean" defaultDataExpression="${json.get('nullKey').isNull()}" />
+	<contextDataDef name="emptyString"         dataType="Boolean" defaultDataExpression="${json.get('emptyString').isNull()}" />
+
+</workflow>

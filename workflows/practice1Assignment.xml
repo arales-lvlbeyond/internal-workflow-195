@@ -1,0 +1,26 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="practice1Assignment"
+    name="Hello, to Z, world"
+    executionLabelExpression="Practice 1 Assignment"
+    description="Display Hello World"
+    subjectDOClassName=""
+    resultDataDef=""
+    deadlineExpression=""
+    showInUserInterface="true"
+    sdkVersion=""
+    >
+    
+    
+	<initialStepName>Hello World</initialStepName>
+
+    <noopStep name="Hello World"
+        executionLabelExpression="Hello my world"
+        nextStep="end"
+    />
+    <!-- success -->
+    <noopStep name="end"/>
+
+</workflow>

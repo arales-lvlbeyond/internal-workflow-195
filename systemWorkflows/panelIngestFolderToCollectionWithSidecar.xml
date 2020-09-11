@@ -1,0 +1,192 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="panelIngestFolderToCollectionWithSidecar"
+    name="Panel - Ingest Folder To Collection with Sidecar Metadata"
+    executionLabelExpression="Panel - Ingest To Folder Collection | Folder: ${reachenginePath}"
+    description=""
+    subjectDOClassName=""
+    showInUserInterface="false"
+    resultDataDef="sourcePathsJson"
+    sdkVersion="4.2"
+	>
+
+	<initialStepName>set end index</initialStepName>
+	
+	
+	<!-- .............................................. ingest files loop ................................................. -->
+	<!-- set end index to either limit or recordcount -->
+	<setContextData name="set end index" 
+		targetDataDef="endIndex" 
+		valueExpression="${ filesToIngest.size() > (startIndex + batchSize) ? (startIndex + batchSize) : filesToIngest.size() }"
+		executionLabelExpression="end at ${ filesToIngest.size() > (startIndex + batchSize) ? (startIndex + batchSize) : filesToIngest.size() }"
+		pctCompleteExpression="${pctCompleteStart}"
+		devStep="true"
+		nextStep="pct complete end"
+		/>
+	
+	
+	<!-- figure out pct complete -->
+	<groovyStep name="pct complete end"
+		resultDataDef="pctCompleteEnd"
+		executionLabelExpression="calculating pct complete based on current end (${endIndex}) vs total (${filesToIngest.size()})"
+		pctCompleteExpression="${pctCompleteStart}"
+		devStep="true"
+		nextStep="set range"
+		>
+		<script>
+		<![CDATA[
+			Double end = endIndex
+			Double total = filesToIngest.size()
+			Double percent = (end/total)*100
+			Integer pctComplete = percent.intValue()
+			
+			return pctComplete
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<!-- set sublist -->
+	<setContextData name="set range" 
+		targetDataDef="workingChunk" 
+		valueExpression="${filesToIngest.subList(startIndex, endIndex)}"
+		executionLabelExpression="Start: ${startIndex} to End: ${endIndex} = ${endIndex - startIndex} Assets"
+		pctCompleteExpression="${pctCompleteStart}"
+		devStep="true"
+		nextStep="ingest files"
+		/>
+	
+	
+	<executeSubflowStep name="ingest files"
+		targetWorkflowId="${ingestSubflow}"
+		subjectChangePath="${workingChunk}"
+		subflowTargetDataDef="fileToIngest"
+		resultDataDef="workingSourcePathJsons"
+		subflowExecutionLimitExpression="${subflowLimit}"
+		emptyTargetHandling="allow"
+		continueOnException="true"
+		executionLabelExpression="Ingesting ${workingChunk.size()} files | range = [${startIndex},${endIndex}) | total: ${filesToIngest.size()}"
+		pctCompleteExpression="${pctCompleteEnd}"
+		nextStep="add new file paths to json"
+		>
+		<subflowContextDataMapping parentDataDef="targetOS" 			subflowDataDef="targetOS"/>
+		<subflowContextDataMapping parentDataDef="collections" 			subflowDataDef="collections"/>
+	</executeSubflowStep>
+	
+	
+	<groovyStep name="add new file paths to json"
+		resultDataDef="sourcePathsJson"
+		executionLabelExpression="adding ${workingSourcePathJsons.size()} file paths to the main list"
+		pctCompleteExpression="${pctCompleteEnd}"
+		nextStep="set start index"
+		>
+		<script>
+		<![CDATA[
+			import groovy.json.*
+			
+			if (workingSourcePathJsons != null && workingSourcePathJsons.size() > 0)
+				{sourcePathsJson.fileData.addAll(workingSourcePathJsons)}
+			
+			return sourcePathsJson
+			
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<setContextData name="set start index" 
+		targetDataDef="startIndex" 
+		valueExpression="${startIndex + batchSize}"
+		executionLabelExpression="start at ${startIndex}"
+		pctCompleteExpression="${pctCompleteEnd}"
+		devStep="true"
+		>
+		<!-- Exit Loop when there are no more assets -->
+		<transition condition="${startIndex >= filesToIngest.size()}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>pct complete start</targetStepName>
+		</transition>
+	</setContextData>
+	
+	
+	
+	<groovyStep name="pct complete start"
+		resultDataDef="pctCompleteStart"
+		executionLabelExpression="calculating pct complete based on current start (${startIndex}) vs total (${filesToIngest.size()})"
+		pctCompleteExpression="${pctCompleteEnd}"
+		devStep="true"
+		nextStep="set end index"
+		>
+		<script>
+		<![CDATA[
+			Double start = startIndex
+			Double total = filesToIngest.size()
+			Double percent = (start/total)*100
+			Integer pctComplete = percent.intValue()
+			
+			return pctComplete
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<!-- ...................................................... End ....................................................... -->
+	<!-- success -->
+	<noopStep name="end"	
+		executionLabelExpression="${sourcePathsJson.size()} total file paths returned"
+		pctComplete="100"
+		/>
+	
+	
+	<!-- Fail -->
+	<failWorkflowStep name="s3 error"
+		executionLabelExpression="Error getting files from ${reachenginePath}. Check logs for more information."
+		reasonExpression="Error getting files from ${reachenginePath}. Check logs for more information."
+		/>
+	
+
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ............ Input Variables ............. -->
+	<contextDataDef name="collections" 					dataType="Data Object"	multiple="true"/>
+	<contextDataDef name="path" 						dataType="String"   userInput="true"/>
+	<contextDataDef name="targetOS" 					dataType="String" 		defaultDataExpression="mac"/>
+
+	<!-- ......... Processing Variables .......... -->
+	<!-- directory/bucket to ingest -->
+	<contextDataDef name="mappedPath"    			    dataType="String"	    defaultDataExpression="${#mapPathReverse(path, targetOS)}"/>
+	<contextDataDef name="reachenginePath"    			dataType="String"	    defaultDataExpression="${mappedPath.endsWith('/') ? mappedPath : mappedPath + '/'}"/>
+	<contextDataDef name="filesToIngest" 				dataType="File"			multiple="true"     defaultDataExpression="${#walkDir(reachenginePath, null)}"/>
+	<!-- Source file paths of each asset ingested (as seen by the targetOS). -->
+	<contextDataDef name="workingSourcePathJsons" 		dataType="JSON"			multiple="true"/>
+	<contextDataDef name="sourcePathsJson" 				dataType="JSON"			defaultDataExpression="{'fileData':[]}"/>
+	<!-- Loop Variables -->
+	<contextDataDef name="workingChunk"     			dataType="File" 		multiple="true"/>
+	<contextDataDef name="batchSize"            		dataType="Integer"      defaultDataExpression="${#sysconfig('workflows.default.panel.ingestDirectory.batchSize') != null? #sysconfig('workflows.default.panel.ingestDirectory.batchSize') : 100}"/>
+	<contextDataDef name="subflowLimit" 			    dataType="Integer" 		defaultDataExpression="${#sysconfig('workflows.default.panel.ingestDirectory.subflowLimit') !=null? #sysconfig('workflows.default.panel.ingestDirectory.subflowLimit') : 25}"/>
+	<contextDataDef name="startIndex"       			dataType="Integer"      defaultDataExpression="0"/>
+	<contextDataDef name="endIndex"         			dataType="Integer"/>
+	<contextDataDef name="pctCompleteStart" 			dataType="Integer"		defaultDataExpression="0"/>
+	<contextDataDef name="pctCompleteEnd" 				dataType="Integer"		defaultDataExpression="0"/>
+	<contextDataDef name="ingestSubflow"      	        dataType="String" 		defaultDataExpression="${#sysconfig('workflows.default.panel.ingestAssetWorkflow') != null? #sysconfig('workflows.default.panel.ingestAssetWorkflow') : 'panelIngestAssetToCollectionWithSidecar'}"/>
+</workflow>

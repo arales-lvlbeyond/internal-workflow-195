@@ -1,0 +1,25 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="ingestDirectoryBugReport"
+          name="Ingest Directory Bug Report"
+          executionLabelExpression="Ingest Directory - Directory: ${directory != null ? directory.name : 'NULL'} S3 Path: ${s3path != null ? s3path : 'NULL'}"
+          description=""
+          group="Ingest"
+          showInUserInterface="true"
+          subjectDOClassName=""
+          subjectQualifierExpression=""
+          sdkVersion="">
+
+    <initialStepName>output the input</initialStepName>
+
+    <noopStep
+            name="output the input"
+            executionLabelExpression="Directory input: ${directory != null ? directory.absolutePath : 'None'}. S3 Path input: ${s3path != null ? s3path : 'None'}."/>
+
+
+    <!-- Input -->
+    <contextDataDef name="directory" dataType="Directory" userInput="true" displayIndex="1"/>
+    <contextDataDef name="s3path" dataType="String" label="OR S3 Path (s3://...)" userInput="true" displayIndex="2"/>
+</workflow>

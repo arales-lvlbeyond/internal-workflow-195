@@ -1,0 +1,242 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/studio1_7_35/studio.xsd"
+
+ id="_updateRecoverProject"
+ name="Update project with recovered project"
+ executionLabelExpression="Updating checked out project with recovered crash project"
+ description="Corrects the world after a crash in premiere and the user recovers to a project managed outside of RE"
+ subjectDOClassName=""
+ showInUserInterface="false"
+ deadlineExpression=""
+ sdkVersion="4.9"
+ resultDataDef="projectLocationReturn">
+
+    <initialStepName>check for project</initialStepName>
+
+
+    <!--  -->
+    <noopStep name="check for project" executionLabelExpression="Check in: ${path} for os: ${targetOS}">
+
+        <transition condition="${projectID != null}">
+            <targetStepName>look up project</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>fail missing projectId</targetStepName>
+        </transition>
+    </noopStep>
+
+    <!-- project ID was passed, find the previous version. -->
+    <queryStep name="look up project"
+        targetDataObjectClass="Project"
+        pctComplete="40"
+        resultDataDef="project">
+
+        <transition condition="${project?.projectAsset?.lockedBy != workflow.startedBy}">
+            <targetStepName>fail checkin</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>set check out location</targetStepName>
+        </transition>
+
+        <criteria>
+            <![CDATA[
+				<criteria>
+	            <and>
+	                <condition property="id" op="eq"><test value="${projectID}"/></condition>
+	            </and>
+				</criteria>
+			]]>
+        </criteria>
+    </queryStep>
+
+    <setContextData
+        name="set check out location"
+        targetDataDef="checkOutLocation"
+        valueExpression="${#sysconfig('filesystem.root.checkOutRoot')}/${workflow.startedBy.username}/${project.id}"
+        >
+
+        <transition condition="true">
+            <targetStepName>set original path</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData
+        name="set original path"
+        targetDataDef="currentProjectFile"
+        valueExpression="${checkOutLocation}/${project.projectAsset.name}"
+        executionLabelExpression="check project ${currentProjectFile.absolutePath}"
+        >
+
+        <transition condition="${currentProjectFile.exists()}">
+            <targetStepName>check if path exists</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>fail unable to find original project</targetStepName>
+        </transition>
+    </setContextData>
+
+   <!-- <setContextData
+        name="set path"
+        targetDataDef="path"
+        valueExpression="${path}/${fileName}"
+        executionLabelExpression="Check in: ${path} for os: ${targetOS}"
+        > -->
+    <noopStep name="check if path exists" executionLabelExpression="Check ${path} existance">
+
+        <transition condition="${path.exists()}">
+            <targetStepName>reverse path map</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>reverse path map</targetStepName>
+        </transition>
+    </noopStep>
+
+    <!-- path was passed in, map to RE path -->
+    <groovyStep name="reverse path map"
+        resultDataDef="recoverdProjectFile"
+        executionLabelExpression="path: ${path} os: ${targetOS} reverse mapped: ${recoverdProjectFile.absolutePath}">
+
+        <transition condition="${recoverdProjectFile.exists()}">
+            <targetStepName>check in project asset</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>fail recover project path</targetStepName>
+        </transition>
+        <script>
+            <![CDATA[
+            import com.routeto1.filesystem.PathMapper;
+            return PathMapper.mapPathReverse(path,targetOS);
+            ]]>
+        </script>
+    </groovyStep>
+
+    <checkinAsset
+        name="check in project asset"
+        assetExpression="${project?.projectAsset}"
+        contentExpression="${currentProjectFile}"
+        contentTemplateExpression="projectSource"
+        checkinDescriptionExpression="${checkinDescription}"
+        keepLockedExpression="True"
+        pctComplete="60"
+        resultDataDef="projectAsset"
+        executionLabelExpression="Found Project? ${project?.name}"
+
+        >
+        <transition condition="true">
+            <targetStepName>DeleteCheckInFile</targetStepName>
+        </transition>
+    </checkinAsset>
+
+    <groovyStep
+        name="DeleteCheckInFile"
+        resultDataDef="deletedFile">
+        <transition condition="${deletedFile}">
+            <targetStepName>copy recover project</targetStepName>
+        </transition>
+        <transition condition="${!deletedFile}">
+            <targetStepName>fail to delete old project file</targetStepName>
+        </transition>
+        <script>
+            <![CDATA[
+
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+
+try {
+
+		if(currentProjectFile.exists())
+    {
+    	currentProjectFile.delete();
+    }
+		return true;
+}catch (IOException e) {
+	return false;
+}
+
+]]>
+        </script>
+    </groovyStep>
+<!-- copy  recovered over project-->
+    <copyFileStep
+        name="copy recover project"
+        sourceFileExpression="${recoverdProjectFile}"
+        targetDirectoryExpression="${checkOutLocation}"
+        targetFilenameExpression="${project.name}"
+        createTargetDirectoryFlag="true"
+        resultDataDef="projectLocation">
+
+        <transition condition="true">
+            <targetStepName>set project string</targetStepName>
+        </transition>
+    </copyFileStep>
+
+    <setContextData
+        name="set project string"
+        targetDataDef="projectLocationString"
+        valueExpression="${projectLocation.absolutePath}" >
+
+        <transition condition="true">
+            <targetStepName>set return</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData
+        name="set return"
+        targetDataDef="projectLocationReturn"
+        valueExpression="${#mapPath(projectLocationString, targetOS)}" >
+
+        <transition condition="true">
+            <targetStepName>raise project recover event</targetStepName>
+        </transition>
+    </setContextData>
+
+    <raiseWorkflowEventStep
+        name="raise project recover event"
+        eventTypeExpression="ProjectRecover"
+        summaryExpression="Project ${project.name} has been recovered in, loc: ${projectLocationReturn}"
+        executionLabelExpression="Project ${project.name} has been recovered in, loc: ${projectLocationReturn}"
+        severityExpression="INFO"
+        >
+    </raiseWorkflowEventStep>
+
+
+    <failWorkflowStep reasonExpression="failed to delete old project file" name="fail to delete old project file" executionLabelExpression="failed to delete old project file"/>
+    <failWorkflowStep reasonExpression="unable to find original checked out project" name="fail unable to find original project" executionLabelExpression="unable to find original checked out project"/>
+    <failWorkflowStep reasonExpression="projectId is required" name="fail missing projectId" executionLabelExpression="projectId is required"/>
+    <failWorkflowStep reasonExpression="You must have the project checked out to recover it" name="fail checkin" executionLabelExpression="You must have the project checked out to recover it"/>
+    <failWorkflowStep reasonExpression="Path to recover project file required" name="fail recover project path" executionLabelExpression="Path to recover project file required"/>
+
+
+    <!-- User Input / Passed -->
+    <contextDataDef name="fileName"      dataType="String"      userInput="true"/>
+    <contextDataDef name="projectID"     dataType="Integer"     userInput="true"/>
+    <contextDataDef name="targetOS"      dataType="String" defaultDataExpression="mac" userInput="true"/>
+    <contextDataDef name="path"                 dataType="String"                     userInput="true"/>
+
+    <contextDataDef name="projectExt"   dataType="String"/>
+    <contextDataDef name="orginalPath"   dataType="String"/>
+
+    <contextDataDef name="checkOutLocation" dataType="String"/>
+    <contextDataDef name="projectLocation" dataType="File"/>
+    <contextDataDef name="projectLocationReturn" dataType="String"/>
+    <contextDataDef name="projectLocationString" dataType="String"/>
+
+    <contextDataDef name="deletedFile" dataType="Boolean"/>
+
+    <!-- Calculated -->
+    <contextDataDef name="recoverdProjectFile"         dataType="File"/>
+    <contextDataDef name="currentProjectFile"         dataType="File"/>
+    <contextDataDef name="projectFile"          dataType="Data Object"/>
+    <contextDataDef name="projectName"          dataType="String"/>
+    <contextDataDef name="projectAsset"         dataType="Data Object"/>
+    <contextDataDef name="project"              dataType="Data Object"/>
+
+    <!-- Static -->
+    <contextDataDef name="checkinDescription"   dataType="String"                   defaultDataExpression="Automated Checkin"           userInput="true"/>
+    <contextDataDef name="nleType"              dataType="String"                   defaultDataExpression="PREMIERE"/>
+
+</workflow>

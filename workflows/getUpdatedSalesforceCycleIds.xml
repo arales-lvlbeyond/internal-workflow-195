@@ -1,0 +1,157 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          id="getUpdatedSalesforceCycleIds"
+          name="Get Updated Salesforce Cycle Ids"
+          executionLabelExpression="Pulling updated Salesforce cycle ID's..."
+          subjectDOClassName=""
+          showInUserInterface="false"
+          resultDataDef="cycleIds"
+          sdkVersion="">
+    
+    <initialStepName>compute start date</initialStepName>
+    
+    <groovyStep name="compute start date"
+                resultDataDef="startDateTimeString"
+                executionLabelExpression="computing start date..."
+                nextStep="compute end date"
+    >
+        <script>
+            <![CDATA[
+                import java.util.Date
+				import java.text.SimpleDateFormat
+				import java.util.Calendar
+
+				def formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SS")
+				
+				def currentDateTime = new Date()
+				
+                Calendar cal = Calendar.getInstance()
+                cal.setTime(currentDateTime)
+                cal.add(Calendar.DATE, -1)
+                Date startDateTime = cal.getTime()
+				
+				def startDateTimeString = formatter.format(startDateTime).toString()
+				startDateTimeString = startDateTimeString.split(" ").join('T')
+				
+				startDateTimeString = startDateTimeString.substring(0, startDateTimeString.length() - 1)
+
+				return startDateTimeString
+            ]]>
+        </script>
+    </groovyStep>
+    
+    <groovyStep name="compute end date"
+                resultDataDef="endDateTimeString"
+                executionLabelExpression="computing end date..."
+                nextStep="construct salesforce api call"
+                >
+        <script>
+            <![CDATA[
+                import java.util.Date
+                import java.text.SimpleDateFormat
+
+                def formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SS")
+
+				def currentDateTime = new Date()
+				
+				currentDateTime = formatter.format(currentDateTime.getTime()).toString()
+				
+				def endDateTimeString = currentDateTime.split(" ").join('T')
+				
+				endDateTimeString = endDateTimeString.substring(0, endDateTimeString.length() - 1)
+				
+				return endDateTimeString
+            ]]>
+        </script>
+    </groovyStep>
+    
+    <groovyStep name="construct salesforce api call"
+                resultDataDef="salesforceUrlWithParameters"
+                executionLabelExpression="constructing salesforce api call..."
+                nextStep="get updated cycle ids"
+    >
+        <script>
+            <![CDATA[
+                def queryUrl = salesforceUrl
+				
+				queryUrl += "start="
+				queryUrl += startDateTimeString.replace(':', '%3A')
+				queryUrl += "&"
+				queryUrl += "end="
+				queryUrl += endDateTimeString.replace(':', '%3A')
+				
+				return queryUrl
+            ]]>
+        </script>
+    </groovyStep>
+    
+    <submitHttpStep
+        name="get updated cycle ids"
+        executionLabelExpression="Get updated cycle Id's from ${salesforceUrl}. Response Code = ${responseCode}"
+        urlExpression="${salesforceUrlWithParameters}"
+        requestMethodExpression="GET"
+        responseCodeDataDef="responseCode"
+        responsePayloadDataDef="responseString"
+        continueOnException="true">
+        <transition condition="${responseCode == 200}">
+            <targetStepName>set json</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>notify error getting response</targetStepName>
+        </transition>
+        <requestHeader name="access_token">${accessToken}</requestHeader>
+    </submitHttpStep>
+    
+    <setContextData
+        name="set json"
+        targetDataDef="responseJSON"
+        valueExpression="${responseString}">
+        <transition condition="${responseJSON != null}">
+            <targetStepName>set cycle ids</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>notify error response malformed</targetStepName>
+        </transition>
+    </setContextData>
+    
+    <setContextData
+        name="set cycle ids"
+        valueExpression="${responseJSON}"
+        targetDataDef="responseJSON"
+        nextStep="end" />
+    
+    <noopStep name="end" />
+    
+    <createFailureNotificationStep
+        name="notify error getting response"
+        notificationTypeExpression="error"
+        notificationBodyExpression="Error getting response. Response code: ${responseCode}. See the Status tab for details."
+        nextStep="fail error getting response"/>
+    
+    <createFailureNotificationStep
+        name="notify error response malformed"
+        notificationTypeExpression="error"
+        notificationBodyExpression="Error parsing response. See the Status tab for details."
+        nextStep="fail error response malformed"/>
+    
+    <failWorkflowStep name="fail error getting response" reasonExpression="Error getting response. Response code: ${responseCode}"/>
+    <failWorkflowStep name="fail error response malformed" reasonExpression="Error parsing response"/>
+    
+    <noopStep name="end"/>
+    
+    <!-- Input -->
+    <contextDataDef name="accessToken" dataType="String" defaultDataExpression="00D0x0000000apQ!ARcAQE4DGl2GX9PGqY_LT45_03yV2cjlXaY7ZEasMtdzq.17gY0dUUqpOoRiGCyL93PjzFQexxIcsjvMx9KK1aMJu4Js48qU" />
+    
+    <!-- Internal -->
+    <contextDataDef name="salesforceUrl" dataType="String" defaultDataExpression="${#sysconfig('salesforce.api.query.updatedCycles')}"/>
+    <contextDataDef name="salesforceUrlWithParameters" dataType="String" />
+    
+    <contextDataDef name="responseCode" dataType="Integer" />
+    <contextDataDef name="responseString" dataType="String"/>
+    <contextDataDef name="responseJSON" dataType="JSON"/>
+    
+    <contextDataDef name="endDateTimeString"     dataType="String" />
+    <contextDataDef name="startDateTimeString"   dataType="String" />
+</workflow>

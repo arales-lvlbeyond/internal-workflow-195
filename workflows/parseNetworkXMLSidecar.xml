@@ -1,0 +1,978 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="parseNetworkXMLSidecar"
+	name="Parse Network XML Sidecar | TEST"
+	executionLabelExpression="Parse Network XML ${xmlFile.name} for ${assetMaster.name}"
+	description="
+          Subflow to parse the NFL Networks XML sidecar file, apply metadata to incoming NFL Networks assets, and
+          ingest the related media content.
+
+          Calculates the offset of the video in relation to the timeline prior to adding the video to the timeline using
+           markers in the XML data.
+          "
+	devWorkflow="true"
+	adminOnly="false"
+	showInUserInterface="true"
+	sdkVersion="">
+	
+	<initialStepName>validate xml file</initialStepName>
+	
+	<noopStep
+		name="validate xml file"
+		executionLabelExpression="XML File Exists (${xmlFile.absolutePath})? ${#fileExists(xmlFile.absolutePath)}">
+		<transition condition="${#fileExists(xmlFile.absolutePath)}">
+			<targetStepName>set xml data def</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>check original location</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<setContextData
+		name="check original location"
+		targetDataDef="xmlFile"
+		valueExpression="${#sysconfig('network.aspera.drop.location')}/${#baseFilename(subject.metadata.originalFilename)}.xml">
+		<transition condition="${#fileExists(xmlFile.absolutePath)}">
+			<targetStepName>add xml metadata to json</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>xml file missing</targetStepName>
+		</transition>
+	</setContextData>
+	
+	<setContextData
+		name="set xml data def"
+		devStep="true">
+		<transition condition="${checkForUpdate}">
+			<targetStepName>check for update</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>add xml metadata to json</targetStepName>
+		</transition>
+		<exception-transition type="java.lang.Exception">
+			<targetStepName>send set xml failure slack notification</targetStepName>
+		</exception-transition>
+		<set targetDataDef="fileXML">${xmlFile}</set>
+		<set targetDataDef="xmlFilePath">${xmlFile.absolutePath}</set>
+	</setContextData>
+	
+	<groovyStep
+		name="check for update"
+		devStep="true"
+		resultDataDef="updateXMLElementTrue"
+	>
+		<transition condition="${updateXMLElementTrue}">
+			<targetStepName>add xml metadata to json</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>update flag false</targetStepName>
+		</transition>
+		<script>
+            <![CDATA[
+			updateXMLElementTrue = false
+			
+			clip = fileXML.getChild('clip')
+			metadata = clip.getChild('metadata')
+			
+			if (metadata.getChildText('A000').toUpperCase() == 'TRUE'){
+				updateXMLElementTrue = true
+			}
+			
+			return updateXMLElementTrue
+			]]>
+        </script>
+	</groovyStep>
+	
+	<!--
+		Picklist Items: Each field that is a picklist in Reach Engine is also a picklist in Fork. For each XML picklist
+		value, look for the corresponding Reach picklist Label. If the Label doesn't already exist in the corresponding
+		picklist, add it to the picklist automatically.
+
+		Process in groovy.. could use XML but the massive amount of transitions would be horrid to manage!
+	-->
+	
+	<groovyStep
+		name="add xml metadata to json"
+		executionLabelExpression="Add xml metadata to json: ${jsonMetadata.toString()}"
+		pctComplete="75"
+		resultDataDef="jsonMetadata">
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<script>
+            <![CDATA[
+			import groovy.json.JsonSlurper
+			import java.text.SimpleDateFormat
+			import org.apache.commons.lang3.text.WordUtils
+			import com.levelsbeyond.workflow.sdk.function.GetBaseFilenameFunction
+			import com.levelsbeyond.workflow.sdk.function.GetPicklistValueFunction
+			import com.levelsbeyond.workflow.sdk.function.GetPicklistLabelFunction
+			import com.levelsbeyond.workflow.sdk.function.PicklistItemExistsFunction
+			
+			// First, try and grab the season and date from the filename. The season might be the first 4 digits of the
+			// basefilename, and the date might be the last 6 digits. This is very fuzzy logic- hopefully these values
+			// will be overwritten later if there's a gsis id, a timeline is found, and timeline meta is applied to this
+			// asset.
+			
+			baseFilename = GetBaseFilenameFunction.evaluate(xmlFilePath)
+
+//			jsonMetadata.put('originalFilename', baseFilename + '.mov')
+
+//			if (baseFilename.length() > 5) {
+//				possibleSeasonString = baseFilename.substring(0, 4)
+//
+//				if (PicklistItemExistsFunction.picklistItemExists('season', possibleSeasonString))
+//					jsonMetadata.put('season', GetPicklistValueFunction.evaluate('season', possibleSeasonString))
+//
+//			}
+//
+//
+			fileParts = baseFilename.split('_')
+			
+			Date fullEventDate
+			
+			for (filePart in fileParts) {
+				
+				try {
+					Date eventDate = new SimpleDateFormat('MMddyy').parse(filePart)
+					if (eventDate != null) {
+						jsonMetadata.put('eventDate', new SimpleDateFormat("yyyy-MM-dd").format(eventDate))
+						fullEventDate = eventDate
+						break
+					}
+				} catch (Exception ex) {
+				}
+			}
+			// Parse XML with jdom
+			
+			clip = fileXML.getChild('clip')
+			metadata = clip.getChild('properties')
+			
+			// TODO Update logic to parse xml by inserting each CSV item into a map, then putting into metadata JSON as needed from built map
+			// also set keyMap below to local prop to keymap file path
+			
+			def xmlMap = [:]
+			
+			def cdsString = ""
+			
+			// Get all metadata properties
+			metaPropsJSON = new JsonSlurper().parseText(queryReach('GET', '/reachengine/api/metadata-properties?fetchLimit=500', null))
+			metaPropsJSON.rows.each { row ->
+				metaMap.put(row.name, row.id)
+			}
+			
+			metadata.getChildren().each { field ->
+				def key = field.getChildText('name')
+				def val = field.getChildText('value')
+				if (val != null) {
+					xmlMap."$key" = val
+				}
+			}
+			
+			// loop below through each key in keyMap list and handle unique cases in switch statement
+			
+			jsonMapping.fieldNames().each { key ->
+				switch (key.toString()) {
+					case "NFL_TALENT NAME":
+						finishedTalentName = ""
+						if (xmlMap.containsKey(key.toString()) && xmlMap."$key".toString().length() > 0) {
+							try {
+                              splitTalentName = xmlMap."$key".toString().toLowerCase().split(" ")
+                              finishedTalentName = splitTalentName[1].capitalize() + " " + splitTalentName[0].capitalize()
+                              // TODO fix below - not working with picklist
+//                              jsonMetadata.put(metaMap[jsonMapping."$key".textValue()], finishedTalentName)
+                              processPicklistItemToAddIfMissing(metaMap[jsonMapping."$key".textValue()].textValue(), finishedTalentName, jsonMapping."$key".textValue())
+							} catch (Exception e) {
+								jsonMetadata.put("error " + key.toString(), finishedTalentName + " " + metaMap[jsonMapping."$key".textValue].toString() + " error: " + e.toString())
+							}
+						}
+						break
+				// content description secondary
+					case ["NFL_AUDIO", "NFL_BROLL", "NFL_FEATURE", "NFL_GAME", "NFL_SOUND", "NFL_STILLS"]:
+						if (xmlMap.containsKey(key.toString()) && xmlMap."$key".toString().length() > 0) {
+							try {
+								if (key.toString() == "NFL_STILLS" && xmlMap."$key".toString().length() > 0) {
+                                    cdsString += xmlMap."$key".toString()
+									// update to picklist match
+									jsonMetadata.put(jsonMapping."$key".textValue(), cdsString.toString())
+                                    processPicklistItemToAddIfMissing(metaMap[jsonMapping."$key".textValue()].textValue(), cdsString.toUpperCase(), jsonMapping."$key".textValue())
+								} else if (xmlMap."$key".toString().length() > 0) {
+									cdsString += xmlMap."$key".toString()
+									cdsString = cdsString + ' - '
+//									jsonMetadata.put(cdsString.toString(), xmlMap."$key".toString())
+								}
+							} catch (Exception e) {
+								jsonMetadata.put("error " + " " + metaMap[jsonMapping."$key".textValue()].toString() + " error: " + key.toString(), e.toString())
+							}
+						}
+						break
+					case ["name", "id", "TRT"]:
+						if (xmlMap.containsKey('name') && xmlMap."$key".toString() > 0) jsonMetadata.put('title', xmlMap."$key".toString())
+						if (xmlMap.containsKey('id') && xmlMap."$key".toString() > 0) jsonMetadata.put('forkID', xmlMap."$key".toString())
+						if (xmlMap.containsKey('TRT') && xmlMap."$key".toString() > 0) jsonMetadata.put('totalRuntime', xmlMap."$key".toString())
+						break
+					case "NFL_SEASON":
+						if (!xmlMap.containsKey(key.toString()) || xmlMap."$key".toString().length() == 0) {
+							if (baseFilename.length() > 5) {
+								possibleSeasonString = baseFilename.substring(0, 4)
+								
+								if (PicklistItemExistsFunction.picklistItemExists(jsonMapping."$key".textValue(), possibleSeasonString))
+									jsonMetadata.put(jsonMapping."$key".textValue(), GetPicklistValueFunction.evaluate('season', possibleSeasonString))
+							}
+						} else {
+							jsonMetadata.put(jsonMapping."$key".textValue(), GetPicklistValueFunction.evaluate(jsonMapping."$key".textValue(), xmlMap."$key".toString()))
+						}
+						break
+					case "NFL_AIRDATE":
+						if (xmlMap.containsKey(key.toString()) && xmlMap."$key".toString().length() > 0) {
+							jsonMetadata.put(jsonMapping."$key".textValue(), xmlMap."$key".toString())
+							if (fullEventDate == null) {
+								Date backupEventDate = new SimpleDateFormat("EEE, MMM dd, yyyy").parse(xmlMap."$key")
+								jsonMetadata.put(jsonMapping."$key".textValue(), new SimpleDateFormat("yyyy-MM-dd").format(backupEventDate))
+							}
+						} else if (fullEventDate != null) {
+							jsonMetadata.put(jsonMapping."$key".textValue(), new SimpleDateFormat("EEE MMM dd HH:mm:ss z yyyy").format(fullEventDate))
+						}
+						break
+				// catch picklists below
+				// CREATE IF NEW
+					case ["NFL_AUDIO MAPPING CH-1", "NFL_AUDIO MAPPING CH-2", "NFL_AUDIO MAPPING CH-3", "NFL_AUDIO MAPPING CH-4",
+					      "NFL_AUDIO MAPPING CH-5", "NFL_AUDIO MAPPING CH-6", "NFL_AUDIO MAPPING CH-7", "NFL_AUDIO MAPPING CH-8", "NFL_NCAA COURTESY",
+					      "NFL_PUBLICATION"]:
+						if (xmlMap.containsKey(key.toString()) && xmlMap."$key".toString().length() > 0) {
+							try {
+								// TODO VERIFY BELOW
+								processPicklistItemToAddIfMissing(metaMap[jsonMapping."$key".textValue()].textValue(), xmlMap."$key".toString(), jsonMapping."$key".textValue())
+							} catch (Exception e) {
+								// add error to json
+								jsonMetadata.put(
+									"metadata: " + jsonMapping."$key".textValue(), e.toString())
+//									"metadataId " + metaMap[jsonMapping."$key".textValue()].textValue() + " metadata: " + jsonMapping."$key".textValue(), e.toString())
+							}
+						}
+						break
+				// DO NOT CREATE IF NEW
+					case ["NFL_TEAM NON-NFL", "NFL_CLEARANCE", "NFL_DRAFT PICK NUMBER", "NFL_DRAFT ROUND", "NFL_VENUE"]:
+						if (xmlMap.containsKey(key.toString()) && xmlMap."$key".toString().length() > 0) {
+							try {
+								// TODO VERIFY BELOW
+								processPicklistItemAddOnlyIfExists(xmlMap."$key".toString(), jsonMapping."$key".textValue())
+							} catch (Exception e) {
+								// add error to json
+								jsonMetadata.put(
+									"error " + jsonMapping."$key".textValue(), e.toString())
+							}
+						}
+						break
+					case "NFL_WEEK":
+						// TODO add week picklist logic
+						processPicklistItemToAddIfMissing(metaMap[jsonMapping."$key".textValue()].textValue(), xmlMap."$key".toString().split(' ')[1], jsonMapping."$key".textValue())
+						break
+					case ["NFL_BOWL NAME", "NFL_NCAA CONFERENCE"] :
+						//TODO fix this - MAKE LOWER CASE
+//						jsonMetadata.put("picklist test", PicklistItemExistsFunction.picklistItemExists(jsonMapping."$key".toString(), xmlMap."$key".toString()))
+						if (xmlMap.containsKey(key.toString()) && xmlMap."$key".toString().length() > 0) {
+							try {
+								// TODO VERIFY BELOW
+								processPicklistItemAddOnlyIfExists(xmlMap."$key".toString(), jsonMapping."$key".textValue())
+							} catch (Exception e) {
+								// add error to json
+								jsonMetadata.put(
+									"error " + metaMap[jsonMapping."$key"].toString() + " error: " + jsonMapping."$key".textValue(), e.toString())
+							}
+						}
+						break
+					default:
+						if (xmlMap.containsKey(key.toString()) && xmlMap."$key".toString().length() > 0) {
+							jsonMetadata.put(jsonMapping."$key".textValue(), xmlMap."$key".toString())
+						}
+						break
+				}
+			}
+			
+			// post keymap parse processes
+			
+			
+			return jsonMetadata
+			
+			// end updated logic
+
+//			if (metadata.getChildText('A023')) {
+//				jsonMetadata.put('dateTimeString', metadata.getChildText('A023'))
+//				if (fullEventDate == null) {
+//					Date backupEventDate = new SimpleDateFormat("EEE, MMM dd, yyyy").parse(metadata.getChildText('A023'))
+//					jsonMetadata.put('eventDate', new SimpleDateFormat("yyyy-MM-dd").format(backupEventDate))
+//				}
+//			} else if (fullEventDate != null) {
+//				jsonMetadata.put('dateTimeString', new SimpleDateFormat("EEE MMM dd HH:mm:ss z yyyy").format(fullEventDate))
+//			}
+			
+			// Clip elements (non-metadata)
+			if (metadata.getChildText('name')) jsonMetadata.put('title', metadata.getChildText('name'))
+			if (metadata.getChildText('id')) jsonMetadata.put('forkID', metadata.getChildText('id'))
+			if (metadata.getChildText('TRT')) jsonMetadata.put('totalRuntime', metadata.getChildText('TRT'))
+			
+			// Text
+
+//			cdsString = ""
+			
+			if (metadata.getChildText('A001') != '') {
+				cdsString += metadata.getChildText('A001')
+				cdsString = cdsString + ' - '
+			}
+			
+			if (metadata.getChildText('A002') != '') {
+				cdsString += metadata.getChildText('A002')
+				cdsString = cdsString + ' - '
+			}
+			
+			if (metadata.getChildText('A006') != '') {
+				cdsString += metadata.getChildText('A006')
+				cdsString = cdsString + ' - '
+			}
+			
+			if (metadata.getChildText('A007') != '') {
+				cdsString += metadata.getChildText('A007')
+				cdsString = cdsString + ' - '
+			}
+			
+			if (metadata.getChildText('A017') != '') {
+				cdsString += metadata.getChildText('A017')
+			}
+			/* not used anymore */
+			//if (metadata.getChildText('episodenum')) jsonMetadata.put('episodeNumber', metadata.getChildText('episodenum'))
+			
+			if (metadata.getChildText('A013')) jsonMetadata.put('networkProjectID', metadata.getChildText('A013'))
+			if (metadata.getChildText('A009')) jsonMetadata.put('gsisId', metadata.getChildText('A009'))
+			if (metadata.getChildText('A033')) jsonMetadata.put('programDescription', metadata.getChildText('A033'))
+			if (metadata.getChildText('A024')) jsonMetadata.put('keywords', metadata.getChildText('A024'))
+			if (metadata.getChildText('A034')) jsonMetadata.put('playNumber', metadata.getChildText('A034'))
+			
+			if (metadata.getChildText('A036')) jsonMetadata.put('combine40YardDash1', metadata.getChildText('A036'))
+			if (metadata.getChildText('A037')) jsonMetadata.put('combine40YardDash2', metadata.getChildText('A037'))
+			if (metadata.getChildText('A038')) jsonMetadata.put('combine40YardDashOverall', metadata.getChildText('A038'))
+			if (metadata.getChildText('A039')) jsonMetadata.put('combineArmLength', metadata.getChildText('A039'))
+			if (metadata.getChildText('A040')) jsonMetadata.put('combineBenchPress', metadata.getChildText('A040'))
+			if (metadata.getChildText('A041')) jsonMetadata.put('combineBroadJump', metadata.getChildText('A041'))
+			if (metadata.getChildText('A042')) jsonMetadata.put('combineEvent', metadata.getChildText('A042'))
+			if (metadata.getChildText('A043')) jsonMetadata.put('combineGroup', metadata.getChildText('A043'))
+			if (metadata.getChildText('A044')) jsonMetadata.put('combineHandSize', metadata.getChildText('A044'))
+			if (metadata.getChildText('A045')) jsonMetadata.put('combineHeight', metadata.getChildText('A045'))
+			if (metadata.getChildText('A046')) jsonMetadata.put('combinePosition', metadata.getChildText('A046'))
+			if (metadata.getChildText('A047')) jsonMetadata.put('combineShuttle20Yard', metadata.getChildText('A047'))
+			if (metadata.getChildText('A048')) jsonMetadata.put('combineShuttle3Cone', metadata.getChildText('A048'))
+			if (metadata.getChildText('A049')) jsonMetadata.put('combineShuttle60Yard', metadata.getChildText('A049'))
+			if (metadata.getChildText('A050')) jsonMetadata.put('combineVerticalJump', metadata.getChildText('A050'))
+			if (metadata.getChildText('A051')) jsonMetadata.put('combineWeight', metadata.getChildText('A051'))
+			
+			/* not used anymore */
+			//if (metadata.getChildText('ncaanote')) jsonMetadata.put('nCAANotes', metadata.getChildText('ncaanote'))
+			
+			if (metadata.getChildText('A010')) jsonMetadata.put('ltoTape', metadata.getChildText('A010'))
+			
+			// Simple picklists: Only apply if the picklist item exists
+			if (metadata.getChildText('A014') != '' && PicklistItemExistsFunction.picklistItemExists('season', metadata.getChildText('A014')))
+				jsonMetadata.put('season', GetPicklistValueFunction.evaluate('season', metadata.getChildText('A014')))
+			
+			// Multiple picklists: Only apply if the picklist item exists
+			processPicklistItemAddOnlyIfExists(metadata.getChildText('A025'), 'nCAABowlName')
+			
+			processPicklistItemAddOnlyIfExists(metadata.getChildText('A031'), 'publishedTo')
+			processPicklistItemAddOnlyIfExists(metadata.getChildText('A027'), 'conference')
+			processPicklistItemAddOnlyIfExists(metadata.getChildText('A032'), 'otherTeams')
+			
+			/* not used anymore */
+			/*
+			processPicklistItemAddOnlyIfExists(metadata.getChildText('conf'), 'nCAAConference')
+			processPicklistItemAddOnlyIfExists(metadata.getChildText('ncaateam'), 'nCAATeams')
+			processPicklistItemAddOnlyIfExists(metadata.getChildText('ncaacourt'), 'nCAACourtesy')
+			*/
+			
+			processPicklistItemAddOnlyIfExists(metadata.getChildText('A004'), 'courtesy')
+			
+			// Booleans
+			if (metadata.getChildText('A029') != '' && metadata.getChildText('A029') != null) {
+				if (metadata.getChildText('A029').toUpperCase() == 'TRUE') {
+					jsonMetadata.put('clearForBroadcast', true)
+				}
+			}
+			if (metadata.getChildText('A028') != '' && metadata.getChildText('A028') != null) {
+				if (metadata.getChildText('A028').toUpperCase() == 'TRUE') {
+					jsonMetadata.put('clearForDigital', true)
+				}
+			}
+			if (metadata.getChildText('A026') != '' && metadata.getChildText('A026') != null) {
+				if (metadata.getChildText('A026').toUpperCase() == 'TRUE') {
+					jsonMetadata.put('nCAABowlGame', true)
+				}
+			}
+			
+			// Initialize Picklist ID Vars (for dymamically adding picklist items via API calls to Reach)
+			def dCLAssetTypeID
+			def contentDescriptionSecondaryID
+			def showNameID
+			def studioShowElementID
+			def feedTypeID
+			def talentNameID
+			def sportID
+			def tagsID
+			def eventTypeID
+			def eventNameSecondaryID
+			def originalBroadcasterID
+			def venueListID
+			def producer
+			/* not used anymore */
+			//def audioConfigurationID
+			
+			def weekID
+			
+			// Get all metadata properties
+			metaPropsJSON = new JsonSlurper().parseText(queryReach('GET', '/reachengine/api/metadata-properties?fetchLimit=500', null))
+			
+			metaPropsJSON.rows.each { row ->
+				if (row.name == 'dCLAssetType') dCLAssetTypeID = row.id
+				if (row.name == 'contentDescriptionSecondary') contentDescriptionSecondaryID = row.id
+				if (row.name == 'showName') showNameID = row.id
+				if (row.name == 'studioShowElement') studioShowElementID = row.id
+				if (row.name == 'feedType') feedTypeID = row.id
+				if (row.name == 'talentName') talentNameID = row.id
+				if (row.name == 'sport') sportID = row.id
+				if (row.name == 'tags') tagsID = row.id
+				if (row.name == 'eventType') eventTypeID = row.id
+				if (row.name == 'eventNameSecondary') eventNameSecondaryID = row.id
+				if (row.name == 'originalBroadcaster') originalBroadcasterID = row.id
+				if (row.name == 'venueList') venueListID = row.id
+				if (row.name == 'week') weekID = row.id
+				if (row.name == 'producer') producerID = row.id
+				if (row.name == 'nFLNetworkQC') nFLNetworkQCID = row.id
+				/* not used anymore */
+				//if (row.name == 'audioConfiguration') audioConfigurationID = row.id
+			}
+			
+			/*
+				Process picklist data. For each value found in the XML that would be a picklist Label in Reach, check
+				the Reach picklist to determine if the XML value already exists as a Label. If not, add it.
+
+				Finish by adding the picklist value(s) to the json body (to be added as metadata later).
+			 */
+			
+			/* not used anymore */
+			//processPicklistItemToAddIfMissing(dCLAssetTypeID, metadata.getChildText('pcontdesc'), 'dCLAssetType')
+			finishedTalentName = ""
+			
+			if (metadata.getChildText('A020') && (metadata.getChildText('A020') != '')) {
+				splitTalentName = metadata.getChildText('A020').toLowerCase().split(" ")
+				finishedTalentName = splitTalentName[1].capitalize() + " " + splitTalentName[0].capitalize()
+			}
+			
+			processPicklistItemToAddIfMissing(dCLAssetTypeID, metadata.getChildText('A003'), 'dCLAssetType')
+			processPicklistItemToAddIfMissing(producerID, metadata.getChildText('A012'), 'producer')
+			processPicklistItemToAddIfMissing(contentDescriptionSecondaryID, cdsString.toUpperCase(), 'contentDescriptionSecondary')
+			processPicklistItemToAddIfMissing(showNameID, metadata.getChildText('A015'), 'showName')
+			processPicklistItemToAddIfMissing(studioShowElementID, metadata.getChildText('A016'), 'studioShowElement')
+			processPicklistItemToAddIfMissing(feedTypeID, metadata.getChildText('A008'), 'feedType')
+			processPicklistItemToAddIfMissing(talentNameID, finishedTalentName, 'talentName')
+			processPicklistItemToAddIfMissing(sportID, metadata.getChildText('A018'), 'sport')
+			processPicklistItemToAddIfMissing(eventTypeID, metadata.getChildText('A005'), 'eventType')
+			processPicklistItemToAddIfMissing(nFLNetworkQCID, metadata.getChildText('A035'), 'nFLNetworkQC')
+			
+			/* not used anymore */
+			//processPicklistItemToAddIfMissing(eventNameSecondaryID, metadata.getChildText('seventname'), 'eventNameSecondary')
+			
+			processPicklistItemToAddIfMissing(originalBroadcasterID, metadata.getChildText('A011'), 'originalBroadcaster')
+			processPicklistItemToAddIfMissing(venueListID, metadata.getChildText('A030'), 'venueList')
+			
+			if (metadata.getChildText('A022') && metadata.getChildText('A022') != '') {
+				processPicklistItemToAddIfMissing(weekID, metadata.getChildText('A022').split(' ')[1], 'week')
+			}
+			/* not used anymore */
+			//processPicklistItemToAddIfMissing(audioConfigurationID, metadata.getChildText('audconfig'), 'audioConfiguration')
+			
+			// Teams are special- need to get the team name from the teams abbreviation 'join picklist' then apply each team. Do *not* auto-add picklist values.
+			if (metadata.getChildText('A021') && metadata.getChildText('A021') != '') {
+				teamAbbreviations = []
+				parts = metadata.getChildText('A021').split(' - ')
+				parts.each { teamAbbreviations.add(it.trim().toUpperCase()) }
+				
+				jsonMetadata.putArray('teams')
+				jsonMetadata.putArray('availableTo')
+				
+				teamAbbreviations.each { teamAbbreviation ->
+					// If the abbreviation is a good one, meaning there's a value in the teamAbbreviations picklist that matches to a label that is a team name,
+					// then this will return the team name. If not, it'll return the abbreviation back. Then use PicklistItemExists to determine if the result is
+					// in the teams picklist and add the value to the json body if so.
+					
+					teamName = GetPicklistLabelFunction.evaluate('teamAbbreviations', teamAbbreviation)
+					
+					// Add to teams picklist
+					if (PicklistItemExistsFunction.picklistItemExists('teams', teamName))
+						jsonMetadata.teams.add(GetPicklistValueFunction.evaluate('teams', teamName))
+					
+					// Add to availableTo picklist
+					if (PicklistItemExistsFunction.picklistItemExists('availableTo', teamName))
+						jsonMetadata.availableTo.add(GetPicklistValueFunction.evaluate('availableTo', teamName))
+				}
+			}
+			
+			
+			return jsonMetadata
+			
+			// Helper Methods
+			void processPicklistItemAddOnlyIfExists(String elementText, String metaProperty) {
+				if (elementText) {
+					if (metaProperty == 'nCAABowlName' || metaProperty == 'nCAAConference' || metaProperty == 'publishedTo' || metaProperty == 'conference') {
+						elementText = WordUtils.capitalizeFully(elementText)
+					}
+					
+					elementValues = []
+					picklistValues = []
+					
+					parts = elementText.split(' - ')
+					parts.each { elementValues.add(it.trim()) }
+					
+					elementValues.each { elementValue ->
+						if (PicklistItemExistsFunction.picklistItemExists(metaProperty, elementValue)) {
+							picklistValues.add(GetPicklistValueFunction.evaluate(metaProperty, elementValue))
+						}
+					}
+					
+					if (picklistValues) jsonMetadata.put(metaProperty, picklistValues.join('|'))
+				}
+			}
+			
+			void processPicklistItemToAddIfMissing(String id, String elementText, String metaProperty) {
+				if (elementText) {
+					// Bail if the Asset Type (pcontdesc / dCLAssetType) contains a hyphen
+					if (metaProperty == 'dCLAssetType' && elementText.contains('-')) return
+					
+					// Text from NFL Networks is coming in as all caps, which screws up picklist items for some fields.
+					// Normalize Asset Type, Feed Type, Show Name, and Event Type to first letter capitalized in each word
+					
+					if (metaProperty == 'dCLAssetType' || metaProperty == 'feedType' || metaProperty == 'showName' || metaProperty == 'eventType') {
+						elementText = WordUtils.capitalizeFully(elementText)
+					}
+					
+					elementValues = []
+					picklistValues = []
+					
+					if (metaProperty == 'tags') {
+						parts = elementText.split(',')
+						parts.each { elementValues.add(it.trim()) }
+					} else {
+						parts = elementText.split(' - ')
+						parts.each { elementValues.add(it.trim()) }
+					}
+					
+					elementValues.each { elementValue ->
+						picklistItems = new JsonSlurper().parseText(queryReach('GET', '/reachengine/api/metadata-properties/' + id + '/picklist-items?limit=500', null))
+						exists = false
+						picklistItems.each { item ->
+							if (item.displayName == elementValue) {
+								picklistValues.add(item.id)
+								exists = true
+							}
+						}
+						if (!exists) {
+							newPicklistItem = new JsonSlurper().parseText(queryReach('PUT', '/reachengine/api/metadata-properties/' + id + '/add-picklist-items', '[{"displayName":"' + elementValue + '"}]'))
+							picklistValues.add(newPicklistItem[0].id)
+						}
+					}
+					
+					jsonMetadata.put(metaProperty, picklistValues.join('|'))
+				}
+			}
+			
+			String queryReach(String method, String uri, String body) {
+				connection = new URL(reachUrl + uri).openConnection()
+				connection.setRequestProperty("Content-Type", "application/json")
+				connection.setRequestProperty("apiKey", workflowApiKey)
+				connection.setRequestProperty("api-version", "2.0")
+				
+				if ((method == 'POST' || method == 'PUT') && body != null) {
+					connection.setRequestMethod(method)
+					connection.setDoOutput(true)
+					connection.getOutputStream().write(body.getBytes("UTF-8"))
+				}
+				
+				responseCode = connection.responseCode
+				if (responseCode.equals(200)) {
+					return connection.inputStream.text
+				} else {
+					println 'Query Reach Response Code = ' + responseCode
+					return null
+				}
+			}
+			]]>
+        </script>
+	</groovyStep>
+	<!-- Use GSIS ID from XML to find the existing Collection/Timeline with gsisId metadata property that was set from Shield -->
+	<queryStep
+		name="find game collection"
+		executionLabelExpression="Find game Collection with gsis id '${#xpath(fileXML, '//gsisid', false)?.value}'.. Found ${collection != null ? collection.name : 'null'}"
+		targetDataObjectClass="AssetCollection"
+		resultDataDef="collection">
+		<transition condition="${collection != null}">
+			<targetStepName>add asset to collection</targetStepName>
+		</transition>
+		<transition condition="${assetMaster.assetType == 'Video'}">
+			<targetStepName>find game timeline</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<criteria>
+			<![CDATA[
+            <criteria>
+                    <and>
+                        <condition property="metadata.gsisId" op="eq">
+                            <test value="${#xpath(fileXML, '//gsisid', false)?.value}"/>
+                        </condition>
+                    </and>
+            </criteria>
+         ]]>
+		</criteria>
+	</queryStep>
+	
+	<executeSubflowStep
+		name="add asset to collection"
+		targetWorkflowId="_addAssetToCollection"
+		subjectChangePath="${assetMaster}">
+		<transition condition="${assetMaster.assetType == 'Video'}">
+			<targetStepName>find game timeline</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<subflowContextDataMapping parentDataDef="collection" subflowDataDef="collection"/>
+	</executeSubflowStep>
+	
+	<queryStep
+		name="find game timeline"
+		executionLabelExpression="Find game Timeline with gsis id '${#xpath(fileXML, '//gsisid', false)?.value}'.. Found ${timeline != null ? timeline.name : 'null'}"
+		targetDataObjectClass="Timeline"
+		resultDataDef="timeline">
+		<transition condition="${timeline != null}">
+			<targetStepName>set xml markers</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>notify timeline not found</targetStepName>
+		</transition>
+		<criteria>
+			<![CDATA[
+            <criteria>
+                    <and>
+                        <condition property="metadata.gsisId" op="eq">
+                            <test value="${#xpath(fileXML, '//gsisid', false)?.value}"/>
+                        </condition>
+                    </and>
+            </criteria>
+         ]]>
+		</criteria>
+	</queryStep>
+	
+	<setContextData
+		name="set xml markers"
+		executionLabelExpression="Found ${xmlMarkers != null ? xmlMarkers.size() : 'null'} marker(s)."
+		targetDataDef="xmlMarkers"
+		valueExpression="${#xpath(fileXML, '//marker', true)}">
+		<transition condition="${xmlMarkers != null and xmlMarkers.size() > 0}">
+			<targetStepName>set comment and in point of first marker</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</setContextData>
+	
+	<setContextData
+		name="set comment and in point of first marker"
+		executionLabelExpression="First Comment = ${firstComment}.. In point = ${inPointFirstMarker}"
+		nextStep="get timeline plays for first comment">
+		<set targetDataDef="firstComment" valueExpression="${#xpath(xmlMarkers[0], '//comment', false)?.value}"/>
+		<set targetDataDef="inPointFirstMarker" valueExpression="${#xpath(xmlMarkers[0], '//in', false)?.value}"/>
+	</setContextData>
+	
+	<queryStep
+		name="get timeline plays for first comment"
+		executionLabelExpression="Found ${plays != null ? plays.size() : 'null'} play(s).."
+		targetDataObjectClass="Marker"
+		resultDataDef="plays">
+		<transition condition="${plays != null and plays.size() > 1}">
+			<targetStepName>get first play</targetStepName>
+		</transition>
+		<transition condition="${plays != null and plays.size() > 1}">
+			<targetStepName>set first play</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>notify no plays found</targetStepName>
+		</transition>
+		<criteria>
+			<![CDATA[
+            <criteria>
+                    <and>
+                        <condition property="timeline.id" op="eq">
+                            <test value="${timeline.id}"/>
+                        </condition>
+                        <condition property="name" op="eq">
+                            <test value="${firstComment}"/>
+                        </condition>
+                    </and>
+            </criteria>
+         ]]>
+		</criteria>
+	</queryStep>
+	
+	<groovyStep
+		name="get first play"
+		resultDataDef="firstPlay"
+		nextStep="calculate offset">
+		<script>
+            <![CDATA[
+			def firstPlay = plays[0]
+			plays.each() { play ->
+				if (play.timelineStartOffset < firstPlay.timelineStartOffset) firstPlay = play
+			}
+			return firstPlay
+			]]>
+        </script>
+	</groovyStep>
+	
+	<setContextData
+		name="set first play"
+		targetDataDef="firstPlay"
+		valueExpression="${plays[0]}"
+		nextStep="calculate offset"/>
+	
+	<groovyStep
+		name="calculate offset"
+		executionLabelExpression="Video offset = ${offset}"
+		resultDataDef="offset"
+		nextStep="check for new markers">
+		<script>
+            <![CDATA[
+			return (firstPlay.timelineStartOffset - (Integer.valueOf(inPointFirstMarker) / 30))
+			]]>
+        </script>
+	</groovyStep>
+	
+	<groovyStep
+		name="check for new markers"
+		executionLabelExpression="Checking for new markers.. found ${newMarkers.size()} new markers."
+		resultDataDef="newMarkers"
+		nextStep="end">
+		<script>
+            <![CDATA[
+			newMarkers = []
+			existingMarkerNames = timeline.markers.name
+			
+			xmlMarkers.each { xmlMarker ->
+				if (xmlMarker.getChild('comment') != null) {
+					if (!existingMarkerNames.contains(xmlMarker.getChild('comment').getText())) {
+						println 'New Marker: ' + xmlMarker.getChild('comment').getText()
+					}
+				} else {
+					println 'New Marker from <name>: ' + xmlMarker.getChild('name').getText()
+				}
+			}
+			
+			return newMarkers
+			]]>
+        </script>
+	</groovyStep>
+	
+	<createFailureNotificationStep
+		name="notify no plays found"
+		notificationTypeExpression="error"
+		notificationBodyExpression="Could not find a play from ${timeline.name} named ${#xpath(fileXML, '//comment', false)?.value}"
+		nextStep="end"/>
+	
+	<copyFileStep
+		name="copy xml file to processed location"
+		sourceFileExpression="${xmlFile}"
+		targetDirectoryExpression="${processedLocation}"
+		createTargetDirectoryFlag="true"
+		nextStep="delete original xml file"/>
+	
+	<deleteFileStep
+		name="delete original xml file"
+		sourceFilesExpression="${xmlFile}"
+		nextStep="end"/>
+	
+	<createFailureNotificationStep
+		name="notify timeline not found"
+		notificationTypeExpression="error"
+		notificationBodyExpression="Timeline with gsisId ${#xpath(fileXML, '//gsisid', false)?.value} not found."
+		nextStep="fail timeline not found"/>
+	
+	<submitHttpStep
+		name="send set xml failure slack notification"
+		executionLabelExpression="Text body = ${setXmlFailureSlackJsonBody.toString()}, Webhook = ${webhookURL}, Response Code = ${responseCode}"
+		urlExpression="${webhookURL}"
+		requestMethodExpression="POST"
+		responseCodeDataDef="responseCode"
+		nextStep="failed to ingest asset metadata">
+		<requestPayloadItem name="data">${setXmlFailureSlackJsonBody.toString().replace('\\','\')}</requestPayloadItem>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+	
+	<failWorkflowStep name="failed to ingest asset metadata" reasonExpression="Failed to ingest asset metadata." />
+	<failWorkflowStep name="xml file missing" reasonExpression="xml file missing"/>
+	<failWorkflowStep name="fail timeline not found" reasonExpression="Timeline with gsisId ${#xpath(fileXML, '//gsisid', false)?.value} not found."/>
+	<failWorkflowStep name="fail no plays found" reasonExpression="Could not find a play from ${timeline.name} named ${#xpath(fileXML, '//comment', false)?.value}"/>
+	
+	<noopStep name="end"/>
+	<noopStep name="update flag false"  executionLabelExpression="Update flag false in Element A000"/>
+	
+	<!-- Input -->
+	<contextDataDef name="xmlFile" dataType="File" label="XML File (Optional- if not supplied, workflow will look in the processedXmlSidecars directory)" userInput="true" defaultDataExpression="${processedLocation}${#baseFilename(subject.metadata.originalFilename)}.xml"/>
+	<contextDataDef name="assetMaster" dataType="Data Object" defaultDataExpression="${subject}"/>
+	
+	<contextDataDef name="checkForUpdate"       dataType="Boolean"  defaultDataExpression="false"/>
+	<contextDataDef name="updateXMLElementTrue" dataType="Boolean"  defaultDataExpression="false"/>
+	
+	
+	<!-- Internal -->
+	<contextDataDef name="jsonMetadata" dataType="JSON" defaultDataExpression="{}"   />
+	<contextDataDef name="fileXML" dataType="XML"/>
+	
+	<contextDataDef name="reachUrl" dataType="String" defaultDataExpression="${#sysconfig('reachengine.url')}"/>
+	<contextDataDef name="workflowApiKey" dataType="String" defaultDataExpression="${#sysconfig('workflow.api.key')}"/>
+	
+	<contextDataDef name="myabspathexample" dataType="String" defaultDataExpression="${xmlFile.absolutePath}"/>
+	
+	<contextDataDef name="timeline" dataType="Data Object"/>
+	<contextDataDef name="xmlMarkers" dataType="XML" multiple="true"/>
+	<contextDataDef name="newMarkers" dataType="XML" multiple="true"/>
+	<contextDataDef name="collection" dataType="Data Object"/>
+	<contextDataDef name="processedLocation" dataType="String" defaultDataExpression="${#sysconfig('filesystem.root.nflNetworksProcessedXmlSidecars')}/"/>
+	
+	<contextDataDef name="metaMap"      dataType="JSON" defaultDataExpression="{}"  />
+	<contextDataDef name="jsonMapping"  dataType="JSON" >
+	       <defaultDataExpression>
+	<![CDATA[
+	{
+	"NFL_REPLACEMENT XML": "",
+	"NFL_AUDIO": "contentDescriptionSecondary",
+	"NFL_BROLL": "contentDescriptionSecondary",
+	"NFL_CONTENT TYPE": "dCLAssetType",
+	"NFL_COURTESY": "courtesy",
+	"NFL_EVENT": "eventType",
+	"NFL_FEATURE": "contentDescriptionSecondary",
+	"NFL_GAME": "contentDescriptionSecondary",
+	"NFL_GAME FEED TYPE": "feedType",
+	"NFL_GSIS GAME ID": "gsisId",
+	"NFL_LTO TAPE": "ltoTape",
+	"NFL_BROADCAST NETWORK": "originalBroadcaster",
+	"NFL_PRODUCER": "producer",
+	"NFL_PROJECT NAME": "networkProjectId",
+	"NFL_SEASON": "season",
+	"NFL_SHOW": "showName",
+	"NFL_SHOW ELEMENT": "studioShowElement",
+	"NFL_SOUND": "contentDescriptionSecondary",
+	"NFL_SPORT": "sport",
+	"NFL_TALENT NAME": "talentName",
+	"NFL_TEAM NFL": "teams",
+	"NFL_WEEK": "week",
+	"NFL_AIRDATE": "dateTimeString",
+	"NFL_TAG": "keywords",
+	"NFL_BOWL NAME": "nCAABowlName",
+	"NFL_BOWL GAME": "nCAABowlGame",
+	"NFL_NCAA CONFERENCE": "conference",
+	"NFL_VENUE": "venueList",
+	"NFL_SOCIAL_PLATFORM": "publishedTo",
+	"NFL_TEAM NON-NFL": "otherTeams",
+	"Description": "programDescription",
+	"NFL_QC": "nFLNetworkQC",
+	"COMBINE_40_YD_DASH_1": "combine40YardDash1",
+	"COMBINE_40_YD_DASH_2": "combine40YardDash2",
+	"COMBINE_40_YD_DASH_OVERALL": "combine40YardDashOverall",
+	"COMBINE_ARM_LENGTH": "combineArmLength",
+	"COMBINE_BENCH_PRESS": "combineBenchPress",
+	"COMBINE_BROAD_JUMP": "combineBroadJump",
+	"COMBINE_EVENT": "combineEvent",
+	"COMBINE_GROUP": "combineGroup",
+	"COMBINE_HAND_SIZE": "combineHandSize",
+	"COMBINE_HEIGHT": "combineHeight",
+	"COMBINE_POSITION": "combinePosition",
+	"COMBINE_POSITION": "combineShuttle20Yard",
+	"COMBINE_SHUTTLE_3_CONE": "combineShuttle3Cone",
+	"COMBINE_SHUTTLE_60_YD": "combineShuttle60Yard",
+	"COMBINE_VERTICAL_JUMP": "combineVerticalJump",
+	"COMBINE_WEIGHT": "combineWeight",
+	"NFL_AUDIO MAPPING CH-1": "audioMappingChannel1",
+	"NFL_AUDIO MAPPING CH-2": "audioMappingChannel2",
+	"NFL_AUDIO MAPPING CH-3": "audioMappingChannel3",
+	"NFL_AUDIO MAPPING CH-4": "audioMappingChannel4",
+	"NFL_AUDIO MAPPING CH-5": "audioMappingChannel5",
+	"NFL_AUDIO MAPPING CH-6": "audioMappingChannel6",
+	"NFL_AUDIO MAPPING CH-7": "audioMappingChannel7",
+	"NFL_AUDIO MAPPING CH-8": "audioMappingChannel8",
+	"NFL_CLEARANCE": "clearance",
+	"NFL_COMP REEL #": "compReelNumber",
+	"NFL_DRAFT PICK NUMBER": "draftPickNumber",
+	"NFL_DRAFT ROUND": "draftRound",
+	"NFL_HEADLINE": "headline",
+	"NFL_MUSIC GENRE": "musicGenre",
+	"NFL_MUSIC LIBRARY": "musicLibrary",
+	"NFL_MUSIC PROJECT ID": "musicProjectID",
+	"NFL_NCAA COURTESY": "nCAACourtesy",
+	"NFL_PUBLICATION": "publication",
+	"NFL_SOCIAL_BODY": "socialBody",
+	"NFL_SOCIAL_DATE": "socialDate",
+	"NFL_SOCIAL_HANDLE": "socialHandle",
+	"NFL_SOCIAL_NAME": "socialName",
+	"NFL_STILLS": "contentDescriptionSecondary",
+	"NGS_AIR YARDS": "airYards",
+	"NGS_AWAY PLAYERS": "",
+	"NGS_BALL CARRIER": "",
+	"NGS_COMPARATIVE STATS": "",
+	"NGS_DISTANCE": "",
+	"NGS_DOWN": "down",
+	"NGS_FIRST DOWN": "",
+	"NGS_FORMATION": "formation",
+	"NGS_FUMBLE FORCED BY": "",
+	"NGS_FUMBLE RECOVERED BY": "",
+	"NGS_GAME CLOCK": "gameClock",
+	"NGS_GOAL TO GO": "",
+	"NGS_HANG TIME": "handTime",
+	"NGS_HOME PLAYERS": "",
+	"NGS_INTERCEPTED BY": "",
+	"NGS_KICK DISTANCE": "",
+	"NGS_KICKER": "",
+	"NGS_PLAY ID": "playNumber",
+	"NGS_PLAY TYPE": "playType",
+	"NGS_POSSESSION TEAM": "possessionTeam",
+	"NGS_QUARTER": "quarter",
+	"NGS_QUARTERBACK": "",
+	"NGS_REDZONE": "",
+	"NGS_SACK YARDS": "",
+	"NGS_SCORING PLAY": "scoringPlayType",
+	"NGS_TACKLED BY": "",
+	"NGS_YAC": "yardsGainedAfterCatch",
+	"NGS_YARDS": ""
+		}
+            ]]>
+</defaultDataExpression>
+	</contextDataDef>
+	<!-- From XML -->
+	<contextDataDef name="firstComment" dataType="String"/>
+	<contextDataDef name="inPointFirstMarker" dataType="String"/>
+	<contextDataDef name="firstPlay" dataType="Data Object"/>
+	<contextDataDef name="plays" dataType="Data Object" multiple="true"/>
+	<contextDataDef name="offset" dataType="Double"/>
+	
+	<contextDataDef name="webhookURL" dataType="String" defaultDataExpression="${#sysconfig('slack.webhook.channel.networkIngest')}"/>
+	
+	<contextDataDef name="setXmlFailureSlackJsonBody" dataType="JSON">
+		<defaultDataExpression>
+			<![CDATA[
+            {
+                "text": "The NFL Network file ${xmlFile.absolutePath} failed on the 'set xml data def' step of the 'Parse Network XML Sidecar' workflow."
+            }
+            ]]>
+		</defaultDataExpression>
+	</contextDataDef>
+	<contextDataDef name="xmlFilePath" dataType="String" />
+</workflow>
+

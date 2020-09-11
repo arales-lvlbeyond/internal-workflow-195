@@ -1,0 +1,63 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="mediaConvertTestAsync"
+	name="Media Convert Test Async"
+	executionLabelExpression="Media Convert Test Async | Asset: ${subject.name}"
+	subjectDOClassName="VideoAssetMaster"
+	showInUserInterface="true"
+	sdkVersion=""
+	>
+	
+	<initialStepName>start proxy transcode</initialStepName>
+	
+	
+	<startVideoConversion name="start proxy transcode"
+		sourceFileExpression="${subject.originalContent.file}"
+		mediaConversionTemplateExpression="${templateName}"
+		resultDataDef="conversionId"
+		nextStep="get transcode result"
+		/>
+	
+	
+	<getVideoConversionResult name="get transcode result"
+		conversionId="${conversionId}"
+		resultKey="Output1"
+		resultDataDef="resultProxyFile"
+		nextStep="save proxy"
+		/>
+	
+	
+	<saveAssetStep name="save proxy"
+		assetExpression="${subject.currentVersion}"
+		versionAssetExpression="false"
+		contentUseExpression="Proxy"
+		contentExpression="${resultProxyFile}"
+		nextStep="end"
+		/>
+	
+	
+	<noopStep name="end"/>
+	
+
+	<contextDataDef name="templateName"     dataType="String"   userInput="true"/>
+	<contextDataDef name="resultProxyFile"  dataType="File"/>
+	<contextDataDef name="conversionId"     dataType="String"/>
+</workflow>

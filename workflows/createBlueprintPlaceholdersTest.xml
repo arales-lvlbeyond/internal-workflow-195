@@ -1,0 +1,185 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="createBlueprintPlaceholdersTest"
+	name="Create Blueprint Placeholders"
+	executionLabelExpression="Create Blueprint Placeholderss "
+	subjectDOClassName=""
+	showInUserInterface="true"
+	resultDataDef=""
+	sdkVersion="">
+	
+	<initialStepName>get placeholder mappings json</initialStepName>
+	
+	//should this step be moved to parent workflow to avoid being called over and over?
+	<groovyStep name="get placeholder mappings json"
+				resultDataDef="placeholderMappingsJson"
+				executionLabelExpression="retrieving placeholder mappings from file system...${placeholderMappingsJson}">
+		<transition condition="${placeholderMappingsJson !=null}">
+			<targetStepName>get next placeholder name</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+			import org.apache.commons.io.IOUtils
+			import com.routeto1.filesystem.IFileWrapper
+			import java.nio.charset.StandardCharsets
+			
+			return IOUtils.toString(placeholderMappings.createInputStream(), StandardCharsets.UTF_8.name())
+				.replaceAll("\u0000", "")
+				.replaceAll("\u0040", "")
+				.replaceAll("\u140000", "")
+				.replaceAll("\u180000", "")
+				.replaceAll("\u1C0000", "")
+				.replaceAll("\u200000", "")
+				.replaceAll("\u1000000", "")
+				.replaceAll("\u2000000", "")
+				.replaceAll("\u3000000", "")
+				.replaceAll("\u4000000", "")
+				.replaceAll("\u40000000", "")
+			]]>
+		</script>
+	</groovyStep>
+	
+	<groovyStep name="get next placeholder name"
+				resultDataDef="placeholderName"
+				nextStep="set placeholder metadata"
+				>
+		<script>
+			<![CDATA[
+				import groovy.json.JsonSlurper
+				
+				def placeholderJson = new JsonSlurper().parseText(placeholderMappingsJson.toString())
+				
+				def keys = placeholderJson.keySet()
+				
+				for (key in keys) {
+					def mappings = placeholderMappingsJson.get(key).get("Mappings")
+					
+					for (mapping in mappings) {
+						
+						if (mapping.get("Region").asText() == region && mapping.get("Series").asText() == series) {
+							def placeholderName = key
+							
+							return placeholderName
+						}
+					}
+				}
+				
+				return null
+			]]>
+		</script>
+	</groovyStep>
+	
+	<groovyStep
+		name="set placeholder metadata"
+		executionLabelExpression="Setting placeholder metadata..."
+		resultDataDef="metadataJson"
+		nextStep="create placeholder asset">
+		<script>
+			<![CDATA[
+				def metadataJson
+				
+				metadataJson = placeholderMappingsJson.get(placeholderName)
+				
+				return metadataJson
+			]]>
+		</script>
+	</groovyStep>
+	
+	<groovyStep
+		name="create placeholder asset"
+		executionLabelExpression="Creating placeholder asset..."
+		resultDataDef="placeholderAsset"
+		nextStep="save metadata"
+		>
+		<script>
+			<![CDATA[
+				import com.levelsbeyond.studio.api.blueprint.BlueprintPlaceholderAssetDTO
+				import com.levelsbeyond.studio.api.blueprint.RenditionDTO
+				import com.levelsbeyond.resource.asset.placeholder.PlaceholderAssetDTO
+				import javax.ws.rs.core.Response
+				import com.levelsbeyond.studio.service.blueprint.RenditionService
+				import com.levelsbeyond.studio.service.blueprint.RenditionServiceImpl
+				import com.routeto1.spring.ApplicationContextHolder
+
+
+				RenditionService renditionService = ApplicationContextHolder.getApplicationContext().getBean(RenditionServiceImpl.class)
+				
+				//need to initialize renditionService here
+				
+				BlueprintPlaceholderAssetDTO placeholderAssetDTO = BlueprintPlaceholderAssetDTO.builder().setInventoryAssetType("video").setName(placeholderName).build()
+        
+				PlaceholderAssetDTO placeholder = renditionService.createPlaceholder(1000450400, 1000302562, placeholderAssetDTO)
+
+        		return placeholder
+			]]>
+		</script>
+	</groovyStep>
+	
+	<saveDataObjectStep name="save metadata"
+						dataObjectExpression="${placeholderAsset}"
+						jsonValuesDataDef="metadataJson"
+						nextStep="remove placeholder json" />
+	
+	<groovyStep name="remove placeholder json"
+				executionLabelExpression="Remove created placeholder"
+				resultDataDef="placeholderMappingsJson"
+				>
+		<transition condition="${placeholderMappingsJson.size() > 0}">
+			<targetStepName>get next placeholder name</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+				def placeholders = placeholderMappingsJson
+			
+				placeholders.remove(placeholderName)
+			
+				return placeholders
+			]]>
+		</script>
+	</groovyStep>
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end" />
+	
+	<!-- fail steps -->
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<contextDataDef name="region"					dataType="String"						  defaultDataExpression="AMERICAS" />
+	<contextDataDef name="series" 					dataType="String"						  defaultDataExpression="PILOT AIRABLE" />
+	<contextDataDef name="assetType" 				dataType="String"		  				  defaultDataExpression="video" />
+	
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="placeholderMappings"      dataType="File"           			  	  defaultDataExpression="s3:gyto-media:temp/placeholders.json" />
+	<contextDataDef name="placeholderMappingsJson"  dataType="JSON" />
+	
+	<contextDataDef name="placeholderName" 			dataType="String" />
+	<contextDataDef name="metadataJson" 			dataType="JSON"			  				  defaultDataExpression="{}" />
+	
+	<!-- ......... OUTPUT ........... -->
+	<contextDataDef name="placeholderAsset" 		dataType="Data Object" />
+</workflow>

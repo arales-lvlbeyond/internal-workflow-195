@@ -1,0 +1,83 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-1.2.xsd"
+          id="createMetadataFieldIfMissing"
+          name="Create Metadata Field If Missing"
+          description=""
+          executionLabelExpression="Create Metadata Field If Missing"
+          deadlineExpression=""
+          subjectDOClassName=""
+          showInUserInterface="false"
+          resultDataDef=""
+
+>
+
+	<initialStepName>check if field exists</initialStepName>
+
+    <submitHttpStep name="check if field exists"
+                    urlExpression="${reachUrl}/reachengine/api/metadata-properties?includeArchived=false&amp;editOnly=false&amp;viewOnly=false&amp;inspectorOnly=false&amp;filter=${metadataName}"
+                    requestMethodExpression="GET"
+                    responseCodeDataDef="responseCode"
+                    responsePayloadDataDef="responsePayload">
+        <requestHeader name="auth_user">${user}</requestHeader>
+        <requestHeader name="auth_password">${password}</requestHeader>
+
+        <transition condition="${responsePayload.rows.size() &gt; 0}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>create field</targetStepName>
+        </transition>
+    </submitHttpStep>
+
+    <submitHttpStep name="create field"
+                    urlExpression="${reachUrl}/reachengine/api/metadata-properties"
+                    requestMethodExpression="POST"
+                    responseCodeDataDef="responseCode"
+                    nextStep="end">
+        <requestPayloadItem name="body">${payload}</requestPayloadItem>
+        <requestHeader name="Content-Type">application/json</requestHeader>
+        <requestHeader name="auth_user">${user}</requestHeader>
+        <requestHeader name="auth_password">${password}</requestHeader>
+    </submitHttpStep>
+
+    <noopStep name="end"/>
+
+    <contextDataDef name="metadataName" dataType="String"/>
+    <contextDataDef name="metadataType" dataType="String"/>
+    <contextDataDef name="reachUrl" dataType="String" defaultDataExpression="${#sysconfig('reachengine.url')}"/>
+    <contextDataDef name="responseCode" dataType="Integer"/>
+    <contextDataDef name="responsePayload" dataType="JSON"/>
+    <contextDataDef name="payload" dataType="JSON">
+        <defaultDataExpression>
+            <![CDATA[
+				{
+				"displayName":"${metadataName}",
+				"type":"${metadataType}",
+				"name":"${metadataName}"
+				}
+			]]>
+        </defaultDataExpression>
+    </contextDataDef>
+    <contextDataDef name="user" dataType="String" defaultDataExpression="system"/>
+    <contextDataDef name="password" dataType="String" defaultDataExpression="password"/>
+
+</workflow>

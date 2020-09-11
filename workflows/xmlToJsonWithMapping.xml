@@ -1,0 +1,492 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2017 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-5.5.xsd"
+    id="xmlToJsonWithMapping"
+    name="XML to JSON With Mapping"
+    executionLabelExpression="XML to JSON With Mapping | xml to parse = ${xmlFile.name}"
+    description="
+    	This workflow will take a given xml file and translate it into a json.
+    	key names can be changed using a given keyMappingJsonFile (optional)
+    	values of the given keys can be validated (picklist) or formatted (date) using the given keyMappingJsonFile (optional)
+    	values can be changed using a given valueMappingJsonFile (optional)
+    	
+    	the workflow returns a json.
+    "
+    subjectDOClassName=""
+    showInUserInterface="true"
+    deadlineExpression=""
+    sdkVersion=""
+    resultDataDef="xmlJson"
+    >
+    
+	<initialStepName>get key mapping</initialStepName>
+	
+	
+	<!-- ..................................................... Setup Steps ..................................................... -->
+	<groovyStep name="get key mapping"
+		resultDataDef="keyMappingJson"
+		executionLabelExpression="${keyMappingJsonFile != null? 'extracting key mapping from ' + keyMappingJsonFile.absolutePath : 'no mapping file given'}"
+		pctComplete="5"
+		nextStep="get value mapping"
+		>
+		<script>
+			<![CDATA[
+				import groovy.json.*;
+				
+				if(keyMappingJsonFile != null)
+					return new JsonSlurper().parseText(new File(keyMappingFilePath).text)
+				else
+					return null
+			]]>
+		</script>
+	</groovyStep>
+	
+	
+	
+	<groovyStep name="get value mapping"
+		resultDataDef="valueMappingJson"
+		executionLabelExpression="${valueMappingJsonFile != null? 'extracting key mapping from ' + valueMappingJsonFile.absolutePath : 'no mapping file given'}"
+		pctComplete="10"
+		nextStep="parse and map xml"
+		>
+		<script>
+			<![CDATA[
+				import groovy.json.*;
+				
+				if(valueMappingJsonFile != null)
+					return new JsonSlurper().parseText(new File(valueMappingFilePath).text)
+				else
+					return null
+			]]>
+		</script>
+	</groovyStep>
+
+
+
+
+
+
+	<!-- .................................................... Parse and Map .................................................... -->
+    <groovyStep name="parse and map xml" 
+        resultDataDef="xmlJson"
+        executionLabelExpression="parse and map ${xmlFilePath}"
+        pctComplete="98"
+        nextStep="display json"
+        >
+        <script>
+            <![CDATA[
+        		import groovy.json.*
+        		import groovy.xml.*
+        		import javax.xml.xpath.*
+        		import javax.xml.parsers.DocumentBuilderFactory
+        		import java.text.SimpleDateFormat
+//				import org.codehaus.jackson.map.ObjectMapper
+        		import org.slf4j.Logger
+                import org.slf4j.LoggerFactory
+        		import com.routeto1.data.validation.IValidator
+        		import com.routeto1.data.validation.PicklistValidator
+        		import com.routeto1.spring.ApplicationContextHolder
+        		import com.routeto1.data.meta.DataObjectProperty
+        		import com.routeto1.metadata.Metadata
+				import com.routeto1.metadata.MetadataPicklist
+				import com.routeto1.metadata.MetadataPicklistDAO
+				import com.routeto1.services.data.DataObjectMetaService
+				import com.levelsbeyond.service.inventory.MetadataService
+				import com.levelsbeyond.workflow.sdk.function.PicklistItemExistsFunction
+        		import com.levelsbeyond.workflow.sdk.function.GetPicklistLabelFunction
+        		import com.levelsbeyond.workflow.sdk.function.GetPicklistValueFunction
+				
+        		
+        		
+        		// ----------------------------- Functions -----------------------------
+        		/* 	
+        			Pre Conditions:
+						xml in string format is supplied. (required)
+					Post Conditions:
+						no mappings are done here, the xml is translated straight into a JSON. 
+						Each sub element is a nested JSON.
+						attributes is a key in the element JSON
+						value is a key in the element JSON
+        		*/
+				Map parseXmlNoMap(xmlText){
+					Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+				
+					try{
+						def xmlElement = new XmlSlurper().parseText(xmlText)
+				
+//					    if (xmlElement instanceof String){
+//					    	log.warn("There was a problem parsing the xml text. Cannot convert to a json.")
+//					    	return null
+//					    }
+	
+					    def xmlJson = new JsonSlurper().parseText("{}")
+					    
+						xmlJson.put('what' : 'frickenWhy')
+//					    if (!xmlElement.attributes().isEmpty())
+//					    	xmlJson.put('attributes', xmlElement.attributes().collectEntries{it})
+//					    if (xmlElement.text() != '')
+//					    	xmlJson.put('value', xmlElement.text())
+//					    if (!xmlElement.children().isEmpty())
+//					    	xmlElement.children().collect{xmlJson.put(it.name(), buildMapFromElement(it))}.findAll{it != null}
+				    	
+				    	return xmlJson
+				    }
+				    catch(Exception e){
+				    	log.warn("There was an exception thrown parsing the xml text with no mapping. Cannot convert to a json. Exception: ${e}.")
+				    	return null
+				    }
+				}
+        		
+        		
+        		/* 	
+        			Pre Conditions:
+						xml in string format is supplied. (required)
+						supplied a JSON for key mapping from the workflow execution (required)
+					Post Conditions:
+						The xml is translated into a simple key:value json using the keyMapping file to determine the keys and what value to set for them.
+						null may be returned if there is a major problem
+						some keys may have a blank string as a value if there was an issue extracting the matching value
+						only keys listed in the keyMappingFile will be keys in the resulting JSON
+						value is translated based on a match found in the valueMappingFile.
+						value is translated based on the listed options in the keyMappingFile 
+        		*/
+        		Map parseXmlMap(xmlText){
+        			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+        			
+        			try{
+        				if(xmlText == null || xmlText == ""){
+        					log.warn("xml has no contents. returning null. File Path: ${xmlFilePath}")
+        					return null
+        				}
+        			
+        				def keyMapping = new JsonSlurper().parseText(keyMappingJson.toString())
+	        			def mappedJson = new JsonSlurper().parseText("{}")
+	        			
+	        			keyMapping.each{ propertyName, propertyJson ->
+
+	        				def value
+	        				if(propertyJson.get("xpath") == null){
+	        					log.warn("${propertyName} found in the key mapping JSON, but no xpath found. Cannot extract value.")
+	        					value = ""
+	        				}
+	        				else{
+	        					value = mapValue(propertyName, findByXpath(xmlText, propertyJson.get("xpath")))
+	        				}
+
+	        				mappedJson.put(propertyName, value)
+	        			}
+				        
+	        			return mappedJson
+        			}
+        			catch(Exception e){
+        				log.warn("There was an exception thrown parsing the xml text with mapping. Cannot convert to a json. Exception: ${e}.")
+				    	return null
+        			}
+        		}
+        		
+        		
+        		/* 	
+        			Pre Conditions:
+						xml in string format is supplied (required)
+						a string that matches a valid xpath query is supplied (required)
+					Post Conditions:
+						the xml will be parsed using the xpath query given.
+						the result of that xpath query will be returned as a string.
+        		*/
+				String findByXpath(xmlText, xpathQuery) {
+					Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+					
+					try{
+						def xpath = XPathFactory.newInstance().newXPath()
+						def builder = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+						def inputStream = new ByteArrayInputStream( xmlText.bytes )
+						def elements = builder.parse(inputStream).documentElement
+						return xpath.evaluate(xpathQuery, elements)
+					}
+					catch(Exception e){
+						log.warn("There was an exception thrown using xpath (${xpathQuery}). Exception: ${e}.")
+						return null
+					}
+				}
+
+        		
+        		/* 	
+        			Pre Conditions:
+						supplied a xml row/column value
+						supplied the matching xml column header
+						supplied the matching RE property for the header
+						supplied a JSON for key mapping from the workflow execution
+							key mapping JSON may have the xml header as a key
+							if a match is found, a new value to use as the "key" may be provided
+							if a match is found, the RE property's type may be provided
+							if a match is found, and the property type is a calendar, a dateFormat should be provided
+							if a match is found, and the property type is a picklist, the option to create missing items can be provided
+						supplied a JSON for value mapping from the workflow execution
+							value mapping JSON may have the xml value as a key
+							if a match is found, a new value to use as the "value" may be provided
+					Post Conditions:
+						A new value is potentially returned based on if
+							there is a match in the value mapping JSON
+							the RE property is a calendar
+							the RE property is a picklist
+						The same value may be returned if
+							there is an exception thrown
+							the option to add missing picklist options is not given
+							there is no match in the value mapping JSON
+        		*/
+        		String mapValue(propertyName, xmlValue){
+        			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+        		
+        			try{
+        				if(xmlValue == null || xmlValue == ""){
+        					return ""
+        				}
+        			
+        				def newValue
+        				if(valueMappingJson != null){
+	        				def valueJson = valueMappingJson?.get(xmlValue)
+	        				
+	        				if(valueJson == null){
+	        					log.debug("${xmlValue} not found in the value mapping JSON.")
+	        					newValue = xmlValue
+	        				}
+	        				else{
+	        					if(valueJson.get("reValue") == null){
+	        						log.warn("${xmlValue} found in the value mapping JSON, but no reValue was found.")
+	        						newValue = xmlValue
+	        					}
+	        					else
+	        						newValue = valueJson.get("reValue").asText()
+	        				}
+	        				
+	        				if(newValue == null){
+	        					log.warn("extracted a null value from the value mapping file for ${xmlValue}")
+	        					return xmlValue
+        					}
+        				}
+        				else{
+        					newValue = xmlValue
+        				}
+        				
+        				if(keyMappingJson != null){
+	        				def keyJson = keyMappingJson?.get(propertyName)
+	        				if(keyJson != null){
+	        					if(keyJson.get("reFieldType") != null){
+		        					def fieldType = keyJson.get("reFieldType").asText()
+		        				
+		        					if(fieldType == "picklist"){
+				        				if(keyJson.get("picklistCreateIfMissing") != null){
+				        					if(keyJson.get("picklistCreateIfMissing").asBoolean())
+				        						return createPicklistItemIfMissing(propertyName, newValue)
+				        				}
+				        				else
+				        					return newValue
+				        			}
+				        			else if(fieldType == "calendar")
+				        				return convertDate(propertyName, newValue)
+				        			else if(fieldType == "checkbox")
+				        				return newValue
+				        			else if(fieldType == "text")
+				        				return newValue
+				        			else
+				        				log.warn("${propertyName} was not given a valid reFieldType in the mapping file. Cannot map value: ${newValue}.")
+				        		}
+				        		else
+				        			log.warn("${propertyName} found in the key mapping JSON, but no reFieldType found. Cannot map value: ${newValue}.")
+	        				}
+	        				else
+	        					log.debug("${propertyName} not found in the key mapping JSON. Cannot map value: ${newValue}.")
+        				}
+        				
+        				return newValue
+        			}
+        			catch(Exception e){
+        				log.warn("There was an exception thrown mapping ${xmlValue}... Exception: ${e}")
+        				return xmlValue
+        			}
+        		}
+        		
+        		/* 	
+        			Pre Conditions:
+						supplied a property name
+						supplied a picklist label
+						supplied a JSON for key mapping from the workflow execution
+							key mapping JSON may have the xml header as a key
+							if a match is found, and the property type is a picklist, the option to create missing items can be provided
+					Post Conditions:
+						An existing picklist value that matches the given label is returned
+						A new picklist value created for the given label is returned if the option to create missing items was set to true
+						The given label is returned if there was an exception thrown or if an existing item does not exist and the option to create missing items was not provided of false
+        		*/
+        		String createPicklistItemIfMissing(propertyName, value){
+        			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+        			
+        			try{
+	        			def metaProp = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class).getMetadataPropertyByName(propertyName).get()
+	        			
+	        			if (metaProp == null){
+	        				log.warn("property ${propertyName} listed in the mapping file as a picklist, but does not exist in reachengine.")
+	        				return value
+	        			}
+	        			
+	        			IValidator validator = metaProp.getPicklistValidator()
+	        			if (validator == null){
+	        				log.debug("property ${propertyName} is not a picklist.")
+	        				return value
+	        			}
+	        		
+	        			def picklistValue = GetPicklistValueFunction.evaluate(propertyName, value)
+	        			def picklistLabel = GetPicklistLabelFunction.evaluate(propertyName, value)
+	        		
+	        			if(PicklistItemExistsFunction.picklistItemExists(propertyName, picklistLabel)){
+	        				log.debug("${value} exists in the picklist (${propertyName})")
+	        				return picklistValue
+	        			}
+	        			else{
+	        				PicklistValidator picklist = (PicklistValidator) validator
+							DataObjectMetaService dms = ApplicationContextHolder.getApplicationContext().getBean(DataObjectMetaService.class)
+							String uuid = UUID.randomUUID().toString()
+					
+							if (picklist.isLookup()) {
+								dms.addOrUpdateLookupItem(picklist.getName(), uuid, value)
+							}
+							else {
+								MetadataPicklistDAO picklistDAO = ApplicationContextHolder.getApplicationContext().getBean(MetadataPicklistDAO.class)
+								MetadataPicklist metadataPicklist = picklistDAO.find().byId(picklist.getName())
+								dms.addOrUpdatePicklistItem(metadataPicklist, uuid, value)
+							}
+							
+							log.info("Added value (${uuid}) to the picklist (${propertyName})")
+							return uuid
+	        			}
+	        		}
+        			catch(Exception e){
+        				log.warn("could not evaluate if value (${value}) exists in the picklist (${propertyName}) and/or could not add the value into the picklist... Exception: ${e}")
+        				return value
+        			}
+        		}
+        		
+        		
+        		/* 	
+        			Pre Conditions:
+						supplied a reachengine property name
+						supplied a string in a valid simpleDateFormat
+						supplied a JSON for key mapping from the workflow execution
+							key mapping JSON may have the xml header as a key
+							if a match is found, and the property type is a calendar, a dateFormat should be provided
+					Post Conditions:
+						A new string is returned in the date format the RE natively uses
+						The same string is returned if there was no dateFormat provided or if an exception was thrown
+        		*/
+        		String convertDate(propertyName, value){
+        			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+        			
+        			try{
+        				if(keyMappingJson.get(propertyName).get("dateFormat") != null){
+	        				def format = keyMappingJson.get(propertyName).get("dateFormat").asText()
+	        				def inputFormat = new SimpleDateFormat(format)
+	        				def reFormat = new SimpleDateFormat("EEE MMM dd HH:mm:ss z yyyy")
+	        				
+	        				return reFormat.format(inputFormat.parse(value))
+        				}
+        				else{
+        					log.debug("no format given for the date to map from.")
+        					return value
+        				}
+        			}
+        			catch(Exception e){
+        				log.warn("There was an exception mapping the date ${value}. Double check the format given in the mapping file... Exception: ${e}")
+        				return value
+        			}
+        		}
+        		
+        		
+        		
+        		// ----------------------------- Execution -----------------------------
+				def xmlText = new File(xmlFilePath).text
+				
+				// mapping provided, return a nice json
+				// no mapping, return ugly json
+				if (keyMappingJson != null){
+					return parseXmlMap(xmlText)
+				}
+				else{
+					return parseXmlNoMap(xmlText)
+        		}
+        	]]>
+        </script>
+    </groovyStep>
+    
+    
+    
+    <testStep name="display json"
+        outputExpression="JSON converted from ${xmlFilePath} >>> ${xmlJson.toString()}"
+        executionLabelExpression="JSON in the RE log"
+        pctComplete="99"
+        nextStep="end"
+    	/>
+	
+    
+    
+    
+    
+
+	<!-- ................................................... Success Or Fail ................................................... -->
+	<!-- success -->
+    <noopStep name="end"/>
+
+
+
+
+
+
+	<!-- .................................................. Context Data Defs .................................................. -->
+	<!-- Inputs -->
+    <contextDataDef name="xmlFile"              dataType="File"         userInput="true"    required="true">
+    	<description>
+    		Required: the xml file to parse for metadata
+    	</description>
+    </contextDataDef>
+	<contextDataDef name="keyMappingJsonFile" 	dataType="File"			userInput="true">
+		<description>
+			Optional: file to map where to get values for matching metadata properties.
+		</description>
+	</contextDataDef>
+	<contextDataDef name="valueMappingJsonFile" dataType="File"			userInput="true">
+		<description>
+			Optional: file to map xml values to reachengine metadata values.
+		</description>
+	</contextDataDef>
+	
+	<!-- Result -->
+	<contextDataDef name="xmlJson"  		dataType="JSON">
+		<description></description>
+	</contextDataDef>
+    
+    <!-- Processing -->
+    <contextDataDef name="xmlFilePath" 			dataType="String" 							defaultDataExpression="${xmlFile.absolutePath}"/>
+	<contextDataDef name="keyMappingFilePath" 	dataType="String"							defaultDataExpression="${keyMappingJsonFile?.absolutePath}"/>
+	<contextDataDef name="valueMappingFilePath" dataType="String"							defaultDataExpression="${valueMappingJsonFile != null? valueMappingJsonFile.absolutePath : null}"/>
+	<contextDataDef name="keyMappingJson" 		dataType="JSON"/>
+	<contextDataDef name="valueMappingJson" 	dataType="JSON"/>
+	
+	<contextDataDef name="fileContents"         dataType="String" />
+
+</workflow>

@@ -1,0 +1,153 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="storageManagerArchiveAssetContent"
+    name="Archive Asset to Storage Content"
+    executionLabelExpression="Archive Asset Content To Storage Manager"
+    description=""
+    subjectDOClassName="AssetContent"
+    resultDataDef="tapes"
+    deadlineExpression=""
+    showInUserInterface="false"
+    sdkVersion="5.21">
+
+
+
+    <initialStepName>check archive status</initialStepName>
+
+
+
+    <noopStep name="check archive status"
+        executionLabelExpression="truncatedFlag = ${assetContent.truncatedFlag} | Archive Option = ${archiveOrBackup} | restoreKey = ${assetContent.restoreKey ?: 'None'}">
+        <transition condition="${assetContent.truncatedFlag}">
+            <targetStepName>content is already archived</targetStepName>
+        </transition>
+        <transition condition="${!assetContent.file.exists()}">
+            <targetStepName>file not found</targetStepName>
+        </transition>
+        <transition condition="${assetContent.restoreKey != null and !assetContent.restoreKey.equals('')}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </noopStep>
+
+
+    <!--executeSubflowStep name="check for file changes"
+        targetWorkflowId="storageManagerCheckForFileChanges"
+        subjectChangePath="${assetContent}"
+        resultDataDef="isModified">
+        <transition condition="${isModified}">
+            <targetStepName>backup file</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>content is already backed up</targetStepName>
+        </transition>
+    </executeSubflowStep-->
+
+
+    <!-- .............................................. Backup And Archive Steps ............................................... -->
+
+    <!--executeSubflowStep name="backup file"
+        targetWorkflowId="storageManagerBackupFileToTape"
+        subjectChangePath="${assetContent}"
+        nextStep="validate backup exists">
+        <subflowContextDataMapping parentDataDef="archiveOrBackup" subflowDataDef="archiveOrBackup"/>
+    </executeSubflowStep-->
+
+
+    <noopStep name="content is already backed up"
+        executionLabelExpression="${assetContent.file.name} is already backed up. | Archive Option = ${archiveOrBackup}">
+        <transition condition="${archiveOrBackup.equals('archive') or archiveOrBackup.equals('retainArchive')}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </noopStep>
+
+
+    <!-- Validate the file is on StorageManager and update tape locations -->
+    <!--executeSubflowStep name="validate backup exists"
+        targetWorkflowId="storageManagerValidateBackup"
+        subjectChangePath="${assetContent}">
+        <transition condition="${archiveOrBackup.equals('archive') or archiveOrBackup.equals('retainArchive')}">
+            <targetStepName>remove file from primary storage</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </executeSubflowStep-->
+
+
+    <!-- .................................................. Archive Only Steps ................................................. -->
+    <!--
+        Delete the file from the filesystem.
+        This step should only be hit after:
+            the file is verified to be on StorageManager
+            the tape locations are extracted
+            the restoreKey is set to the matching StorageManager managed file location
+            the option to archive (instead of backup) is selected
+    -->
+
+    <deleteFileStep name="remove file from primary storage"
+        sourceFilesExpression="${assetContent.file}"
+        executionLabelExpression="removing ${assetContent.file.absolutePath}">
+        <transition condition="true">
+            <targetStepName>truncate asset content</targetStepName>
+        </transition>
+    </deleteFileStep>
+
+
+    <!-- update the AssetContent to read as truncated/archived -->
+    <saveDataObjectStep name="truncate asset content"
+        targetDataObjectClass="AssetContent"
+        dataObjectExpression="${assetContent}"
+        executionLabelExpression="Mark asset content ${assetContent.file.name} AssetContent ID ${assetContent.id} as archived">
+        <transition condition="true">
+            <targetStepName>set asset as archived</targetStepName>
+        </transition>
+        <property name="truncatedFlag">true</property>
+    </saveDataObjectStep>
+
+
+    <saveDataObjectStep name="set asset as archived"
+        dataObjectExpression="${assetContent.masterAsset}"
+        executionLabelExpression="Mark asset ${assetContent.masterAsset.name} as archived"
+        pctComplete="90"
+        nextStep="end">
+        <property name="status">ARCHIVED</property>
+    </saveDataObjectStep>
+
+
+    <!-- ...................................................... End Steps ...................................................... -->
+    <!-- landing point if the truncatedFlag is set already on the AssetContent -->
+    <noopStep name="content is already archived"
+        executionLabelExpression="truncated flag is true"
+        nextStep="end"/>
+
+    <!-- success -->
+    <noopStep name="end" pctComplete="100"/>
+
+
+    <!-- error, asset not truncated but file is missing -->
+    <failWorkflowStep name="file not found"
+        reasonExpression="truncatedFlag = ${assetContent.truncatedFlag} | restoreKey = ${assetContent.restoreKey} | Content file is missing >>> ${assetContent.file.absolutePath}"
+        executionLabelExpression="asset is marked available, but content file is missing >>> ${assetContent.file.absolutePath}"/>
+
+
+    <!-- .................................................. Context Data Defs .................................................. -->
+    <!--
+        archive (truncate) content? or backup content?
+        possible values:
+            archive
+            retainArchive
+            backup
+    -->
+    <contextDataDef name="archiveOrBackup"    dataType="String"      defaultDataExpression="backup"/>
+    <contextDataDef name="isModified"         dataType="Boolean"     defaultDataExpression="false"/>
+    <contextDataDef name="assetContent"       dataType="Data Object" defaultDataExpression="${subject}"/>
+
+</workflow>

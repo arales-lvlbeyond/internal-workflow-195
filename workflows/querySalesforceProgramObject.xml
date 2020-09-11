@@ -1,0 +1,93 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          id="querySalesforceProgramObject"
+          name="Query Salesforce Program Object"
+          executionLabelExpression="Querying Salesforce program object..."
+          subjectDOClassName=""
+          showInUserInterface="false"
+          resultDataDef="programData"
+          sdkVersion="">
+    
+    <initialStepName>query program object</initialStepName>
+    
+    <submitHttpStep
+        name="query program object"
+        executionLabelExpression="Get updated program data for specific cycle ID from ${programQueryUrl}. Response Code = ${responseCode}"
+        urlExpression="${programQueryUrl}"
+        requestMethodExpression="GET"
+        responseCodeDataDef="responseCode"
+        responsePayloadDataDef="responseString"
+        continueOnException="true">
+        <transition condition="${responseCode == 200}">
+            <targetStepName>set json</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>notify error getting response</targetStepName>
+        </transition>
+        <requestHeader name="access_token">${accessToken}</requestHeader>
+    </submitHttpStep>
+    
+    <setContextData
+        name="set json"
+        targetDataDef="responseJSON"
+        valueExpression="${responseString}">
+        <transition condition="${responseJSON != null}">
+            <targetStepName>set program json</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>notify error response malformed</targetStepName>
+        </transition>
+    </setContextData>
+    
+    <setContextData
+        name="set program json"
+        valueExpression="${responseJSON}"
+        targetDataDef="responseJSON"
+        nextStep="filter program json" />
+    
+    <groovyStep name="filter program json"
+                resultDataDef="programData"
+                executionLabelExpression="Filtering program json..."
+                nextStep="end"
+                >
+        <script>
+            <![CDATA[
+                return null
+            ]]>
+        </script>
+    </groovyStep>
+    
+    <noopStep name="end" />
+    
+    <createFailureNotificationStep
+        name="notify error getting response"
+        notificationTypeExpression="error"
+        notificationBodyExpression="Error getting response. Response code: ${responseCode}. See the Status tab for details."
+        nextStep="fail error getting response"/>
+    
+    <createFailureNotificationStep
+        name="notify error response malformed"
+        notificationTypeExpression="error"
+        notificationBodyExpression="Error parsing response. See the Status tab for details."
+        nextStep="fail error response malformed"/>
+    
+    <failWorkflowStep name="fail error getting response" reasonExpression="Error getting response. Response code: ${responseCode}"/>
+    <failWorkflowStep name="fail error response malformed" reasonExpression="Error parsing response"/>
+    
+    <noopStep name="end"/>
+    
+    <!-- Input -->
+    <contextDataDef name="cycleId"     dataType="String" />
+    <contextDataDef name="accessToken" dataType="String" />
+    
+    <!-- Internal -->
+    <contextDataDef name="programQueryUrl" dataType="String" defaultDataExpression="${#sysconfig('salesforce.api.query.program')}${cycleId}"/>
+    <contextDataDef name="fields" dataType="String" defaultDataExpression="fields=Name,Program_c" />
+    <contextDataDef name="programQueryUrlWithParameters" dataType="String" defaultDataExpression="${cycleQueryUrl}${fields}" />
+    
+    <contextDataDef name="responseCode" dataType="Integer" />
+    <contextDataDef name="responseString" dataType="String"/>
+    <contextDataDef name="responseJSON" dataType="JSON"/>
+</workflow>

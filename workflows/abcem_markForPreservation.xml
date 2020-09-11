@@ -1,0 +1,52 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="abcem_markForPreservation"
+    name="abcem_Mark Asset for Preservation"
+    description="Takes an Assets AssetMaster and sets the category Marked for Preservation. 
+    Input: An Assets AssetMaster
+    
+    Result:Category Marked for Preservation set on Asset"
+    executionLabelExpression="Mark Asset for Preservation | Set Marked for Preservation category for ${assetMaster.name}"
+    showInUserInterface="true"
+    subjectDOClassName="AssetMaster"
+    devWorkflow="true"
+    sdkVersion="">
+    
+    <initialStepName>add category</initialStepName>
+    
+    <!-- Adds the Marked for Preservation category to the asset -->
+    <nimbus:changeMetaCategoryStep name="add category" 
+        executionLabelExpression="Add Marked for Preservation category to ${assetMaster.name}"
+        targetObjectExpression="${assetMaster}"
+        nextStep="raise ensure indexed event">
+        <nimbus:addCategory>Marked for Preservation</nimbus:addCategory>
+    </nimbus:changeMetaCategoryStep>
+    
+    
+    
+    <!-- Re-index the asset to update the UI -->
+    <raiseWorkflowEventStep name="raise ensure indexed event"
+        eventTypeExpression="ensureIndexed"
+        executionLabelExpression="Ensure Asset is Indexed"
+        nextStep="end">
+        
+        <property name="indexTargetRef">${assetMaster}</property>
+    </raiseWorkflowEventStep>
+    
+    
+    
+    <!-- End step -->
+    <noopStep name="end"></noopStep>
+    
+    
+    
+    
+    
+    
+    <!-- ............................................... Context Data Defs ................................................ -->
+    <!-- Set subject as DataDef -->
+    <contextDataDef name="assetMaster" dataType="Data Object" defaultDataExpression="${subject}"/>
+    
+</workflow>

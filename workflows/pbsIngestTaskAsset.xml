@@ -1,0 +1,379 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="pbsIngestTaskAsset"
+	name="PBS Ingest Task Asset"
+	executionLabelExpression="PBS Ingest Task Asset | Cloud Asset Id: ${assetData.id}"
+	description=""
+	subjectDOClassName=""
+	showInUserInterface="false"
+	resultDataDef="assetMaster"
+	deadlineExpression=""
+	sdkVersion="5.21"
+	>
+	
+	<!--
+		This workflow can hopefully be refactored with a lot less leg work to create a single asset in the future
+	-->
+	
+	<initialStepName>check if asset already linked</initialStepName>
+	
+
+	<!-- .............................................. Initial Check Steps ............................................... -->
+	<noopStep name="check if asset already linked"
+		executionLabelExpression="Asset Already Linked? ${linkedAssetId != null? 'true | RE Asset Id = ' + linkedAssetId : 'false'}"
+		pctComplete="1"
+		>
+		<transition condition="${linkedAssetId != null}">
+			<targetStepName>asset already ingested and linked</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>check if file exists</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<noopStep name="check if file exists"
+		executionLabelExpression="Ingest file exists? ${fileToIngest.exists()}"
+		pctComplete="2"
+		>
+		<transition condition="${fileToIngest.exists()}">
+			<targetStepName>get collaborate asset metadata</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>determine download strategy</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<noopStep name="determine download strategy"
+		executionLabelExpression="Signiant configured? ${signiantCliPath != null and signiantCliConfigPath != null}"
+		pctComplete="3"
+		>
+		<transition condition="${signiantCliPath != null and signiantCliConfigPath != null}">
+			<targetStepName>create signiant directory</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>determine cloud or local</targetStepName>
+		</transition>
+	</noopStep>
+
+	
+	<!-- .............................................. Download File Steps ............................................... -->
+	<!-- .................... Signiant Download Steps .................... -->
+	<runCommandStep name="create signiant directory"
+		executablePathExpression="/bin/mkdir"
+		continueOnException="true"
+		executionLabelExpression="Create directory: ${downloadDirectory.absolutePath}"
+		pctComplete="4"
+		>
+		<transition condition="${downloadDirectory.exists()}">
+			<targetStepName>signiant download</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>signiant failed</targetStepName>
+		</transition>
+		
+		<arg>-p</arg>
+		<arg>${downloadDirectory.absolutePath}</arg>
+	</runCommandStep>
+
+	
+	<runCommandStep name="signiant download"
+		executablePathExpression="${signiantCliPath}"
+		resultCodeDataDef="signiantCliResultCode"
+		continueOnException="true"
+		executionLabelExpression="download: ${assetData.get('s3ObjectKey').textValue()}"
+		pctComplete="23"
+		>
+		<transition condition="${signiantCliResultCode != 0}">
+			<targetStepName>signiant failed</targetStepName>
+		</transition>
+		<transition condition="${signiantCliResultCode == 0}">
+			<targetStepName>rename signiant file</targetStepName>
+		</transition>
+
+		<arg>--config-file</arg>
+		<arg>${signiantCliConfigPath}</arg>
+		<arg>--direction</arg>
+		<arg>download</arg>
+		<arg>--download-folder</arg>
+		<arg>${downloadDirectory.absolutePath}</arg>
+		<arg>${assetData.get('s3ObjectKey').textValue()}</arg>
+	</runCommandStep>
+
+	
+	<runCommandStep name="rename signiant file"
+		executablePathExpression="/bin/mv"
+		continueOnException="true"
+		executionLabelExpression="rename download file to: ${fileToIngest.name}"
+		pctComplete="25"
+		>
+		<transition condition="${fileToIngest.exists()}">
+			<targetStepName>get collaborate asset metadata</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>signiant failed</targetStepName>
+		</transition>
+		
+		<arg>-f</arg>
+		<arg>${tempDownloadFile.absolutePath}</arg>
+		<arg>${fileToIngest.absolutePath}</arg>
+	</runCommandStep>
+
+	
+	<noopStep name="signiant failed"
+		executionLabelExpression="Signiant download failed, switching to http download."
+		pctComplete="2"
+		nextStep="determine cloud or local"
+		/>
+	
+
+	<!-- ...................... Http Download Steps ...................... -->
+	<noopStep name="determine cloud or local"
+		executionLabelExpression="download to s3? ${tempDownloadFile.absolutePath.startsWith('s3')}"
+		pctComplete="4"
+		>
+		<transition condition="${tempDownloadFile.absolutePath.startsWith('s3')}">
+			<targetStepName>download to s3 location</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>get temp download credentials</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- ............. s3 "Download" ............. -->
+	<!--<groovyStep name="download to s3 location"-->
+		<!--resultDataDef="fileDownloaded"-->
+		<!--executionLabelExpression="download collaborate file to: ${fileToIngest.absolutePath}"-->
+		<!--pctComplete="25"-->
+		<!--&gt;-->
+		<!--<transition condition="${fileToIngest.exists()}">-->
+			<!--<targetStepName>get collaborate asset metadata</targetStepName>-->
+		<!--</transition>-->
+		<!--<transition condition="true">-->
+			<!--<targetStepName>download error</targetStepName>-->
+		<!--</transition>-->
+		<!---->
+		<!--<script>-->
+		<!--<![CDATA[-->
+			<!--import com.amazonaws.auth.BasicSessionCredentials-->
+			<!--import com.amazonaws.services.s3.AmazonS3-->
+			<!--import com.amazonaws.services.s3.AmazonS3Client-->
+			<!--import com.amazonaws.services.s3.model.CopyObjectRequest-->
+			<!--import com.amazonaws.auth.profile.ProfileCredentialsProvider-->
+			<!--import org.slf4j.Logger-->
+            <!--import org.slf4j.LoggerFactory-->
+			<!---->
+            <!--Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")-->
+
+			<!--try{-->
+				<!--// property format is s3:bucketname:subdirectory-->
+				<!--def scratchImportDirectoryColonSplit = scratchImportDirectory.split(":")-->
+				<!--def sourceBucketName = assetData.get('s3BucketName').textValue()-->
+				<!--def sourceObjectKey = assetData.get('s3ObjectKey').textValue()-->
+				<!--def destinationBucketName = scratchImportDirectoryColonSplit[1]-->
+				<!--def destinationObjectKey = ""-->
+				<!--if (scratchImportDirectoryColonSplit.length == 2)-->
+					<!--destinationObjectKey = downloadSubDirectory + "/" + downloadFileName-->
+				<!--else-->
+					<!--destinationObjectKey = scratchImportDirectoryColonSplit[2] + "/" + downloadSubDirectory + "/" + downloadFileName-->
+				<!---->
+				<!--AmazonS3 s3 = new AmazonS3Client(-->
+					<!--new ProfileCredentialsProvider()-->
+				<!--)-->
+				<!--s3.copyObject(sourceBucketName, sourceObjectKey, destinationBucketName, destinationObjectKey)-->
+			<!--}-->
+			<!--catch(Exception e){-->
+				<!--log.error("Error copying file from collaborate to s3 location:\n${e}")-->
+				<!--return false-->
+			<!--}-->
+
+			<!--return true-->
+		<!--]]>-->
+		<!--</script>-->
+	<!--</groovyStep>-->
+	
+	
+	<copyFileStep name="download to s3 location"
+		sourceFileExpression="s3:${assetData.get('s3BucketName').textValue()}:${assetData.get('s3ObjectKey').textValue()}"
+		targetDirectoryExpression="${scratchImportDirectory.absolutePath}/${downloadSubDirectory}/${downloadFileName}"
+		resultDataDef="fileToIngest"
+		pctComplete="25"
+		>
+		<transition condition="${fileToIngest.exists()}">
+			<targetStepName>get collaborate asset metadata</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>download error</targetStepName>
+		</transition>
+	</copyFileStep>
+	
+	
+	<!-- .......... filesystem Download .......... -->
+	<submitHttpStep name="get temp download credentials"
+		urlExpression="${assetServiceUrl}/assets/${assetData.id}/tempDownloadCredentials"
+		requestMethodExpression="GET"
+		responsePayloadDataDef="tempDownloadCredentials"
+		continueOnException="true"
+		pctComplete="10"
+		>
+		<transition condition="${tempDownloadCredentials != null AND !tempDownloadCredentials.equals('')}">
+			<targetStepName>download to filesystem location</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>download error</targetStepName>
+		</transition>
+		
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+
+	
+	<groovyStep name="download to filesystem location"
+		resultDataDef="fileDownloaded"
+		executionLabelExpression="download collaborate file to: ${fileToIngest.absolutePath}"
+		pctComplete="25"
+		>
+		<transition condition="${fileToIngest.exists()}">
+			<targetStepName>get collaborate asset metadata</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>download error</targetStepName>
+		</transition>
+		
+		<script>
+		<![CDATA[
+			import com.amazonaws.auth.BasicSessionCredentials
+			import com.amazonaws.services.s3.AmazonS3
+			import com.amazonaws.services.s3.AmazonS3Client
+			import com.amazonaws.services.s3.model.GetObjectRequest
+			import org.slf4j.Logger
+			import org.slf4j.LoggerFactory
+			
+			Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow")
+			
+			try{
+				AmazonS3 s3 = new AmazonS3Client(new BasicSessionCredentials(
+					tempDownloadCredentials.get('accessKeyId').textValue(),
+					tempDownloadCredentials.get('secretAccessKey').textValue(),
+					tempDownloadCredentials.get('sessionToken').textValue())
+				)
+		
+				def getObjectRequest = new GetObjectRequest(assetData.get('s3BucketName').textValue(), assetData.get('s3ObjectKey').textValue())
+				
+				s3.getObject(getObjectRequest, new File(fileToIngest.getAbsolutePath()))
+			}
+			catch(Exception e){
+				log.error("Error copying file from collaborate to filesystem location:\n${e}")
+				return false
+			}
+			
+			return true
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<!-- .............................................. Ingest Asset Steps ................................................ -->
+	<executeSubflowStep name="get collaborate asset metadata"
+		targetWorkflowId="_getCollaborateAssetMetadata"
+		resultDataDef="metadataForm"
+		pctComplete="35"
+		nextStep="ingest asset"
+		>
+		<subflowContextDataMapping parentDataDef="assetData"            subflowDataDef="assetData"/>
+		<subflowContextDataMapping parentDataDef="ingestForm"           subflowDataDef="ingestForm"/>
+	</executeSubflowStep>
+	
+	
+	<executeSubflowStep name="ingest asset"
+		targetWorkflowId="mediaAcceptFileIngest"
+		resultDataDef="assetMaster"
+		pctComplete="97"
+		nextStep="link asset to cloudform asset"
+		>
+		<subflowContextDataMapping parentDataDef="fileToIngest"         subflowDataDef="fileToIngest"/>
+		<subflowContextDataMapping parentDataDef="collection"           subflowDataDef="collection"/>
+		<subflowContextDataMapping parentDataDef="metadataForm"         subflowDataDef="metadataForm"/>
+		<subflowContextDataMapping parentDataDef="metadataFormType"     subflowDataDef="metadataFormType"/>
+		<subflowContextDataMapping parentDataDef="asyncProxies"         subflowDataDef="asyncProxies"/>
+	</executeSubflowStep>
+
+	
+	<nimbus:linkAssetToExistingCollaborateAssetStep name="link asset to cloudform asset"
+		assetExpression="${assetMaster}"
+		collaborateAssetIdExpression="${assetData.id}"
+		executionLabelExpression="link RE Asset (${assetMaster.id}) to Collaborate Asset (${assetData.id})"
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<noopStep name="asset already ingested and linked"
+		executionLabelExpression="This asset has already been synchronized"
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+	<!-- success -->
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="download error"
+		reasonExpression="could not download file from collaborate. Check previous workflow steps and log for error."
+		executionLabelExpression="could not download file from collaborate. Check previous workflow steps and log for error."
+		/>
+		
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input Variables .......... -->
+	<contextDataDef name="assetData"                dataType="JSON"/>
+	<contextDataDef name="collection"               dataType="Data Object"/>
+	<contextDataDef name="ingestForm"               dataType="Data Object"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<!-- collaborate -->
+	<contextDataDef name="assetServiceUrl"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.assetService.url')}"/>
+	<contextDataDef name="cloudformApiKey"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.apiKey')}"/>
+	<contextDataDef name="scratchImportDirectory"   dataType="String"       defaultDataExpression="${#sysconfig('cloudform.scratchImportDirectory')}"/>
+	<contextDataDef name="tempDownloadCredentials"  dataType="JSON"/>
+	<!-- signiant -->
+	<contextDataDef name="signiantCliResultCode"    dataType="Integer" />
+	<contextDataDef name="signiantCliPath"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.signiantCliPath')}"/>
+	<contextDataDef name="signiantCliConfigPath"    dataType="String"       defaultDataExpression="${#sysconfig('cloudform.signiantCliConfigPath')}"/>
+	<!-- files and directories -->
+	<contextDataDef name="downloadSubDirectory"     dataType="String"       defaultDataExpression="collaborate_asset_${assetData.id}"/>
+	<contextDataDef name="downloadFileName"         dataType="String"       defaultDataExpression="${assetData.get('name').textValue()}"/>
+	<contextDataDef name="downloadDirectory"        dataType="Directory"    defaultDataExpression="${scratchImportDirectory}/${downloadSubDirectory}"/>
+	<contextDataDef name="tempDownloadFile"         dataType="File"         defaultDataExpression="${downloadDirectory.absolutePath}/${assetData.get('s3ObjectKey').textValue()}"/>
+	<contextDataDef name="fileToIngest"             dataType="File"         defaultDataExpression="${scratchImportDirectory}/${downloadSubDirectory}/${downloadFileName}"/>
+	<!-- other -->
+	<contextDataDef name="linkedAssetId"            dataType="Integer"      defaultDataExpression="${#getLinkedAssetIdForCollaborateAssetId(assetData.id)}"/>
+	<contextDataDef name="metadataForm"             dataType="MetadataForm"/>
+	<contextDataDef name="metadataFormType"         dataType="String"       defaultDataExpression="panel"/>
+	<contextDataDef name="asyncProxies"             dataType="Boolean"      defaultDataExpression="${#sysconfig('workflows.default.collaborate.syncTasks.ingestAssets.asyncProxies') != null? #sysconfig('workflows.default.collaborate.syncTasks.ingestAssets.asyncProxies') : true}"/>
+	<contextDataDef name="assetMaster"              dataType="Data Object"/>
+	<contextDataDef name="fileDownloaded"           dataType="Boolean"/>
+</workflow>

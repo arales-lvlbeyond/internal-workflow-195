@@ -1,0 +1,107 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="ingestAssetToUfcTimeline"
+    name="Ingest Asset To UFC Timeline"
+    executionLabelExpression="Ingest Asset To UFC Timeline | Asset: ${fileToIngest.name} | Timeline: ${timeline != null ? timeline.name : newTimelineName}"
+    showInUserInterface="true"
+    subjectDOClassName=""
+    resultDataDef="assetMaster"
+    sdkVersion="">
+    
+    <initialStepName>ingest asset</initialStepName>
+    
+    
+    <executeSubflowStep name="ingest asset"
+        pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+        executionLabelExpression="Ingesting file: ${fileToIngest.name}"
+        targetWorkflowId="_anyAssetIngest"
+        subjectChangePath="${fileToIngest}"
+        subflowTargetDataDef="fileToIngest"
+        resultDataDef="assetMaster"
+        nextStep="add asset to timeline">
+        
+        <subflowContextDataMapping parentDataDef="assetName" subflowDataDef="assetName"/>
+        <subflowContextDataMapping parentDataDef="collections" subflowDataDef="collections"/>
+        <subflowContextDataMapping parentDataDef="metadataForm" subflowDataDef="metadataForm"/>
+    </executeSubflowStep>
+    
+    
+    <!--<executeSubflowStep name="set up timeline"-->
+        <!--pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"-->
+        <!--executionLabelExpression="setting up timeline: ${timeline != null ? timeline.name : newTimelineName}"-->
+        <!--targetWorkflowId="createUfcTimeline"-->
+        <!--resultDataDef="timeline"-->
+        <!--nextStep="add asset to timeline">-->
+        <!---->
+        <!--<subflowContextDataMapping parentDataDef="timeline" subflowDataDef="timeline"/>-->
+        <!--&lt;!&ndash;<subflowContextDataMapping parentDataDef="newTimelineName" subflowDataDef="timelineName"/>&ndash;&gt;-->
+    <!--</executeSubflowStep>-->
+    
+    
+    <executeSubflowStep name="add asset to timeline"
+        pctCompleteExpression="${(wfExe.stepExecutions.size() *100d )/ wfExe.workflowVersion.steps.size()}"
+        executionLabelExpression="adding ${assetMaster.name} to the timeline ${timeline.name}"
+        targetWorkflowId="addAssetToUfcTimeline"
+        subjectChangePath="${assetMaster}"
+        nextStep="end">
+        
+        <subflowContextDataMapping parentDataDef="timeline" subflowDataDef="timeline"/>
+        <!--<subflowContextDataMapping parentDataDef="timelineTrackName" subflowDataDef="timelineTrackName"/>-->
+    </executeSubflowStep>
+    
+    
+    <!--<executeSubflowStep name="back up asset"-->
+        <!--executionLabelExpression="Backing up asset: ${assetMaster.name}"-->
+        <!--targetWorkflowId="storageManagerArchiveAssetMaster"-->
+        <!--subjectChangePath="${assetMaster}"-->
+        <!--nextStep="end">-->
+        <!---->
+        <!--<subflowContextDataMapping parentDataDef="archiveOrBackup" subflowDataDef="archiveOrBackup"/>-->
+    <!--</executeSubflowStep>-->
+    
+    
+    <noopStep name="end"/>
+    
+    
+    <!--.................................. Context Data Defs ............................................-->
+    <!-- input -->
+    <contextDataDef name="fileToIngest" dataType="File"
+        userInput="true" required="true" displayIndex="1" label="File To Ingest"/>
+    <contextDataDef name="collections" dataType="Data Object" userInput="true" label="Collections" multiple="true"
+        displayIndex="2">
+        <picklist>
+            <dataObjectSearch dataObjectClass="AssetCollection">
+                <searchPath>name</searchPath>
+            </dataObjectSearch>
+        </picklist>
+    </contextDataDef>
+    <contextDataDef name="metadataForm" dataType="MetadataForm" userInput="true" label="Metadata Form"
+        displayIndex="3"/>
+    <!--<contextDataDef name="timelineTrackPicklistId" dataType="String"-->
+        <!--userInput="true" required="true" displayIndex="4" label="Camera Angle">-->
+        <!--<picklist>-->
+            <!--<metadataProperty>cameraAngle</metadataProperty>-->
+        <!--</picklist>-->
+    <!--</contextDataDef>-->
+    <contextDataDef name="timeline" dataType="Data Object"
+        userInput="true" required="true" displayIndex="5" label="Existing Timeline">
+        <picklist>
+            <dataObjectSearch dataObjectClass="Timeline">
+                <searchPath>name</searchPath>
+            </dataObjectSearch>
+        </picklist>
+    </contextDataDef>
+    <!--<contextDataDef name="newTimelineName" dataType="String" userInput="true" required="false" displayIndex="4" label="New Timeline Name"/>-->
+    
+    <!-- processing -->
+    <contextDataDef name="archiveOrBackup" dataType="String" defaultDataExpression="backup"/>
+    <!--<contextDataDef name="timelineTrackName" dataType="String" defaultDataExpression="${#picklistLabel('cameraAngle', timelineTrackPicklistId)}"/>-->
+    <contextDataDef name="timelineTrackName" dataType="String" defaultDataExpression="Test Track"/>
+    <contextDataDef name="assetName" dataType="String"
+        defaultDataExpression="${timelineTrackName} - ${fileToIngest.name}"/>
+    <contextDataDef name="assetMaster" dataType="Data Object"/>
+    <contextDataDef name="timeline" dataType="Data Object"/>
+    
+</workflow>

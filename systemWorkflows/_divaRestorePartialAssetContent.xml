@@ -1,0 +1,138 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="
+    	    http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+            "
+          id="_divaRestorePartialAssetContent"
+          name="Diva Restore Partial Asset Content"
+          executionLabelExpression="Diva Restore Partial Asset Content ${subject.file?.absolutePath} from ${subject.restoreKey}"
+          description=""
+          subjectDOClassName="VideoAssetContent"
+          showInUserInterface="false"
+          deadlineExpression=""
+          resultDataDef="resultFile"
+          sdkVersion="4.2">
+
+	<initialStepName>check whether content is archived</initialStepName>
+
+	<noopStep name="check whether content is archived">
+		<transition condition="${subject.restoreKey != null}">
+			<targetStepName>run diva restore partial script</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>check for PFR</targetStepName>
+		</transition>
+	</noopStep>
+
+	<nimbus:divaRestorePartialStep
+		name="run diva restore partial script"
+		executionLabelExpression="Copy restored file ${subject.restoreKey} to repo (${subject.file.absolutePath})"
+		sourceFileExpression="${subject.restoreKey}"
+		restorePath="${restorePath}"
+		divaRestorePath="${divaRestorePath}"
+		objectCategoryExpression="${archiveCategory}"
+		partialRestoreFormat="${partialRestoreFormat}"
+		archivePriorityExpression="${restorePriority}"
+		transferServerNameExpression="${transferServerName}"
+		waitForResponseExpression="true"
+		startOffset="${startOffset}"
+		endOffset="${endOffset}"
+		timecodeFormat="${timecodeFormat}"
+		ignoreStartOffset="${ignoreStartOffset}"
+		pctComplete="80"
+		resultDataDef="restoredFile"
+		>
+		<transition condition="=true">
+			<targetStepName>End</targetStepName>
+		</transition>
+	</nimbus:divaRestorePartialStep>
+
+	<testStep name="check for PFR" outputExpression="${subject.id} ${subject.contentTemplate} ${startOffset} ${endOffset}">
+		<transition condition="=subject.contentTemplate != null and (startOffset != null or endOffset != null)">
+			<targetStepName>trim restored video</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>End</targetStepName>
+		</transition>
+	</testStep>
+
+	<convertVideoStep name="trim restored video"
+	                  executionLabelExpression="Trim file "
+	                  targetContentTemplateExpression="=subject.contentTemplate"
+	                  sourceFileExpression="=subject.file"
+	                  trimStartExpression="=startOffset"
+	                  trimEndExpression="=endOffset"
+	                  pctComplete="80"
+	                  resultDataDef="restoredFile"
+		>
+		<transition condition="${restorePath != null}">
+			<targetStepName>copy trimmed file to restore path</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>End</targetStepName>
+		</transition>
+	</convertVideoStep>
+
+	<copyFileStep
+		name="copy trimmed file to restore path"
+		executionLabelExpression="copy trimmed file ${restoredFile.absolutePath} to ${restorePath.absolutePath}"
+		sourceFileExpression="${restoredFile}"
+		targetDirectoryExpression="${restorePath}"
+		createTargetDirectoryFlag="true"
+		pctComplete="85"
+		resultDataDef="resultFile"
+		>
+		<transition condition="=true">
+			<targetStepName>delete transcode artifact</targetStepName>
+		</transition>
+	</copyFileStep>
+
+	<deleteFileStep
+		name="delete transcode artifact"
+		executionLabelExpression="Delete transcode artifact ${restoredFile.absolutePath}"
+		sourceFilesExpression="${restoredFile}"
+		pctComplete="95"
+		>
+		<transition condition="=true">
+			<targetStepName>End</targetStepName>
+		</transition>
+	</deleteFileStep>
+
+	<noopStep name="End"/>
+
+	<contextDataDef name="resultFile" dataType="File" defaultDataExpression="${restoredFile}"/>
+	<contextDataDef name="restoredFile" dataType="File"/>
+	<contextDataDef name="restorePath" dataType="File" defaultDataExpression="=#sysconfig('asset.archive.diva.path')"/>
+	<contextDataDef name="divaRestorePath" dataType="String" defaultDataExpression="=#sysconfig('asset.archive.diva.divaArchivePath')"/>
+	<contextDataDef name="archiveCategory" dataType="String" defaultDataExpression="=#sysconfig('asset.archive.diva.category')"/>
+	<contextDataDef name="transferServerName" dataType="String" defaultDataExpression="=#sysconfig('asset.archive.diva.transferServerName')"/>
+	<contextDataDef name="waitForResponseFlag" dataType="Boolean" defaultDataExpression="=#sysconfig('asset.archive.diva.waitForResponseFlag')"/>
+	<contextDataDef name="restorePriority" dataType="Integer" defaultDataExpression="=#sysconfig('asset.archive.diva.partialRestorePriority')"/>
+	<contextDataDef name="partialRestoreFormat" dataType="Integer" defaultDataExpression="=#sysconfig('asset.archive.diva.partialRestoreFormat')"/>
+	<contextDataDef name="timecodeFormat" dataType="String" defaultDataExpression="=#sysconfig('asset.archive.diva.timecodeFormat')"/>
+	<contextDataDef name="archiveStatus" dataType="String"/>
+	<contextDataDef name="startOffset" dataType="Double"/>
+	<contextDataDef name="endOffset" dataType="Double"/>
+	<contextDataDef name="ignoreStartOffset" dataType="Boolean" defaultDataExpression="=#sysconfig('asset.archive.diva.ignoreStartOffset')"/>
+	<contextDataDef name="resultStartOffset" dataType="Double" defaultDataExpression="${startOffset ?: 0}"/>
+	<contextDataDef name="resultEndOffset" dataType="Double" defaultDataExpression="${endOffset ?: subject.duration}"/>
+
+</workflow>

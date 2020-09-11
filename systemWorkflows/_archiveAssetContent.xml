@@ -1,0 +1,143 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="
+        http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+        "
+        
+ id="_archiveAssetContent"
+ name="Archive Asset Content"
+ executionLabelExpression="Archive Asset Content ${subject.file?.absolutePath}"
+ description=""
+ subjectDOClassName="AssetContent"
+ subjectQualifierExpression="${restoreKey == null or restoreKey == ''}"
+ showInUserInterface="false"
+ deadlineExpression="">
+    
+	<initialStepName>setArchivePath</initialStepName>
+	
+	<setContextData name="setArchivePath" targetDataDef="archivePath" valueExpression="${#sysconfig('asset.archive.path')}" devStep="true">
+		<transition condition="${true}">
+			<targetStepName>setArchiveScriptPath</targetStepName>
+		</transition>
+	</setContextData>
+
+	<setContextData name="setArchiveScriptPath" targetDataDef="archiveScriptPath" valueExpression="${#sysconfig('asset.archive.script')}" devStep="true">
+		<transition condition="${true}">
+			<targetStepName>setArchiveCommand</targetStepName>
+		</transition>
+	</setContextData>
+
+	<setContextData name="setArchiveCommand" targetDataDef="archiveCommand" valueExpression="${#sysconfig('asset.archive.command')}" devStep="true">
+		<transition condition="${true}">
+			<targetStepName>setArchiveScriptArgs</targetStepName>
+		</transition>
+	</setContextData>
+
+	<setContextData name="setArchiveScriptArgs" targetDataDef="archiveScriptArgs" valueExpression="${#sysconfig('asset.archive.args')}" devStep="true">
+		<transition condition="${true}">
+			<targetStepName>check for archive path</targetStepName>
+		</transition>
+	</setContextData>
+    	
+	<noopStep name="check for archive path">
+		<transition condition="${archivePath != null}">
+		    <targetStepName>check for content on disk</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+    
+    <noopStep name="check for content on disk">
+        <transition condition="${ subject.file.exists() }">
+            <targetStepName>copy content file to archive</targetStepName>
+        </transition>
+        <transition condition="${ true }">
+            <targetStepName>fail archive</targetStepName>
+        </transition>
+    </noopStep>
+    	
+    <copyFileStep 
+    	name="copy content file to archive"
+    	executionLabelExpression="Copy content file ${subject.file.absolutePath} to archive (${archivePath.absolutePath})"
+    	sourceFileExpression="=subject.file"
+    	targetDirectoryExpression="=archivePath"
+    	pctComplete="50"
+    	resultDataDef="archiveFile"
+   	>
+        <transition condition="=archiveScriptPath != null">
+        	<targetStepName>run archive script</targetStepName>
+        </transition>
+        <transition condition="=true">
+            <targetStepName>update asset content</targetStepName>
+        </transition>
+    </copyFileStep>
+	    
+    <runCommandStep
+        name="run archive script"        
+        executionLabelExpression="Run archive script ${archiveScriptPath.absolutePath} on archive file ${archiveFile.absolutePath}"
+        executableNameExpression="${archiveCommand}"
+        executablePathExpression="${archiveScriptPath}"
+        resultCodeDataDef="archiveResultCode"
+        pctComplete="75"   
+        argsExpression="${archiveScriptArgs}"            
+    >
+        <transition condition="=true">
+            <targetStepName>update asset content</targetStepName>
+        </transition>
+    </runCommandStep>
+        
+    <saveDataObjectStep 
+    	name="update asset content"
+    	executionLabelExpression="Mark asset content ${subject.id} as archived"
+    	targetDataObjectClass="AssetContent"
+    	pctComplete="90"
+    	dataObjectExpression="${subject}">
+    	<transition condition="=true">
+    		<targetStepName>raise content archived event</targetStepName>
+    	</transition>
+    	<property name="restoreKey">${archiveFile.path}</property>
+    </saveDataObjectStep>
+    
+    <raiseWorkflowEventStep 
+    	name="raise content archived event"
+    	eventTypeExpression="ContentArchived"
+    	executionLabelExpression="Sending Content Archived event"
+    	summaryExpression="Asset content has been archived"
+    >
+    	<property name="contentFilePath">${subject.file.absolutePath}</property>
+    	<property name="restoreKey">${archiveFile.path}</property>
+    </raiseWorkflowEventStep>
+    
+    <failWorkflowStep name="fail archive" reasonExpression="Content file ${ subject.file.absolutePath } is not present on disk!"/>
+    
+    <noopStep name="end"></noopStep>
+    
+    <!-- SET FROM SYS CONFIG -->
+    <contextDataDef name="archivePath" dataType="Directory"/>
+    <contextDataDef name="archiveScriptPath" dataType="File"/>
+    <contextDataDef name="archiveCommand" dataType="String"/>
+    <contextDataDef name="archiveScriptArgs" dataType="String"/>
+    
+    <!-- RUNTIME VARIABLES -->
+    <contextDataDef name="archiveFile" dataType="File"/>
+    <contextDataDef name="archiveResultCode" dataType="Integer"/>
+    
+</workflow>

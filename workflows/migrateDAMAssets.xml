@@ -1,0 +1,36 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="migrateDAMAssets"
+    name="Migrate DAM Assets"
+    executionLabelExpression="Migrate DAM Assets"
+    description=""
+    showInUserInterface="true"
+    subjectDOClassName=""
+    subjectQualifierExpression=""
+    sdkVersion="5.23">
+
+
+
+    <initialStepName>migrate csv data</initialStepName>
+
+
+    <executeSubflowStep name="migrate csv data"
+        executionLabelExpression="Migrating ${csvFiles.size()} CSVs"
+        targetWorkflowId="${migrationSubflow}"
+        subjectChangePath="${csvFiles}"
+        subflowTargetDataDef="csvFile"
+        subflowExecutionLimitExpression="1"
+        nextStep="end"/>
+
+
+    <noopStep name="end"/>
+
+
+
+    <contextDataDef name="csvFiles"               dataType="File"            userInput="true"/>
+    <contextDataDef name="migrationSubflow"       dataType="String"          defaultDataExpression="migrateDAMAssetsMagic"/>
+
+
+</workflow>

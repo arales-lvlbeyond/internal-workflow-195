@@ -1,0 +1,53 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="getADropFrameClip"
+	name="Get A Drop Frame Clip"
+	executionLabelExpression="Get A Drop Frame Clip"
+	subjectDOClassName=""
+	showInUserInterface="true"
+	resultDataDef="videoClip"
+	sdkVersion=""
+	>
+	
+	<initialStepName>get a drop frame clip</initialStepName>
+	
+	
+	<queryStep name="get a drop frame clip"
+		targetDataObjectClass="VideoClip"
+		resultDataDef="videoClip"
+		>
+		<criteria>
+			<![CDATA[
+			<criteria>
+				<and>
+					<condition property="timecodeFormat" op="eq">
+						<test value="DROP_FRAME" />
+					</condition>
+				</and>
+			</criteria>
+		]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<contextDataDef name="videoClip" dataType="Data Object"/>
+	
+</workflow>

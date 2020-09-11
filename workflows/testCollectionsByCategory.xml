@@ -1,0 +1,67 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	sdkVersion=""
+	id="testCollectionsByCategory"
+	name="Test Collections By Category"
+	executionLabelExpression="Nothing"
+	subjectDOClassName=""
+	resultDataDef="collectionsByCategory"
+	showInUserInterface="true"
+    >
+	
+	<initialStepName>get collections by category</initialStepName>
+	
+	
+	<queryStep name="get collections by category"
+		targetDataObjectClass="AssetCollection"
+		resultDataDef="collectionsByCategory"
+		nextStep="end"
+		>
+		<criteria>
+			<![CDATA[
+    		    <criteria>
+    			    <and>
+                        <condition property="metadata.categories.name" op="like" nullTargets="false"><test value="%My Category Name%"/></condition>
+                    </and>
+                </criteria>
+            ]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<noopStep name="end"/>
+	
+	
+	<!--<contextDataDef name="collectionsByCategoryInput" dataType="Data Object" userInput="true" displayIndex="1">-->
+		<!--<picklist>-->
+			<!--<dataObjectSearch dataObjectClass="AssetCollection">-->
+				<!--<searchPath>name</searchPath>-->
+				<!--<criteria>-->
+					<!--<and xmlns="http://levelsbeyond.com/schema/criteria">-->
+						<!--<condition property="metadata.categories.name" op="eq"><test value="My Category Name"/></condition>-->
+					<!--</and>-->
+				<!--</criteria>-->
+			<!--</dataObjectSearch>-->
+		<!--</picklist>-->
+	<!--</contextDataDef>-->
+	<contextDataDef name="collectionsByCategory" dataType="Data Object"  multiple="true"/>
+
+</workflow>

@@ -1,0 +1,686 @@
+<workflow 
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="publishAssetToCDN"
+    name="Publish Asset to CDN"
+    subjectDOClassName="AssetMaster"
+    executionLabelExpression="Publish Asset To CDN | Asset: ${selectedAsset.name} | ID: ${selectedAsset.id}"
+    sdkVersion="5.23"
+    >
+
+    <initialStepName>check if workflow is running</initialStepName>
+    
+    
+    <!-- .............................................. Initial Data Steps ................................................ -->
+    <queryStep name="check if workflow is running"
+        targetDataObjectClass="WorkflowExecution"
+        resultDataDef="currentExecutions"
+        executionLabelExpression="Is a workflow running on this file already? ${currentExecutions.size() != 0}"
+        pctComplete="5"
+        >
+        <transition condition="${currentExecutions.size() == 0}">
+            <targetStepName>determine how to process asset</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>workflow is running</targetStepName>
+        </transition>
+        
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="workflowVersion.workflow.key" op="eq">
+                            <test value="${ #this.workflow.workflowVersion.workflow.key }" />
+                        </condition>
+                        <condition property="executionLabel" op="like">
+                          <test value="%${selectedAsset.id}%" />
+                        </condition>
+                        <condition property="uuid" op="noteq">
+                            <test value="${ #this.workflow.uuid }" />
+                        </condition>
+                        <condition property="status" op="in">
+                            <tests>
+                                <test value="CREATED" />
+                                <test value="QUEUED" />
+                                <test value="EXECUTING" />
+                            </tests>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+
+    
+    <noopStep name="determine how to process asset"
+        executionLabelExpression="Already published? ${isPublished} | Required metadata set? ${hasRequiredMetadata} | Asset type: ${assetType}"
+        >
+        <transition condition="${isPublished}">
+            <targetStepName>asset was already published</targetStepName>
+        </transition>
+        <transition condition="${!hasRequiredMetadata}">
+            <targetStepName>set fail asset metdata</targetStepName>
+        </transition>
+        <transition condition="${assetType.equals('video')}">
+            <targetStepName>get video data</targetStepName>
+        </transition>
+        <transition condition="${assetType.equals('gif')}">
+            <targetStepName>copy gif to temp</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>asset type not supported</targetStepName>
+        </transition>
+    </noopStep>
+    
+    
+    <!-- .................................................. Video Steps ................................................... -->
+    <groovyStep name="get video data"
+        resultDataDef="thumbSeconds"
+        continueOnException="true"
+        devStep="true"
+        >
+        <transition condition="${thumbSeconds &gt; 0}">
+            <targetStepName>convert to hls</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>failed to calculate thumbnail seconds</targetStepName>
+        </transition>
+        
+        <script>
+        <![CDATA[
+            float seconds = selectedAsset.getOriginalContent().getDuration()
+            return seconds * (33.0f / 100.0f)
+        ]]>
+        </script>
+    </groovyStep>
+    
+    
+    <!-- .................... MediaConvert Steps .................... -->
+    <runCommandStep name="convert to hls"
+        executionLabelExpression="Running transcode job with profile: ${profile}"
+        executablePathExpression="/usr/bin/aws"
+        stdoutDataDef="responseOutString"
+        stderrDataDef="responseErrString"
+        pctComplete="30"
+        nextStep="set json response"
+        >
+        <arg>mediaconvert</arg>
+        <arg>create-job</arg>
+        <arg>--endpoint-url</arg>
+        <arg>${endpointUrl}</arg>
+        <arg>--region</arg>
+        <arg>${region}</arg>
+        <arg>--cli-input-json</arg>
+        <arg>${cliInputJson.toString()}</arg>
+        <arg>--profile</arg>
+        <arg>${profile}</arg>
+        <arg>--role</arg>
+        <arg>${role}</arg>
+    </runCommandStep>
+
+
+    <setContextData name="set json response"
+        targetDataDef="responseJson"
+        valueExpression="${responseOutString ?: responseErrString}"
+        continueOnException="true"
+        devStep="true"
+        >
+        <transition condition="${responseJson != null}">
+            <targetStepName>get job id</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>transcode submit error</targetStepName>
+        </transition>
+    </setContextData>
+
+
+    <setContextData name="get job id"
+        targetDataDef="jobId"
+        valueExpression="${responseJson?.get('Job')?.get('Id')?.asText()}"
+        executionLabelExpression="Job id = ${jobId}"
+        devStep="true"
+        nextStep="query occasionally for status"
+        />
+
+
+    <noopStep name="query occasionally for status"
+        executionLabelExpression="Querying every 30 seconds until job completes | Job ID: ${jobId}"
+        nextStep="delay a bit"
+        />
+    
+    
+    <delayStep name="delay a bit"
+        delaySecondsExpression="30"
+        devStep="true"
+        nextStep="get job status"
+        />
+    
+    
+    <runCommandStep name="get job status"
+        executionLabelExpression="Media Convert Job Status is: ${jobStatusJson?.get('Job')?.get('Status')?.asText()}"
+        executablePathExpression="/usr/bin/aws"
+        stdoutDataDef="jobStatusJson"
+        devStep="true"
+        >
+        <transition condition="${jobStatusJson?.get('Job')?.get('Status')?.asText().equals('SUBMITTED')}">
+            <targetStepName>delay a bit</targetStepName>
+        </transition>
+        <transition condition="${jobStatusJson?.get('Job')?.get('Status')?.asText().equals('PROGRESSING')}">
+            <targetStepName>delay a bit</targetStepName>
+        </transition>
+        <transition condition="${jobStatusJson?.get('Job')?.get('Status')?.asText().equals('COMPLETE')}">
+            <targetStepName>check thumbnail input</targetStepName>
+        </transition>
+        <transition condition="${jobStatusJson?.get('Job')?.get('Status')?.asText().equals('CANCELED')}">
+            <targetStepName>transcode cancelled</targetStepName>
+        </transition>
+        <transition condition="${jobStatusJson?.get('Job')?.get('Status')?.asText().equals('ERROR')}">
+            <targetStepName>transcode error</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>transcode error</targetStepName>
+        </transition>
+        <arg>mediaconvert</arg>
+        <arg>get-job</arg>
+        <arg>--endpoint-url</arg>
+        <arg>${endpointUrl}</arg>
+        <arg>--region</arg>
+        <arg>${region}</arg>
+        <arg>--id</arg>
+        <arg>${jobId}</arg>
+        <arg>--profile</arg>
+        <arg>${profile}</arg>
+    </runCommandStep>
+    
+
+    <!-- .................. Video Thumbnail Steps ................... -->
+    <noopStep name="check thumbnail input"
+        devStep="true"
+        >
+        <transition condition="${thumbnailTimecode != null AND !thumbnailTimecode.isEmpty()}">
+            <targetStepName>format timecode</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>create video thumbnail</targetStepName>
+        </transition>
+    </noopStep>
+    
+    
+    <groovyStep name="format timecode"
+        resultDataDef="thumbnailDouble"
+        continueOnException="true"
+        executionLabelExpression="Parse the thumbnailTimecode metadata field value (${thumbnailTimecode}) to seconds format: ${thumbnailDouble}"
+        >
+        <transition condition="${thumbnailDouble != 0 AND thumbnailDouble != null}">
+            <targetStepName>update timecode seconds</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>error parsing timecode</targetStepName>
+        </transition>
+        <script>
+        <![CDATA[
+            import java.lang.Integer
+            
+            if (!thumbnailTimecode.contains(":")) {
+                return 0
+            }
+            
+            def timecodeArray = thumbnailTimecode.split(":|\\;")
+            if (timecodeArray.size() != 4) {
+                return 0
+            }
+            
+            // parse the strings to ints
+            int hours = Integer.parseInt(timecodeArray[0])
+            int minutes = Integer.parseInt(timecodeArray[1])
+            int seconds = Integer.parseInt(timecodeArray[2])
+            int frames = Integer.parseInt(timecodeArray[3])
+            float videoFrameRateFloat = videoFrameRate.toFloat()
+            int dropFrames = Math.round(videoFrameRateFloat*0.066666)
+            int frRound = Math.round(videoFrameRateFloat)
+            
+            if((videoFrameRateFloat == 29.97) || (videoFrameRateFloat == 59.94) || (videoFrameRateFloat == 23.976)) {
+                int d
+                int m
+                int hourFrames = frRound*60*60
+                int minuteFrames = frRound*60
+                int totalMinutes = (60*hours) + minutes
+                int frameNumber = ((hourFrames * hours) + (minuteFrames * minutes) + (frRound * seconds) + frames) - (dropFrames * (totalMinutes - (totalMinutes / 10)))
+                int framesPerHour = Math.round(videoFrameRateFloat * 60 * 60)
+                int framesPer24Hours = framesPerHour * 24
+                int framesPer10Minutes = Math.round(videoFrameRateFloat * 60 * 10)
+                int framesPerMinute = (Math.round(videoFrameRateFloat) * 60) -  dropFrames
+                
+                if (frameNumber<0) {
+                    frameNumber = framesPer24Hours + frameNumber
+                }
+                
+                //If frameNumber is greater than 24 hrs, next operation will rollover clock
+                frameNumber = frameNumber % framesPer24Hours
+                d = frameNumber / framesPer10Minutes
+                m = frameNumber % framesPer10Minutes
+                
+                if (m > dropFrames) {
+                    frameNumber = frameNumber + (dropFrames * 9 * d) + dropFrames * ((m - dropFrames) / framesPerMinute)
+                } else {
+                    frameNumber = frameNumber + dropFrames * 9 * d
+                }
+                
+                hours = frameNumber % frRound
+                minutes = (frameNumber / frRound) % 60
+                seconds = ((frameNumber / frRound) / 60) % 60
+                frames = (((frameNumber / frRound) / 60) / 60)
+            }
+            
+            double doubleSeconds = (hours * 3600) + (minutes * 60) + seconds + (frames / frRound) - videoStartOffset
+            if (doubleSeconds < 0) {
+                return 0
+            }
+            
+            return doubleSeconds
+            ]]>
+        </script>
+    </groovyStep>
+    
+    
+    <setContextData name="update timecode seconds"
+        targetDataDef="thumbSeconds"
+        valueExpression="${thumbnailDouble}"
+        devStep="true"
+        nextStep="copy video to temp"
+        />
+    
+    
+    <copyFileStep name="copy video to temp"
+        sourceFileExpression="${sourceFile}"
+        targetDirectoryExpression="${tempFolder}"
+        targetFilenameExpression="${assetUUID}"
+        resultDataDef="tempSourceFile"
+        devStep="true"
+    >
+        <transition condition="${tempSourceFile.exists()}">
+            <targetStepName>create video thumbnail</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>failed to copy source to temp</targetStepName>
+        </transition>
+    </copyFileStep>
+    
+    
+    <runCommandStep name="create video thumbnail"
+        executionLabelExpression="create custom video thumbnail"
+        executablePathExpression="/reachengine/utilities/ffmpeg"
+        continueOnException="true"
+        nextStep="delete temp video"
+        >
+        <arg>-y</arg>
+        <arg>-ss</arg>
+        <arg>${thumbSeconds}</arg>
+        <arg>-i</arg>
+        <arg>${tempSourceFile.getAbsolutePath()}</arg>
+        <arg>-vf</arg>
+        <arg>scale=max(400\,a*400):max(400\,400/a),crop=400:400</arg>
+        <arg>-vframes</arg>
+        <arg>1</arg>
+        <arg>${thumbnailFile.getAbsolutePath()}</arg>
+    </runCommandStep>
+    
+    
+    <deleteFileStep name="delete temp video"
+        executionLabelExpression="deleting ${tempSourceFile.absolutePath}"
+        sourceFilesExpression="${tempSourceFile}"
+        continueOnException="true"
+        devStep="true"
+        >
+        <transition condition="${thumbnailFile.exists()}">
+            <targetStepName>normalize thumbnail</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>error creating video thumbnail</targetStepName>
+        </transition>
+    </deleteFileStep>
+    
+    
+    <!-- ................................................... Gif Steps .................................................... -->
+    <copyFileStep name="copy gif to temp"
+        sourceFileExpression="${sourceFile}"
+        targetDirectoryExpression="${tempFolder}"
+        targetFilenameExpression="${assetUUID}"
+        resultDataDef="tempSourceFile"
+        devStep="true"
+        >
+        <transition condition="${tempSourceFile.exists()}">
+            <targetStepName>get gif data</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>failed to copy source to temp</targetStepName>
+        </transition>
+    </copyFileStep>
+
+    
+    <groovyStep name="get gif data"
+        resultDataDef="gifFrame"
+        continueOnException="true"
+        devStep="true"
+        >
+        <transition condition="${gifFrame &gt; 0}">
+            <targetStepName>normalize gif</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>delete temp gif</targetStepName>
+        </transition>
+        <script>
+        <![CDATA[
+            StringBuffer sout = new StringBuffer()
+            StringBuffer serr = new StringBuffer()
+        
+            def command = "/usr/local/bin/identify " + tempSourceFile.getAbsolutePath()
+            def proc = command.execute()
+            proc.waitForProcessOutput sout, serr
+            
+            float p = (float) gIFThumbnailPercentage
+            def value = proc.exitValue()
+            int count = sout.toString().readLines().size()
+            int k = (int)(count * ( p / 100.0f))
+            
+            return k
+        ]]>
+        </script>
+    </groovyStep>
+
+    
+    <runCommandStep name="normalize gif"
+        executablePathExpression="/usr/local/bin/convert"
+        nextStep="extract gif thumbnail"
+        >
+        <arg>${tempSourceFile.getAbsolutePath()}</arg>
+        <arg>-coalesce</arg>
+        <arg>-set</arg>
+        <arg>dispose</arg>
+        <arg>previous</arg>
+        <arg>${tempSourceFile.getAbsolutePath()}</arg>
+    </runCommandStep>
+
+    
+    <runCommandStep name="extract gif thumbnail"
+        executablePathExpression="/usr/local/bin/convert"
+        nextStep="copy gif to S3"
+        >
+        <arg>-strip</arg>
+        <arg>${tempSourceFile.getAbsolutePath()}[0]</arg>
+        <arg>${thumbnailFile.getAbsolutePath()}</arg>
+    </runCommandStep>
+
+    
+    <copyFileStep name="copy gif to S3"
+        sourceFileExpression="${tempSourceFile.absolutePath}"
+        targetDirectoryExpression="mobileStreamingContent/${hls_folder}/"
+        nextStep="delete temp gif"
+        />
+
+    
+    <deleteFileStep name="delete temp gif"
+        sourceFilesExpression="${tempSourceFile}"
+        continueOnException="true"
+        devStep="true"
+        nextStep="normalize thumbnail"
+        />
+    
+    
+    <!-- ............................................. Final Thumbnail Steps .............................................. -->
+    <runCommandStep name="normalize thumbnail"
+        executionLabelExpression="Applying Auto Gamma, Auto Levels and Normalization"
+        executablePathExpression="/usr/local/bin/convert"
+        nextStep="copy thumbnail to S3"
+        >
+        <arg>${thumbnailFile.getAbsolutePath()}</arg>
+        <arg>-normalize</arg>
+        <arg>-auto-gamma</arg>
+        <arg>-auto-level</arg>
+        <arg>${thumbnailFile.getAbsolutePath()}</arg>
+    </runCommandStep>
+
+    
+    <copyFileStep name="copy thumbnail to S3"
+        sourceFileExpression="${thumbnailFile.absolutePath}"
+        targetFilenameExpression="${assetUUID}.jpg"
+        targetDirectoryExpression="mobileStreamingContent/${hls_folder}/"
+        nextStep="delete temp thumbnail"
+        />
+
+    
+    <deleteFileStep name="delete temp thumbnail"
+        sourceFilesExpression="${thumbnailFile}"
+        continueOnException="true"
+        devStep="true"
+        nextStep="set asset metdata"
+        />
+    
+    
+    <!-- ................................................ Ending Metadata ................................................. -->
+    <saveDataObjectStep name="set asset metdata"
+        executionLabelExpression="set asset metdata"
+        targetDataObjectClass="Metadata"
+        dataObjectExpression="${subject.masterAsset.metadata}"
+        devStep="true"
+        nextStep="end"
+        >
+        <property name="appPublishStatus">${appPublishStatusComplete}</property>
+        <property name="aFVAppContent">${aFVAppContent_AppTrue}</property>
+        <property name="hLSURL">${CDN_url}${hls_folder}/${sourceFile.getName().substring(0, sourceFile.getName().lastIndexOf('.'))}.${videoCDNExtension}</property>
+        <property name="thumbnailURL">${CDN_url}${hls_folder}/${thumbnailFile.getName()}</property>
+    </saveDataObjectStep>
+
+
+    <saveDataObjectStep name="set fail asset metdata"
+        targetDataObjectClass="Metadata"
+        dataObjectExpression="${subject.masterAsset.metadata}"
+        devStep="true"
+        nextStep="error required metadata missing"
+        >
+        <property name="appPublishStatus">${appPublishStatusFailed}</property>
+    </saveDataObjectStep>
+    
+    
+    <!-- ................................................... End Steps .................................................... -->
+    <noopStep name="end"/>
+
+    
+    <failWorkflowStep name="asset type not supported"
+        executionLabelExpression="assets of type ${selectedAsset.getAssetType()} are not supported"
+        reasonExpression="assets of type ${selectedAsset.getAssetType()} are not supported"
+        />
+
+    <failWorkflowStep name="failed to calculate thumbnail seconds"
+        executionLabelExpression="failed to calculate thumbnail seconds"
+        reasonExpression="failed to calculate thumbnail seconds"
+        />
+
+    
+    <failWorkflowStep name="failed to copy source to temp"
+        executionLabelExpression="failed to copy source to temp"
+        reasonExpression="failed to copy source to temp"
+        />
+
+    
+    <failWorkflowStep name="asset was already published"
+        executionLabelExpression="If you wish to re-publish the asset, you must first delete the cdn distribution folder ${assetUUID} from ${destination_bucket} s3 bucket"
+        reasonExpression="If you wish to re-publish the asset, you must first delete the cdn distribution folder ${assetUUID} from ${destination_bucket} s3 bucket"
+        />
+    
+    
+    <failWorkflowStep name="transcode submit error"
+        executionLabelExpression="Something went wrong submitting the job"
+        reasonExpression="Something went wrong submitting the job"
+        />
+
+
+    <failWorkflowStep name="transcode error"
+        executionLabelExpression="Got error result from Media Convert | ${jobStatusJson?.get('Job')?.get('ErrorCode')?.asText()} | ${jobStatusJson?.get('Job')?.get('ErrorMessage')?.asText()}"
+        reasonExpression="Got error result from Media Convert"
+        />
+
+
+    <failWorkflowStep name="transcode cancelled"
+        executionLabelExpression="Media Convert job cancelled from Media Convert"
+        reasonExpression="Media Convert job cancelled from Media Convert"
+        />
+
+    
+    <failWorkflowStep name="workflow is running"
+        executionLabelExpression="Workflow already executing on the file"
+        reasonExpression="Workflow already executing on the file"
+        />
+    
+    
+    <failWorkflowStep name="error required metadata missing"
+        executionLabelExpression="Required Metadata is Missing - Ensure Metadata is populated in the Approprate Metadata Group."
+        reasonExpression="required metadata missing"
+        />
+
+    
+    <failWorkflowStep name="error parsing timecode"
+        executionLabelExpression="There was an error parsing the thumbnail timecode ${thumbnailTimecode}"
+        reasonExpression="error parsing timecode"
+        />
+    
+    
+    <failWorkflowStep name="error creating video thumbnail"
+        reasonExpression="error creating video thumbnail"
+        executionLabelExpression="error creating video thumbnail"
+        />
+    
+    
+    <!-- ................................................... Data Defs .................................................... -->
+    <!-- Processing Variables -->
+    <contextDataDef name="responseOutString"        dataType="String"/>
+    <contextDataDef name="responseErrString"        dataType="String"/>
+    <contextDataDef name="responseCode"             dataType="Integer"/>
+    <contextDataDef name="responseJson"             dataType="JSON"/>
+    <contextDataDef name="jobStatusJson"            dataType="JSON"/>
+    <contextDataDef name="jobId"                    dataType="String"/>
+    <contextDataDef name="thumbnail_CDN_url"        dataType="JSON"/>
+    <contextDataDef name="video_CDN_url"            dataType="JSON"/>
+    <contextDataDef name="currentExecutions" 	    dataType="Data Object"  multiple="true"/>
+    <contextDataDef name="tempSourceFile"           dataType="File"/>
+    <contextDataDef name="sourceFile"               dataType="File"         defaultDataExpression="${assetContent.file}"/>
+    <contextDataDef name="tempFolder"               dataType="String"       defaultDataExpression="/reachengine/media/temp"/>
+    <contextDataDef name="success"                  dataType="Boolean"      defaultDataExpression="false"/>
+    <contextDataDef name="transcodeTemplate"        dataType="String"       defaultDataExpression="proxy"/>
+    <contextDataDef name="selectedAsset"            dataType="Data Object"  defaultDataExpression="${subject}"/>
+    <contextDataDef name="assetContent" 			dataType="Data Object"  defaultDataExpression="${#mezzanineContent(selectedAsset) ?: selectedAsset.originalContent}"/>
+    <contextDataDef name="CDN_url"                  dataType="String"       defaultDataExpression="${#sysconfig('CDN.bucket.url')}"/>
+    <contextDataDef name="gIFThumbnailPercentage"   dataType="Integer"      defaultDataExpression="${subject.metadata.gIFThumbnailPercentage ?: 33}" />
+    <contextDataDef name="fBTitle"                  dataType="String"       defaultDataExpression="${subject.metadata.fBTitle ?: null}"/>
+    <contextDataDef name="fBDescription"            dataType="String"       defaultDataExpression="${subject.metadata.fBDescription ?: null}"/>
+    <contextDataDef name="videoAppropriate4Toddler" dataType="String"       defaultDataExpression="${subject.metadata.videoAppropriate4Toddler ?: null}"/>
+    <contextDataDef name="appActivationDate"        dataType="String"       defaultDataExpression="${subject.metadata.appActivationDate ?: null}"/>
+    <contextDataDef name="aFVMobileYoutubeURL"      dataType="String"       defaultDataExpression="${subject.metadata.aFVMobileYoutubeURL ?: null}"/>
+    <contextDataDef name="resourceClass"            dataType="String"       defaultDataExpression="${subject.metadata.resourceClass ?: null}"/>
+    <contextDataDef name="videoCDNExtension"        dataType="String"       defaultDataExpression="${selectedAsset.getAssetType()?.equals('Video') ? 'm3u8' : 'gif'}"/>
+    <contextDataDef name="assetFileNameExtension"   dataType="String"       defaultDataExpression="${sourceFile.getAbsolutePath() != null ? #extension(sourceFile.getAbsolutePath()).toLowerCase() : null}"/>
+    <contextDataDef name="appPublishStatusComplete" dataType="String"       defaultDataExpression="${#sysconfig('CDN.app.publishStatus.complete')}"/>
+    <contextDataDef name="appPublishStatusFailed"   dataType="String"       defaultDataExpression="${#sysconfig('CDN.app.publishStatus.failed')}"/>
+    <contextDataDef name="aFVAppContent_AppTrue"    dataType="String"       defaultDataExpression="f99c8ce404a14af7b993259590edc2b7"/>
+    <contextDataDef name="appPublishStatus"         dataType="String"       defaultDataExpression="${subject.metadata.appPublishStatus != null AND subject.metadata.appPublishStatus.size() &gt; 0 ? subject.metadata.appPublishStatus[0] : null}"/>
+    <contextDataDef name="appPublishStatusLabel"    dataType="String"       defaultDataExpression="${appPublishStatus != null ? #picklistLabel('appPublishStatus', appPublishStatus) : null}"/>
+    
+    <!-- Thumbnail Variables -->
+    <contextDataDef name="thumbnailFile"            dataType="File"         defaultDataExpression="/reachengine/media/temp/${assetUUID}.jpg"/>
+    <contextDataDef name="thumbnailPercentage"      dataType="Integer"      defaultDataExpression="33"/>
+    <contextDataDef name="thumbSeconds"             dataType="Double"       defaultDataExpression="0"/>
+    <contextDataDef name="thumbFrames"              dataType="Integer"/>
+    <contextDataDef name="gifFrame"                 dataType="Integer"      defaultDataExpression="0"/>
+    <contextDataDef name="videoContent"             dataType="Data Object"  defaultDataExpression="${subject.currentVersion.mezzanine != null ? subject.currentVersion.mezzanine : subject.currentVersion.originalContent}"/>
+    <contextDataDef name="test"                     dataType="String"       defaultDataExpression="${videoContent.mimeType}"/>
+    <contextDataDef name="thumbnailTimecode"        dataType="String"       defaultDataExpression="${subject.metadata.thumbnailTimecode}"/>
+    <contextDataDef name="thumbnailDouble"          dataType="Double"/>
+    <contextDataDef name="videoFrameRate"           dataType="Double"       defaultDataExpression="${!videoContent.mimeType?.equals('image/gif') ? videoContent.frameRate.toString() : null}"/>
+    <contextDataDef name="videoStartOffset"         dataType="Double"       defaultDataExpression="${!videoContent.mimeType?.equals('image/gif') ? videoContent.startTime : null}"/>
+    
+    <!-- Initial Check Variables -->
+    <contextDataDef name="isPublished"              dataType="Boolean"      defaultDataExpression="${appPublishStatusLabel?.equals('Complete')}"/>
+    <contextDataDef name="hasRequiredMetadata"      dataType="Boolean"      defaultDataExpression="${fBTitle != null AND !fBTitle.isEmpty() AND fBDescription != null AND !fBDescription.isEmpty() AND videoAppropriate4Toddler != null AND !videoAppropriate4Toddler.isEmpty() AND appActivationDate != null AND !appActivationDate.isEmpty() AND resourceClass != null AND !resourceClass.isEmpty()}"/>
+    <contextDataDef name="assetType"                dataType="String"       defaultDataExpression="${selectedAsset.getAssetType()?.equals('Image') AND assetFileNameExtension?.equals('gif') ? 'gif' : selectedAsset.getAssetType().toLowerCase()}"/>
+    
+    <!-- Media Convert Variables -->
+    <contextDataDef name="outputRoot"               dataType="String"       defaultDataExpression="${#sysconfig('s3.root.s3ingestbucket')}"/>
+    <contextDataDef name="queue"                    dataType="String"       defaultDataExpression="${#sysconfig('mediaConvert.queue.mezzanine') ?: '' }"/>
+    <contextDataDef name="endpointUrl"              dataType="String"       defaultDataExpression="${#sysconfig('mediaConvert.endpoint.url')}"/>
+    <contextDataDef name="region"                   dataType="String"       defaultDataExpression="${#sysconfig('s3.region')}"/>
+    <contextDataDef name="profile"                  dataType="String"       defaultDataExpression="${#sysconfig('mediaConvert.aws.profile')}"/>
+    <contextDataDef name="role"                     dataType="String"       defaultDataExpression="${#sysconfig('mediaConvert.iam.role')}"/>
+    <contextDataDef name="preset"    		        dataType="String"       defaultDataExpression="${#sysconfig('workflows.default.proxies.video.mezzTemplate') ?: (#sysconfig('import.mezzanineSettingName') ?: 'FFmpeg Mezz')}" />
+    <contextDataDef name="resultFilePath"           dataType="String"       defaultDataExpression="${outputRoot}${#formatDate('yyyy/MM/dd/HH_mm_ss_SS/', currentDateTime)}${#baseFilename(sourceFile.absolutePath)}.mp4"/>
+    <contextDataDef name="resultFile"               dataType="File"         defaultDataExpression="${resultFilePath}"/>
+    <contextDataDef name="outputLoc"                dataType="String"       defaultDataExpression="${#mapPath(resultFilePath.substring(0, resultFilePath.lastIndexOf('/') + 1 ), 's3mapping')}"/>
+    <contextDataDef name="sourceFilePath"           dataType="String"       defaultDataExpression="${#mapPath(sourceFile.absolutePath, 's3mapping')}"/>
+    <contextDataDef name="currentDateTime"          dataType="Date/Time"    defaultDataExpression="${#newDate()}"/>
+    <contextDataDef name="destination_bucket"       dataType="String"       defaultDataExpression="${#sysconfig('CDN.bucket.arn')}"/>
+    <contextDataDef name="assetUUID"                dataType="String"       defaultDataExpression="${#baseFilename(selectedAsset.name)}_${selectedAsset.id}"/>
+    <contextDataDef name="hls_folder"               dataType="String"       defaultDataExpression="${assetUUID}"/>
+    <!-- Media Convert JSON -->
+    <contextDataDef name="cliInputJson"             dataType="JSON">
+        <defaultDataExpression>
+        <![CDATA[
+            {
+                "Queue": "${queue}",
+                "Role": "${role}",
+                "Settings": {
+                    "OutputGroups": [{
+                        "Name": "RE: Apple HLS Publish to CDN | ${sourceFilePath}",
+                        "Outputs": [{
+                            "Preset": "System-Ott_Hls_Ts_Avc_Aac_16x9_1920x1080p_30Hz_8.5Mbps",
+                            "NameModifier": "1920x1080, 8.5 mbps"
+                        }, {
+                            "Preset": "System-Ott_Hls_Ts_Avc_Aac_16x9_1280x720p_30Hz_5.0Mbps",
+                            "NameModifier": "1280x720 5.0 mbps"
+                        }, {
+                            "Preset": "System-Ott_Hls_Ts_Avc_Aac_16x9_960x540p_30Hz_3.5Mbps",
+                            "NameModifier": "960x540 3.5mbps"
+                        }, {
+                            "Preset": "System-Ott_Hls_Ts_Avc_Aac_16x9_640x360p_30Hz_1.2Mbps",
+                            "NameModifier": "640x360 1.2 mbps"
+                        }, {
+                            "Preset": "System-Ott_Hls_Ts_Avc_Aac_16x9_480x270p_15Hz_0.4Mbps",
+                            "NameModifier": "480x270 400kbps"
+                        }],
+                        "OutputGroupSettings": {
+                            "Type": "HLS_GROUP_SETTINGS",
+                            "HlsGroupSettings": {
+                                "ManifestDurationFormat": "INTEGER",
+                                "SegmentLength": 6,
+                                "TimedMetadataId3Period": 10,
+                                "CaptionLanguageSetting": "OMIT",
+                                "Destination": "${destination_bucket}/${hls_folder}/",
+                                "TimedMetadataId3Frame": "PRIV",
+                                "CodecSpecification": "RFC_4281",
+                                "OutputSelection": "MANIFESTS_AND_SEGMENTS",
+                                "ProgramDateTimePeriod": 600,
+                                "MinSegmentLength": 0,
+                                "DirectoryStructure": "SINGLE_DIRECTORY",
+                                "ProgramDateTime": "EXCLUDE",
+                                "SegmentControl": "SEGMENTED_FILES",
+                                "ManifestCompression": "NONE",
+                                "ClientCache": "ENABLED",
+                                "StreamInfResolution": "INCLUDE"
+                            }
+                        }
+                    }],
+                    "AdAvailOffset": 0,
+                    "Inputs": [{
+                        "AudioSelectors": {
+                            "Audio Selector 1": {}
+                        },
+                        "FileInput": "${sourceFilePath}"
+                    }]
+                }
+            }
+        ]]>
+        </defaultDataExpression>
+    </contextDataDef>
+ 
+</workflow>
+

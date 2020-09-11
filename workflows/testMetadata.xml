@@ -1,0 +1,31 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="testMetadata"
+    name="dan - test metadata"
+    executionLabelExpression="testing metadata"
+    description=""
+    resultDataDef=""
+    showInUserInterface="true"
+    subjectDOClassName="AssetMaster"
+    subjectQualifierExpression=""
+    sdkVersion="5.21">
+
+
+    <initialStepName>set metadata</initialStepName>
+
+    <saveDataObjectStep
+        name="set metadata"
+        executionLabelExpression="Setting metadata on asset: ${assetMaster}"
+        dataObjectExpression="${assetMaster.MasterAsset.metadata}"
+        nextStep="end">
+        <property name="city">pocketskentucky</property>
+    </saveDataObjectStep>
+
+    <noopStep name="end"/>
+
+    <contextDataDef name="assetVersion" dataType="Data Object" defaultDataExpression="${subject.latestVersion}"/>
+    <contextDataDef name="assetMaster"             dataType="Data Object"    defaultDataExpression="${assetVersion?.masterAsset}"/>
+
+</workflow>

@@ -1,0 +1,107 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="practice6Assignment"
+	name="Practice 6 Assignment"
+	executionLabelExpression="Practice 6 Assignment"
+	description="
+		Modify the workflow
+			The workflow already ingests an asset successfully with metadata. 
+			Modify the workflow to take a directory as input instead of a file
+				Get all files in the directory and ingest each file
+				Set the gathered metadata on each file
+		Hint
+			Look for #walkDir or #ls in the function reference
+	"
+	subjectDOClassName=""
+	resultDataDef=""
+	deadlineExpression=""
+	showInUserInterface="true"
+	sdkVersion=""
+	>
+	
+	
+	
+	<initialStepName>get files</initialStepName>
+	
+	
+	
+	<!-- gather files in the directory -->
+	<setContextData name="get files"
+		executionLabelExpression="grabbing files from ${directoryToIngest.toString()}"
+		nextStep="set metadata"
+		>
+		<set targetDataDef="filesToIngest">${#walkDir(directoryToIngest, null)}</set>
+		<!-- -->
+	</setContextData>
+	
+	
+	
+	<!-- save user input data to the metadata json -->
+	<setContextData name="set metadata"
+		executionLabelExpression="testField = ${testField} | testCheckbox = ${testCheckbox != null? testCheckbox : 'null'}"
+		nextStep="ingest asset"
+		>
+		<set targetDataDef="jsonMetadata">
+			<![CDATA[
+				{
+					"testField":"${testField}",
+					"testCheckbox":${testCheckbox != null? testCheckbox : false}
+				}
+			]]>
+		</set>
+	</setContextData>
+	
+	
+	
+	<!-- ingest the input file -->
+	<executeSubflowStep name="ingest asset"
+		targetWorkflowId="_anyAssetIngest"
+		subjectChangePath="${fileToIngest}"
+		subflowTargetDataDef="fileToIngest"
+		resultDataDef="assetVersion"
+		executionLabelExpression="ingest ${fileToIngest.name}"
+		pctComplete="99"
+		nextStep="end"
+		>
+		<subflowContextDataMapping parentDataDef="skipMezzanineFlag" 		subflowDataDef="skipMezzanineFlag"/>
+		<subflowContextDataMapping parentDataDef="allowDuplicateNamesFlag" 	subflowDataDef="allowDuplicateNamesFlag"/>
+		<subflowContextDataMapping parentDataDef="jsonMetadata" 			subflowDataDef="jsonMetadata"/>
+	</executeSubflowStep>
+	
+	
+	
+	
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	
+	
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ..... inputs ..... -->
+	<!-- file to ingest as an asset -->
+	<contextDataDef name="directoryToIngest" 		dataType="Directory"	userInput="true"	label="01: Directory To Ingest"	required="true"/>
+	<!-- create or do not create a mezzanine -->
+	<contextDataDef name="skipMezzanineFlag" 		dataType="Boolean" 		userInput="true"	label="02: Use Source as Mezzanine?"		defaultDataExpression="true"/>
+	<!-- always ingest asset as a new asset, or if an asset is found use it instead -->
+	<contextDataDef name="allowDuplicateNamesFlag" 	dataType="Boolean" 		userInput="true"	label="03: Allow Duplicate File Names?"		defaultDataExpression="false"/>
+	<!-- metadata input -->
+	<contextDataDef name="testField" 				dataType="String"		userInput="true"	label="04: Metadata - testField"/>
+	<contextDataDef name="testCheckbox" 			dataType="Boolean"		userInput="true"	label="05: Metadata - testCheckbox"/>
+	
+	<!-- ... Calculated ... -->
+	<!-- files to ingest as assets -->
+	<contextDataDef name="filesToIngest"            dataType="File"         multiple="true"/>
+	<!-- can be used to set metadata by default -->
+	<contextDataDef name="jsonMetadata" 			dataType="JSON"/>
+	<!-- Asset Version Data Objects returned from the ingest subflow -->
+	<contextDataDef name="assetVersion" 			dataType="Data Object"	multiple="true"/>
+	
+</workflow>

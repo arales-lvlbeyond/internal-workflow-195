@@ -1,0 +1,135 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="
+        http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+    "
+    
+	id="_extractExifFromFile"
+	name="Extract Exif Metadata"
+	executionLabelExpression="Extract Exif fom asset: ${fileToIngest?.name}"
+    subjectDOClassName=""
+    showInUserInterface="false"
+    resultDataDef="resultNVP"
+    sdkVersion="4.2"
+	>
+
+	<initialStepName>check for extraction file</initialStepName>
+	
+	<noopStep name="check for extraction file"
+		executionLabelExpression="check the file"
+		>
+		
+		<transition condition="${ exifDefinitions.exists() }">
+			<targetStepName>get exif string</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>no exif definitions</targetStepName>
+		</transition>
+		
+	</noopStep>
+	
+	<groovyStep
+		name="get exif string"
+		resultDataDef="returnString" >
+		
+		<transition condition="true">
+			<targetStepName>print list of extraction</targetStepName>
+		</transition>
+		
+		<script>
+<![CDATA[
+ import groovy.*;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+
+ Logger log = LoggerFactory.getLogger("com.levelsbeyond.plugin.workflow");
+ def config = new File(exifDefinitionString);
+
+ log.debug("*** exif ***");
+ log.debug(config.text.replace('\n',' '));
+
+ return config.text.replace('\n',' ');
+]]>			
+		</script>
+		
+	</groovyStep>
+	
+	<noopStep 
+		name="print list of extraction"
+		executionLabelExpression="list: ${returnString.substring(0,3500)}"
+		>
+		
+		<transition condition="true">
+			<targetStepName>extract exif meta</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<!-- Run exiftool on input file -->
+	<runCommandStep name="extract exif meta"
+		executablePathExpression="/bin/sh"
+		pctComplete="20"
+		continueOnException="false"
+		>
+		
+		<transition condition="${outputFile.exists()}">
+			<targetStepName>set result</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>no output</targetStepName>
+		</transition>
+		
+		<arg>-c</arg>
+		<arg>${exiftool} "${fileToIngest.absolutePath}" ${returnString} -w! .txt</arg>
+		
+	</runCommandStep>
+	
+	<!-- Parse results into NameValuePairs and set on result -->
+	<setContextData 
+		name="set result" 
+		valueExpression="${#nameValuePairs(outputFile, ':')}"
+		targetDataDef="resultNVP">
+		<transition condition="${true}">
+			<targetStepName>delete temp file</targetStepName>
+		</transition>
+	</setContextData>
+	
+	<deleteFileStep name="delete temp file"
+		sourceFilesExpression="${ outputFile }"
+		continueOnException="true"
+		devStep="true">
+		
+		<transition condition="${true}">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</deleteFileStep>
+	
+	<failWorkflowStep reasonExpression="No Definition File" name="no exif definitions"/>
+	<noopStep name="no output"/>
+	<noopStep name="end" executionLabelExpression="result: ${result.toString()}"/>
+	
+	<contextDataDef name="fileToIngest" dataType="File" userInput="false"/>
+	<contextDataDef name="exiftool" dataType="String" defaultDataExpression="${#sysconfig('exiftool.path')}"></contextDataDef>
+	<contextDataDef name="outputFile" dataType="File" defaultDataExpression="${#filepath(fileToIngest.absolutePath)}${#baseFilename(fileToIngest.absolutePath)}.txt"/>
+	<contextDataDef name="exifDefinitions" dataType="File" defaultDataExpression="${#sysconfig('exif.definition.file')}"/>
+	<contextDataDef name="exifDefinitionString" dataType="String" defaultDataExpression="${exifDefinitions.absolutePath}"/>
+	<contextDataDef name="returnString" dataType="String"/>
+	<contextDataDef name="resultNVP" dataType="NameValuePair" multiple="true"/>
+	
+</workflow>

@@ -1,0 +1,25 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="hai"
+	name="hai"
+	executionLabelExpression=""
+	description=""
+	subjectDOClassName=""
+	subjectQualifierExpression=""
+	showInUserInterface="true"
+	deadlineExpression=""
+	sdkVersion="5.21"
+	>
+
+<initialStepName>hi</initialStepName>
+
+    <noopStep name="hi" nextStep="end"/>
+
+<noopStep name="end"/>
+
+<contextDataDef name="1" dataType="String" defaultDataExpression="hai"/>
+<contextDataDef name="2" dataType="String" multiple="true"/>
+
+</workflow>

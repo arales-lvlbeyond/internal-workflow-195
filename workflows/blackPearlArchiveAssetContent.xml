@@ -1,0 +1,170 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="
+    http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-1.5.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-prelude.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-projects-workflow-1.5.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/re-prod-custom-steps.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/workflow-plugin-anywhere-1.0.xsd
+        "
+	
+	id="blackPearlArchiveAssetContent"
+	name="Black Pearl Archive Asset Content"
+	executionLabelExpression="Black Pearl Archive Asset Content | ${archiveOrBackup} AssetContent | ${subject.file?.absolutePath}"
+	description="
+    
+    "
+	subjectDOClassName="AssetContent"
+	showInUserInterface="false"
+	resultDataDef="tapes"
+	deadlineExpression=""
+	sdkVersion=""
+>
+	
+	<initialStepName>check archive status</initialStepName>
+	
+	
+	<!-- ................................................... Beginning Steps ................................................... -->
+	<!-- is this file already truncated? -->
+	<noopStep name="check archive status"
+		executionLabelExpression="truncatedFlag = ${subject.truncatedFlag} | Archive Option = ${archiveOrBackup} | restoreKey = ${subject.restoreKey}"
+		pctComplete="10"
+	>
+		<transition condition="${subject.truncatedFlag}">
+			<targetStepName>content is already archived</targetStepName>
+		</transition>
+		<transition condition="${!subject.file.exists()}">
+			<targetStepName>source file not found</targetStepName>
+		</transition>
+		<transition condition="${subject.restoreKey != null and !subject.restoreKey.equals('')}">
+			<targetStepName>content is already backed up</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>backup file</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- .............................................. Backup And Archive Steps ............................................... -->
+	<!--
+		Backup the file to BlackPearl.
+	-->
+	<executeSubflowStep name="backup file"
+		targetWorkflowId="blackPearlBackupFileToTape"
+		subjectChangePath="${subject}"
+		pctComplete="50"
+		nextStep="validate backup exists">
+		<subflowContextDataMapping parentDataDef="archiveOrBackup" subflowDataDef="archiveOrBackup"/>
+	</executeSubflowStep>
+	
+	
+	<!--
+		Landing point if a restore key was already set and no new changes were found (skipped backup).
+		If archive is selected, move to validate the backup is still valid before deleting the file.
+	-->
+	<noopStep name="content is already backed up"
+		executionLabelExpression="${subject.file.name} is already backed up. | Archive Option = ${archiveOrBackup}"
+		pctComplete="60"
+	>
+		<transition condition="${archiveOrBackup.equals('archive')}">
+			<targetStepName>validate backup exists</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<!-- Validate the file is on Black Pearl and update tape locations -->
+	<executeSubflowStep name="validate backup exists"
+		targetWorkflowId="blackPearlValidateBackup"
+		subjectChangePath="${subject}"
+		pctComplete="70"
+	>
+		<transition condition="${archiveOrBackup.equals('archive')}">
+			<targetStepName>remove file from primary storage</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<subflowContextDataMapping parentDataDef="archiveOrBackup"  subflowDataDef="archiveOrBackup"/>
+	</executeSubflowStep>
+	
+	
+	<!-- .................................................. Archive Only Steps ................................................. -->
+	<!--
+		Delete the file from the filesystem.
+		This step should only be hit after:
+			the file is verified to be on Black Pearl
+			the tape locations are extracted
+			the restoreKey is set to the matching Black Pearl managed file location
+			the option to archive (instead of backup) is selected
+	-->
+	<deleteFileStep name="remove file from primary storage"
+		sourceFilesExpression="${subject.file}"
+		executionLabelExpression="removing ${subject.file.absolutePath}"
+		pctComplete="80"
+	>
+		<transition condition="true">
+			<targetStepName>truncate asset content</targetStepName>
+		</transition>
+	</deleteFileStep>
+	
+	
+	<!-- update the AssetContent to read as truncated/archived -->
+	<saveDataObjectStep
+		name="truncate asset content"
+		targetDataObjectClass="AssetContent"
+		dataObjectExpression="${subject}"
+		executionLabelExpression="Mark asset content ${subject.file.name} AssetContent ID ${subject.id} as archived"
+		pctComplete="90"
+		nextStep="set asset master as archived"
+	>
+		<property name="truncatedFlag">true</property>
+	</saveDataObjectStep>
+	
+	
+	<saveDataObjectStep name="set asset master as archived"
+		dataObjectExpression="${subject.asset}"
+		nextStep="end">
+		<property name="status">ARCHIVED</property>
+	</saveDataObjectStep>
+	
+	
+	<!-- ...................................................... End Steps ...................................................... -->
+	<!-- landing point if the truncatedFlag is set already on the AssetContent -->
+	<noopStep name="content is already archived"
+		executionLabelExpression="truncated flag is true"
+		pctComplete="99"
+	>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	
+	<!-- success -->
+	<noopStep name="end" pctComplete="100"/>
+	
+	
+	<!-- error, asset not truncated but file is missing -->
+	<failWorkflowStep name="source file not found"
+		reasonExpression="truncatedFlag = ${subject.truncatedFlag} | restoreKey = ${subject.restoreKey} | Content file is missing >>> ${subject.file.absolutePath}"
+		executionLabelExpression="asset is marked available, but content file is missing >>> ${subject.file.absolutePath}"
+	/>
+	
+	
+	
+	<!-- .................................................. Context Data Defs .................................................. -->
+	<!--
+		archive (truncate) content? or backup content?
+		possible values:
+			archive
+			backup
+	-->
+	<contextDataDef name="archiveOrBackup"      dataType="String"       defaultDataExpression="backup"/>
+
+</workflow>

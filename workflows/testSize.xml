@@ -1,0 +1,55 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns="http://levelsbeyond.com/schema/workflow"
+xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+id="testSize"
+name="testSize"
+executionLabelExpression="testSize"
+description=""
+subjectDOClassName="AssetMaster"
+resultDataDef=""
+deadlineExpression=""
+showInUserInterface="true"
+sdkVersion="5.21"
+>
+
+<initialStepName>check asset info</initialStepName>
+
+<setContextData name="check asset info"
+    valueExpression="${asset?.originalContent.file.length()}"
+    targetDataDef="data"
+    nextStep="calculate gigabytes"/>
+
+
+    <setContextData name="calculate gigabytes"
+        executionLabelExpression="calculating ${T(java.lang.String).format('%.9f', data / 1024d / 1024d / 1024d)}"
+        valueExpression="${data / 1024d / 1024d / 1024d}"
+        targetDataDef="sizeInGB"
+        nextStep="calculate gigglebytes"/>
+
+<noopStep name="calculate gigglebytes" executionLabelExpression=" hayyyy ${T(java.lang.String).format('%.9f', sizeInGB)}" nextStep="end"/>
+
+<groovyStep name="re-calculate gigabytes"
+    executionLabelExpression="calculating ${T(java.lang.String).format('%.9f', data / 1024d / 1024d / 1024d)}"
+    resultDataDef="sizeInGB"
+    nextStep="end">
+    <script>
+            <![CDATA[
+        double bytes = (double) data;
+        double kilobytes = (bytes / 1024d);
+        double megabytes = (kilobytes / 1024d);
+        Double gigabytes = new Double(megabytes / 1024d);
+
+        return gigabytes
+        ]]>
+        </script>
+</groovyStep>
+
+<noopStep name="end"/>
+
+
+<contextDataDef name="data" dataType="Double"/>
+<contextDataDef name="asset" dataType="Data Object" defaultDataExpression="${subject}"/>
+<contextDataDef name="sizeInGB" dataType="Double"/>
+
+</workflow>

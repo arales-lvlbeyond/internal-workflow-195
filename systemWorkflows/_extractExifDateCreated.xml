@@ -1,0 +1,92 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="
+            http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+            "
+          id="_extractExifDateCreated"
+          name="Extract Exif Date Created"
+          executionLabelExpression="Extract Exif Date Created"
+          description=""
+          subjectDOClassName=""
+          showInUserInterface="false"
+          resultDataDef="sourceDate"
+          deadlineExpression=""
+          sdkVersion="4.2">
+
+    <initialStepName>parse json</initialStepName>
+
+    <groovyStep name="parse json"
+                resultDataDef="sourceDate"
+                continueOnException="true"
+                executionLabelExpression="${jsonMetadata.toString().length() > 1000 ? jsonMetadata.toString().substring(jsonMetadata.toString().length() - 1000) : jsonMetadata.toString()} "
+                nextStep="end">
+        <script>
+            <![CDATA[
+			import groovy.*;
+			import groovy.json.*;
+			import org.joda.time.DateTime;
+			import java.util.Locale;
+            import org.joda.time.DateTime;
+            import org.joda.time.chrono.ISOChronology;
+            import org.joda.time.format.DateTimeFormat;
+            import org.joda.time.format.DateTimeFormatter;
+
+
+
+            String sDate = null;
+			if (jsonMeta.get('CreateDate') != null) {
+			    sDate = jsonMeta.get('CreateDate').asText();
+			}
+			else if (jsonMeta.get('DateTimeOriginal') != null) {
+			    sDate = jsonMeta.get('DateTimeOriginal').asText();
+			}
+			else if (jsonMeta.get('DateTimeDigitized') != null) {
+			    sDate = jsonMeta.get('DateTimeDigitized').asText();
+			}
+			else if (jsonMeta.get('DateTime') != null) {
+			    sDate = jsonMeta.get('DateTime').asText();
+            }
+			else if (jsonMeta.get('ModifyDate') != null) {
+			    sDate = jsonMeta.get('ModifyDate').asText();
+            }
+
+
+			DateTimeFormatter dateFormatter = DateTimeFormat.forPattern("YYYY:MM:dd HH:mm:ss")
+	        .withLocale(Locale.ROOT)
+	        .withChronology(ISOChronology.getInstanceUTC());
+
+
+
+
+           if (sDate != null) {
+              return dateFormatter.parseDateTime(sDate).toDate();
+           }
+		]]>
+        </script>
+    </groovyStep>
+
+
+    <noopStep name="end" />
+
+    <contextDataDef name="jsonMeta"      dataType="JSON"/>
+    <contextDataDef name="sourceDate"    dataType="Date/Time" />
+
+</workflow>

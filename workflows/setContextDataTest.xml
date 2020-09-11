@@ -1,0 +1,386 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-1.2.xsd"
+          id="setContextDataTest"
+          name="Set Context Data Test"
+          description=""
+          executionLabelExpression="Set Context Data Total Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+          deadlineExpression=""
+          subjectDOClassName=""
+          showInUserInterface="true"
+          resultDataDef="totalTime"
+
+>
+
+	<initialStepName>set directory</initialStepName>
+
+	<setContextData name="set directory"
+		targetDataDef="directoryContextData"
+		valueExpression="${#sysconfig('filesystem.root.temp')}"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms --- Time To First Step Overhead: ${T(String).valueOf(#this.getStartDate().getTime() - #root.getStartDate().getTime())}ms"
+		nextStep="set email"
+		/>
+
+	<setContextData name="set email"
+		targetDataDef="emailContextData"
+		valueExpression="email@web.bob"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set string"
+		/>
+
+	<setContextData name="set string"
+		targetDataDef="stringContextData"
+		valueExpression="this is a string"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set integer"
+		/>
+
+	<setContextData name="set integer"
+		targetDataDef="integerContextData"
+		valueExpression="2334"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set double"
+		/>
+
+	<setContextData name="set double"
+		targetDataDef="doubleContextData"
+		valueExpression="342.33"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set boolean"
+		/>
+
+	<setContextData name="set boolean"
+		targetDataDef="booleanContextData"
+		valueExpression="${true}"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set date"
+		/>
+
+	<setContextData name="set date"
+		targetDataDef="dateContextData"
+		valueExpression="${#newDate()}"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set datetime"
+		/>
+
+	<setContextData name="set datetime"
+		targetDataDef="dateTimeContextData"
+		valueExpression="${#newDate()}"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set data object"
+		/>
+
+	<setContextData name="set data object"
+		targetDataDef="dataObjectContextData"
+		valueExpression="${#root}"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set file"
+		/>
+
+	<setContextData name="set file"
+		targetDataDef="fileContextData"
+		valueExpression="${#sysconfig('filesystem.root.temp')}file.txt"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set json"
+		/>
+
+	<setContextData name="set json"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set namevaluepair"
+	>
+		<set targetDataDef="jsonContextData">
+            {
+              "data":{
+                "v1":"value",
+                "v2":"value"
+              }
+            }
+        </set>
+	</setContextData>
+
+	<setContextData name="set namevaluepair"
+		targetDataDef="nvpContextData"
+		valueExpression="${#nameValuePairs(pairsString, ':')}"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set xml"
+		/>
+
+	<setContextData name="set xml"
+		executionLabelExpression="${#this.name} - Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set 5"
+		>
+		<set targetDataDef="xmlContextData">
+			<![CDATA[
+                <note>
+                    <to>Recipient</to>
+                    <from>Sender</from>
+                    <heading>Reminder</heading>
+                    <body>Don't Forget</body>
+                </note>
+            ]]>
+		</set>
+	</setContextData>
+
+
+	<setContextData name="set 5"
+		executionLabelExpression="Set 5 dataDefs: Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="set 100"
+		>
+		<set targetDataDef="string1" valueExpression="one"/>
+		<set targetDataDef="string2" valueExpression="one"/>
+		<set targetDataDef="string3" valueExpression="one"/>
+		<set targetDataDef="string4" valueExpression="one"/>
+		<set targetDataDef="string5" valueExpression="one"/>
+	</setContextData>
+
+	<setContextData name="set 100"
+		executionLabelExpression="Set 100 dataDefs: Execution Time: ${T(String).valueOf(#this.getEndDate().getTime() - #this.getStartDate().getTime())}ms"
+		nextStep="end - set total time"
+		>
+		<set targetDataDef="string1" valueExpression="one"/>
+		<set targetDataDef="string2" valueExpression="one"/>
+		<set targetDataDef="string3" valueExpression="one"/>
+		<set targetDataDef="string4" valueExpression="one"/>
+		<set targetDataDef="string5" valueExpression="one"/>
+		<set targetDataDef="string6" valueExpression="one"/>
+		<set targetDataDef="string7" valueExpression="one"/>
+		<set targetDataDef="string8" valueExpression="one"/>
+		<set targetDataDef="string9" valueExpression="one"/>
+		<set targetDataDef="string10" valueExpression="one"/>
+		<set targetDataDef="string11" valueExpression="one"/>
+		<set targetDataDef="string12" valueExpression="one"/>
+		<set targetDataDef="string13" valueExpression="one"/>
+		<set targetDataDef="string14" valueExpression="one"/>
+		<set targetDataDef="string15" valueExpression="one"/>
+		<set targetDataDef="string16" valueExpression="one"/>
+		<set targetDataDef="string17" valueExpression="one"/>
+		<set targetDataDef="string18" valueExpression="one"/>
+		<set targetDataDef="string19" valueExpression="one"/>
+		<set targetDataDef="string20" valueExpression="one"/>
+		<set targetDataDef="string21" valueExpression="one"/>
+		<set targetDataDef="string22" valueExpression="one"/>
+		<set targetDataDef="string23" valueExpression="one"/>
+		<set targetDataDef="string24" valueExpression="one"/>
+		<set targetDataDef="string25" valueExpression="one"/>
+		<set targetDataDef="string26" valueExpression="one"/>
+		<set targetDataDef="string27" valueExpression="one"/>
+		<set targetDataDef="string28" valueExpression="one"/>
+		<set targetDataDef="string29" valueExpression="one"/>
+		<set targetDataDef="string30" valueExpression="one"/>
+		<set targetDataDef="string31" valueExpression="one"/>
+		<set targetDataDef="string32" valueExpression="one"/>
+		<set targetDataDef="string33" valueExpression="one"/>
+		<set targetDataDef="string34" valueExpression="one"/>
+		<set targetDataDef="string35" valueExpression="one"/>
+		<set targetDataDef="string36" valueExpression="one"/>
+		<set targetDataDef="string37" valueExpression="one"/>
+		<set targetDataDef="string38" valueExpression="one"/>
+		<set targetDataDef="string39" valueExpression="one"/>
+		<set targetDataDef="string40" valueExpression="one"/>
+		<set targetDataDef="string41" valueExpression="one"/>
+		<set targetDataDef="string42" valueExpression="one"/>
+		<set targetDataDef="string43" valueExpression="one"/>
+		<set targetDataDef="string44" valueExpression="one"/>
+		<set targetDataDef="string45" valueExpression="one"/>
+		<set targetDataDef="string46" valueExpression="one"/>
+		<set targetDataDef="string47" valueExpression="one"/>
+		<set targetDataDef="string48" valueExpression="one"/>
+		<set targetDataDef="string49" valueExpression="one"/>
+		<set targetDataDef="string50" valueExpression="one"/>
+		<set targetDataDef="string1a" valueExpression="one"/>
+		<set targetDataDef="string2a" valueExpression="one"/>
+		<set targetDataDef="string3a" valueExpression="one"/>
+		<set targetDataDef="string4a" valueExpression="one"/>
+		<set targetDataDef="string5a" valueExpression="one"/>
+		<set targetDataDef="string6a" valueExpression="one"/>
+		<set targetDataDef="string7a" valueExpression="one"/>
+		<set targetDataDef="string8a" valueExpression="one"/>
+		<set targetDataDef="string9a" valueExpression="one"/>
+		<set targetDataDef="string10a" valueExpression="one"/>
+		<set targetDataDef="string11a" valueExpression="one"/>
+		<set targetDataDef="string12a" valueExpression="one"/>
+		<set targetDataDef="string13a" valueExpression="one"/>
+		<set targetDataDef="string14a" valueExpression="one"/>
+		<set targetDataDef="string15a" valueExpression="one"/>
+		<set targetDataDef="string16a" valueExpression="one"/>
+		<set targetDataDef="string17a" valueExpression="one"/>
+		<set targetDataDef="string18a" valueExpression="one"/>
+		<set targetDataDef="string19a" valueExpression="one"/>
+		<set targetDataDef="string20a" valueExpression="one"/>
+		<set targetDataDef="string21a" valueExpression="one"/>
+		<set targetDataDef="string22a" valueExpression="one"/>
+		<set targetDataDef="string23a" valueExpression="one"/>
+		<set targetDataDef="string24a" valueExpression="one"/>
+		<set targetDataDef="string25a" valueExpression="one"/>
+		<set targetDataDef="string26a" valueExpression="one"/>
+		<set targetDataDef="string27a" valueExpression="one"/>
+		<set targetDataDef="string28a" valueExpression="one"/>
+		<set targetDataDef="string29a" valueExpression="one"/>
+		<set targetDataDef="string30a" valueExpression="one"/>
+		<set targetDataDef="string31a" valueExpression="one"/>
+		<set targetDataDef="string32a" valueExpression="one"/>
+		<set targetDataDef="string33a" valueExpression="one"/>
+		<set targetDataDef="string34a" valueExpression="one"/>
+		<set targetDataDef="string35a" valueExpression="one"/>
+		<set targetDataDef="string36a" valueExpression="one"/>
+		<set targetDataDef="string37a" valueExpression="one"/>
+		<set targetDataDef="string38a" valueExpression="one"/>
+		<set targetDataDef="string39a" valueExpression="one"/>
+		<set targetDataDef="string40a" valueExpression="one"/>
+		<set targetDataDef="string41a" valueExpression="one"/>
+		<set targetDataDef="string42a" valueExpression="one"/>
+		<set targetDataDef="string43a" valueExpression="one"/>
+		<set targetDataDef="string44a" valueExpression="one"/>
+		<set targetDataDef="string45a" valueExpression="one"/>
+		<set targetDataDef="string46a" valueExpression="one"/>
+		<set targetDataDef="string47a" valueExpression="one"/>
+		<set targetDataDef="string48a" valueExpression="one"/>
+		<set targetDataDef="string49a" valueExpression="one"/>
+		<set targetDataDef="string50a" valueExpression="one"/>
+
+	</setContextData>
+
+	<setContextData name="end - set total time"
+					targetDataDef="totalTime"
+					valueExpression="${T(String).valueOf(#this.getStartDate().getTime() - thisExecution.getStartDate().getTime())}"/>
+
+	<!-- ............................................... Context Data Defs ................................................ -->
+
+	<contextDataDef name="directoryContextData"			dataType="Directory"/>
+	<contextDataDef name="emailContextData"				dataType="Email"/>
+	<contextDataDef name="stringContextData"			dataType="String"/>
+	<contextDataDef name="integerContextData"			dataType="Integer"/>
+	<contextDataDef name="doubleContextData"			dataType="Double"/>
+	<contextDataDef name="booleanContextData"			dataType="Boolean"/>
+	<contextDataDef name="dateContextData"				dataType="Date"/>
+	<contextDataDef name="dateTimeContextData"			dataType="Date/Time"/>
+	<contextDataDef name="dataObjectContextData"		dataType="Data Object"/>
+	<contextDataDef name="fileContextData"				dataType="File"/>
+	<contextDataDef name="jsonContextData"				dataType="JSON"/>
+	<contextDataDef name="nvpContextData"				dataType="NameValuePair"/>
+	<contextDataDef name="xmlContextData"				dataType="XML"/>
+	<contextDataDef name="pairsString" 					dataType="String" defaultDataExpression="${'value1:valueA &#xD; value2:valueB &#xD; value3:valueC'}"/>
+	<contextDataDef name="totalTime"					dataType="String"/>
+
+	<contextDataDef name="string1"	dataType="String"/>
+	<contextDataDef name="string2"	dataType="String"/>
+	<contextDataDef name="string3"	dataType="String"/>
+	<contextDataDef name="string4"	dataType="String"/>
+	<contextDataDef name="string5"	dataType="String"/>
+	<contextDataDef name="string6"	dataType="String"/>
+	<contextDataDef name="string7"	dataType="String"/>
+	<contextDataDef name="string8"	dataType="String"/>
+	<contextDataDef name="string9"	dataType="String"/>
+	<contextDataDef name="string10"	dataType="String"/>
+	<contextDataDef name="string11"	dataType="String"/>
+	<contextDataDef name="string12"	dataType="String"/>
+	<contextDataDef name="string13"	dataType="String"/>
+	<contextDataDef name="string14"	dataType="String"/>
+	<contextDataDef name="string15"	dataType="String"/>
+	<contextDataDef name="string16"	dataType="String"/>
+	<contextDataDef name="string17"	dataType="String"/>
+	<contextDataDef name="string18"	dataType="String"/>
+	<contextDataDef name="string19"	dataType="String"/>
+	<contextDataDef name="string20"	dataType="String"/>
+	<contextDataDef name="string21"	dataType="String"/>
+	<contextDataDef name="string22"	dataType="String"/>
+	<contextDataDef name="string23"	dataType="String"/>
+	<contextDataDef name="string24"	dataType="String"/>
+	<contextDataDef name="string25"	dataType="String"/>
+	<contextDataDef name="string26"	dataType="String"/>
+	<contextDataDef name="string27"	dataType="String"/>
+	<contextDataDef name="string28"	dataType="String"/>
+	<contextDataDef name="string29"	dataType="String"/>
+	<contextDataDef name="string30"	dataType="String"/>
+	<contextDataDef name="string31"	dataType="String"/>
+	<contextDataDef name="string32"	dataType="String"/>
+	<contextDataDef name="string33"	dataType="String"/>
+	<contextDataDef name="string34"	dataType="String"/>
+	<contextDataDef name="string35"	dataType="String"/>
+	<contextDataDef name="string36"	dataType="String"/>
+	<contextDataDef name="string37"	dataType="String"/>
+	<contextDataDef name="string38"	dataType="String"/>
+	<contextDataDef name="string39"	dataType="String"/>
+	<contextDataDef name="string40"	dataType="String"/>
+	<contextDataDef name="string41"	dataType="String"/>
+	<contextDataDef name="string42"	dataType="String"/>
+	<contextDataDef name="string43"	dataType="String"/>
+	<contextDataDef name="string44"	dataType="String"/>
+	<contextDataDef name="string45"	dataType="String"/>
+	<contextDataDef name="string46"	dataType="String"/>
+	<contextDataDef name="string47"	dataType="String"/>
+	<contextDataDef name="string48"	dataType="String"/>
+	<contextDataDef name="string49"	dataType="String"/>
+	<contextDataDef name="string50"	dataType="String"/>
+	<contextDataDef name="string1a"	dataType="String"/>
+	<contextDataDef name="string2a"	dataType="String"/>
+	<contextDataDef name="string3a"	dataType="String"/>
+	<contextDataDef name="string4a"	dataType="String"/>
+	<contextDataDef name="string5a"	dataType="String"/>
+	<contextDataDef name="string6a"	dataType="String"/>
+	<contextDataDef name="string7a"	dataType="String"/>
+	<contextDataDef name="string8a"	dataType="String"/>
+	<contextDataDef name="string9a"	dataType="String"/>
+	<contextDataDef name="string10a"	dataType="String"/>
+	<contextDataDef name="string11a"	dataType="String"/>
+	<contextDataDef name="string12a"	dataType="String"/>
+	<contextDataDef name="string13a"	dataType="String"/>
+	<contextDataDef name="string14a"	dataType="String"/>
+	<contextDataDef name="string15a"	dataType="String"/>
+	<contextDataDef name="string16a"	dataType="String"/>
+	<contextDataDef name="string17a"	dataType="String"/>
+	<contextDataDef name="string18a"	dataType="String"/>
+	<contextDataDef name="string19a"	dataType="String"/>
+	<contextDataDef name="string20a"	dataType="String"/>
+	<contextDataDef name="string21a"	dataType="String"/>
+	<contextDataDef name="string22a"	dataType="String"/>
+	<contextDataDef name="string23a"	dataType="String"/>
+	<contextDataDef name="string24a"	dataType="String"/>
+	<contextDataDef name="string25a"	dataType="String"/>
+	<contextDataDef name="string26a"	dataType="String"/>
+	<contextDataDef name="string27a"	dataType="String"/>
+	<contextDataDef name="string28a"	dataType="String"/>
+	<contextDataDef name="string29a"	dataType="String"/>
+	<contextDataDef name="string30a"	dataType="String"/>
+	<contextDataDef name="string31a"	dataType="String"/>
+	<contextDataDef name="string32a"	dataType="String"/>
+	<contextDataDef name="string33a"	dataType="String"/>
+	<contextDataDef name="string34a"	dataType="String"/>
+	<contextDataDef name="string35a"	dataType="String"/>
+	<contextDataDef name="string36a"	dataType="String"/>
+	<contextDataDef name="string37a"	dataType="String"/>
+	<contextDataDef name="string38a"	dataType="String"/>
+	<contextDataDef name="string39a"	dataType="String"/>
+	<contextDataDef name="string40a"	dataType="String"/>
+	<contextDataDef name="string41a"	dataType="String"/>
+	<contextDataDef name="string42a"	dataType="String"/>
+	<contextDataDef name="string43a"	dataType="String"/>
+	<contextDataDef name="string44a"	dataType="String"/>
+	<contextDataDef name="string45a"	dataType="String"/>
+	<contextDataDef name="string46a"	dataType="String"/>
+	<contextDataDef name="string47a"	dataType="String"/>
+	<contextDataDef name="string48a"	dataType="String"/>
+	<contextDataDef name="string49a"	dataType="String"/>
+	<contextDataDef name="string50a"	dataType="String"/>
+
+	<contextDataDef name="thisExecution" dataType="Data Object" defaultDataExpression="${#this}"/>
+
+</workflow>

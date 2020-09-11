@@ -1,0 +1,32 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow ../../../../main/xsd/workflow.xsd"
+          id="updateSourceMezz"
+          name="Replace Source+Mezz"
+          subjectDOClassName="VideoAssetMaster"
+          showInUserInterface="true"
+          resultDataDef=""
+          sdkVersion="4.9">
+
+    <initialStepName>deleteObject</initialStepName>
+
+	<deleteDataObjectStep name="deleteObject"
+                          dataObjectExpression="${subject.originalContent}"
+                          nextStep="save asset"/>
+
+     <saveAssetStep name="save asset"
+                   assetExpression="${subject}"
+                   contentExpression="${fileToIngest}"
+                   contentUseExpression="${'|SOURCE|MEZZANINE|'}"
+                   versionAssetExpression="${false}"
+                   resultDataDef="assetVersion"
+                   useMediaInfoExpression="${true}"
+                   nextStep="end"/>
+
+    
+
+    <noopStep name="end"/>
+    
+    <contextDataDef name="fileToIngest" dataType="File" userInput="true"/>
+    <contextDataDef name="assetVersion" dataType="Data Object"/>
+</workflow>

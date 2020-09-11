@@ -1,0 +1,64 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+		http://levelsbeyond.com/schema/latest
+		https://s3-us-west-2.amazonaws.com/schema.levelsbeyond.com/2.3.16.17962/studio.xsd
+	"
+	id="checkIfExists"
+	name="Check If File or Folder Exists"
+	executionLabelExpression="Check If File or Folder Exists | "
+	subjectDOClassName="AssetMaster"
+	showInUserInterface="true"
+	sdkVersion="">
+	
+	<initialStepName>eval defs</initialStepName>
+	
+	<groovyStep name="eval defs"
+		resultDataDef="testVal"
+		nextStep="check if file exists">
+		
+		<script>
+			return true
+		</script>
+	</groovyStep>
+	
+	<noopStep name="check if file exists"
+		executionLabelExpression="File Exists? [${#fileExists(filePath)}] | File: ${fileAbsolutePath}"
+		nextStep="check if path exists"
+	/>
+	
+	<noopStep name="check if path exists"
+		executionLabelExpression="Path Exists? [ ${#filepath(filePath).exists()} ] | Path: ${#filepath(filePath)}"
+		nextStep="end"
+	/>
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end" />
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="asset"                            dataType="Data Object"      defaultDataExpression="${subject}" />
+	<contextDataDef name="filePath"                         dataType="String"           defaultDataExpression="${asset.filePath}" />
+	<contextDataDef name="fileAbsolutePath"                 dataType="String"           defaultDataExpression="${asset.originalContent.file.absolutePath}"/>
+	
+	<contextDataDef name="testVal"                          dataType="Boolean" />
+ 
+</workflow>

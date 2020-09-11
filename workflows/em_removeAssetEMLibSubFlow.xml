@@ -1,0 +1,130 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="em_removeAssetEMLibSubFlow"
+    name="em_Remove Asset from EMLib SubFlow"
+    executionLabelExpression="Remove Asset from EMLib SubFlow | Asset: '${itemToUpdate.name}'"
+    description="Remove Asset from EMLib SubFlow"
+    showInUserInterface="false"
+    subjectDOClassName=""
+    sdkVersion=""
+    devWorkflow="true"
+    >
+    
+    
+    <initialStepName>check arcisilon file exists</initialStepName>
+
+    
+    <noopStep name="check arcisilon file exists"
+        pctComplete="30"
+        executionLabelExpression="arcisilon file exists? ${arcisilonFile.exists()} | EM Library file exists? ${emlibFile.exists()}"
+        >
+        <transition condition="${!arcisilonFile.exists()}">
+    		<targetStepName>send arcisilon email</targetStepName>
+    	</transition>  
+    	<transition condition="${emlibFile.exists()}">
+            <targetStepName>delete em library file</targetStepName>
+        </transition>
+        <transition condition="=true">          
+            <targetStepName>send file missing email</targetStepName>
+        </transition>
+    </noopStep>
+    
+    
+    <deleteFileStep name="delete em library file"
+        pctComplete="75"
+        sourceFilesExpression="${emlibFile}"
+        executionLabelExpression="deleting: ${emlibFile.absolutePath}"
+        >
+        <transition condition="${!emlibFile.exists()}">
+            <targetStepName>update metadata</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>send delete email</targetStepName>
+        </transition>
+    </deleteFileStep>  
+    
+    
+    <saveDataObjectStep name="update metadata"
+        pctComplete="99"
+        dataObjectExpression="${itemToUpdate.metadata}" 
+        executionLabelExpression="Updating metadata with the emLibraryPath empty"
+        nextStep="end"
+        >
+        <property name="emLibraryPath"></property>
+    </saveDataObjectStep>
+    
+
+    <!-- ................................................... End Steps .................................................... -->
+    <emailStep name="send arcisilon email"
+        pctComplete="99"
+        emailAddressesExpression="${arcisilonFailureEmail}" 
+        subjectExpression="Arcisilon File ${itemToUpdate.name} missing"
+        nextStep="end"
+        >
+        <body>
+        <![CDATA[
+	        Hello Admin
+	        
+	        The arcisilon file has been missing in the arcisilon file path location, the item can not be removed from EM Library.
+	        ${arcisilonFile.absolutePath}
+	        
+	        Sincerely,
+	        Reach Engine System
+        ]]>
+        </body>
+    </emailStep>
+    
+    
+    <emailStep name="send file missing email"
+        pctComplete="99"
+        emailAddressesExpression="${arcisilonFailureEmail}"
+        subjectExpression="EM Library File ${itemToUpdate.name} missing"
+        nextStep="end"
+        >
+        <body>
+        <![CDATA[
+	        Hello Admin
+	        
+	        The EM Library file has been missing in the EM Library file path location, the item can not be removed from EM Library.
+	        ${emlibFile.absolutePath}
+	        
+	        Sincerely,
+	        Reach Engine System
+        ]]>
+        </body>
+    </emailStep>
+    
+    
+    <emailStep name="send delete email"
+        pctComplete="99"
+        emailAddressesExpression="${arcisilonFailureEmail}"
+        subjectExpression="Arcisilon File ${itemToUpdate.name} missing"
+        nextStep="end"
+        >
+        <body>
+        <![CDATA[
+	        Hello Admin
+	        
+	        The EM Library file cannot be deleted, the item can not be removed from EM Library.
+	        ${emlibFile.absolutePath}
+	        
+	        Sincerely,
+	        Reach Engine System
+        ]]>
+        </body>
+    </emailStep>
+    
+    
+    <noopStep name="end" pctComplete="100"/>
+    
+    
+    <!-- ............................................... Context Data Defs ................................................ -->
+    <contextDataDef name="itemToUpdate" 		 		dataType="Data Object"  userInput="true" 	required="true"/>
+    <contextDataDef name="filename"                	    dataType="String"       defaultDataExpression="${itemToUpdate.toString().startsWith('[Timeline')? itemToUpdate.name : itemToUpdate.mezzanine.file.name}"/>
+    <contextDataDef name="arcisilonFile"           	    dataType="File"         defaultDataExpression="${itemToUpdate.metadata.arcisilonPath.endsWith('/')? itemToUpdate.metadata.arcisilonPath : itemToUpdate.metadata.arcisilonPath + '/'}${filename}"/>
+    <contextDataDef name="emlibFile"                    dataType="File"         defaultDataExpression="${itemToUpdate.metadata.emLibraryPath.endsWith('/')? itemToUpdate.metadata.emLibraryPath : itemToUpdate.metadata.emLibraryPath + '/'}${filename}"/>
+    <contextDataDef name="arcisilonFailureEmail"        dataType="String" 	    defaultDataExpression="${#sysconfig('mail.arcisilon.failure')}"/>
+
+</workflow>

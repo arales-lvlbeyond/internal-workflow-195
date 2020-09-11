@@ -1,0 +1,117 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_sendTaskNotification"
+	name="Send Task Notification"
+	executionLabelExpression="Send Task Notification | User: ${userEmail} | Task: ${taskId}"
+	subjectDOClassName=""
+	showInUserInterface="false"
+	sdkVersion="5.7"
+	>
+
+	
+	<initialStepName>build email data</initialStepName>
+
+	
+	<groovyStep name="build email data"
+		resultDataDef="emailData"
+		pctComplete="30"
+		nextStep="send email"
+		>
+		<script>
+		<![CDATA[
+			import java.sql.Timestamp
+			import org.joda.time.format.*
+			import groovy.time.TimeCategory
+
+			def dayAfterExpiration
+			use (TimeCategory) {
+				dayAfterExpiration = expirationDate + 23.hours + 59.minutes
+			}
+			String userExpiration = ISODateTimeFormat.dateTime().print(dayAfterExpiration.getTime())
+
+			def emailData = [:]
+			emailData.put("body"," ")
+			emailData.put("subject","A new Task has been created for you")
+			emailData.put("templateId",templateId)
+			emailData.put("templateSubstitutions",[:])
+			emailData.templateSubstitutions.put("taskName",taskName)
+			emailData.templateSubstitutions.put("taskId",taskId)
+			emailData.templateSubstitutions.put("expirationDate",userExpiration)
+			emailData.templateSubstitutions.put("taskComments",comments)
+
+			return emailData
+		]]>
+		</script>
+	</groovyStep>
+
+	
+	<submitHttpStep name="send email"
+		urlExpression="${securityServiceUrl}/users/${userId}/email"
+		requestMethodExpression="POST"
+		responseCodeDataDef="sendEmailCode"
+		continueOnException="true"
+		pctComplete="99"
+		>
+		<transition condition="${sendEmailCode != 200}">
+			<targetStepName>user notification error</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>end</targetStepName>
+		</transition>
+
+		<requestPayloadItem name="body">${emailData}</requestPayloadItem>
+		<requestHeader name="api-key">${cloudformApiKey}</requestHeader>
+		<requestHeader name="Content-Type">application/json</requestHeader>
+	</submitHttpStep>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"    pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="user notification error"
+		reasonExpression="could not notify user of available task"
+		executionLabelExpression="could not add users to the workspace"
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ......... Input Variables ........... -->
+	<contextDataDef name="userTaskData"         dataType="JSON"/>
+	<contextDataDef name="taskName"             dataType="String"/>
+	<contextDataDef name="expirationDate"       dataType="Date/Time"/>
+	<contextDataDef name="comments"             dataType="String"/>
+	
+	<!-- ....... Processing Variables ........ -->
+	<contextDataDef name="taskId"               dataType="Integer"      defaultDataExpression="${userTaskData.taskId}"/>
+	<contextDataDef name="userEmail"            dataType="String"       defaultDataExpression="${userTaskData.email}"/>
+	<contextDataDef name="userId"               dataType="Integer"      defaultDataExpression="${userTaskData.userId}"/>
+	<contextDataDef name="emailData"            dataType="JSON"/>
+	<contextDataDef name="sendEmailCode"        dataType="Integer"/>
+	<contextDataDef name="templateId"           dataType="Integer"      defaultDataExpression="${#sysconfig('cloudform.taskEmailTemplateId')}"/>
+	<contextDataDef name="fromAddress"          dataType="String"       defaultDataExpression="${#sysconfig('cloudform.fromAddress')}"/>
+	<contextDataDef name="securityServiceUrl"   dataType="String"       defaultDataExpression="${#sysconfig('cloudform.securityService.url')}"/>
+	<contextDataDef name="cloudformApiKey"      dataType="String"       defaultDataExpression="${#sysconfig('cloudform.apiKey')}"/>
+
+</workflow>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="
+    http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow-2.3.xsd
+    "
+    
+    id="em_verifyArcisilon"
+    name="em_Verify Arcisilon Path"
+    executionLabelExpression="Checking Arcisilon for assets to Update." 
+    subjectDOClassName=""
+    showInUserInterface="true"
+    sdkVersion=""
+    devWorkflow="true"
+   >
+    
+    <initialStepName>find assetmaster</initialStepName>
+    
+    <queryStep name="find assetmaster" pctComplete="20"
+        targetDataObjectClass="AssetMaster"
+        resultDataDef="assets"
+        executionLabelExpression="Finding all the assets ${assets?.size().toString()}">
+        <transition condition="${assets != null and assets.size() > 0}">
+            <targetStepName>update asset field</targetStepName>
+        </transition> 
+        <transition condition="=true">    
+            <targetStepName>end</targetStepName>
+        </transition>
+        <criteria>
+            <![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="metadata.arcisilonPath" op="isnull" nullTargets="false"/>
+                        <condition property="assetType" op="noteq"><test value="Video"/></condition> 
+                    </and>
+                </criteria>
+            ]]>
+        </criteria>
+    </queryStep>
+    
+    <executeSubflowStep name="update asset field" pctComplete="40"
+        targetWorkflowId="em_verifyArcisilonCopy"
+        executionLabelExpression= "Updating ${assets.size()} "
+        subjectChangePath="${assets}"
+        subflowTargetDataDef="itemToUpdate"
+        nextStep="end" />
+    
+           
+    <noopStep name="end"></noopStep>
+    
+    <contextDataDef name="assets"           	dataType="Data Object"  multiple="true"/>
+    
+</workflow>

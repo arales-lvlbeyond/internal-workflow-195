@@ -1,0 +1,151 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  ~
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="findAssetSize"
+	name="Find asset size"
+	executionLabelExpression="find asset size"
+	subjectDOClassName=""
+	adminOnly="true"
+	showInUserInterface="false"
+	sdkVersion=""
+	resultDataDef="newSingleCsv"
+>
+	​
+	<initialStepName>check if this workflow is processing</initialStepName>
+	​
+	
+	<queryStep name="check if this workflow is processing"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="currentExecutions"
+		devStep="true"
+		executionLabelExpression="Check to see if this workflow is already currently executing"
+	>
+		<transition condition="${currentExecutions.size() &gt; 0}">
+			<targetStepName>workflow already executing</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>query reach asset</targetStepName>
+		</transition>
+		
+		<criteria>
+			<![CDATA[
+				<criteria>
+					<and>
+						<condition property="workflowVersion.workflow.key" op="eq">
+							<test value="${ #this.workflow.workflowVersion.workflow.key }" />
+						</condition>
+						<condition property="uuid" op="noteq">
+							<test value="${ #this.workflow.uuid }" />
+						</condition>
+						<condition property="status" op="in">
+							<tests>
+								<test value="CREATED" />
+								<test value="QUEUED" />
+								<test value="EXECUTING" />
+							</tests>
+						</condition>
+					</and>
+				</criteria>
+			]]>
+		</criteria>
+	</queryStep>
+	
+	
+	<queryStep name="query reach asset"
+		nextStep="set asset size"
+		targetDataObjectClass="AssetMaster"
+		resultDataDef="assetToUpdate"
+		executionLabelExpression="Found ${assetToUpdate.size()} asset(s) to update"
+		pctComplete="5"
+	>
+		<criteria>
+			<![CDATA[
+				<criteria>
+                    <and>
+                        <condition property="metadata.filename" op="eq" >
+                            <test value="${assetNamed}"/>
+                        </condition>
+                    </and>
+				</criteria>
+			]]>
+		</criteria>
+	</queryStep>
+	
+	<setContextData name="set asset size"
+		targetDataDef="assetSize"
+		nextStep="add to json"
+		valueExpression="${assetToUpdate.originalContent.fileSize}" />
+	
+	<groovyStep name="add to json"
+		resultDataDef="newSingleCsv"
+		executionLabelExpression="Add fileSize to JSON object"
+	>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		
+		<script>
+            <![CDATA[
+			
+			import groovy.json.JsonOutput
+			
+			
+				static void main(String[] args) {
+					def output = JsonOutput.toJson([name: assetNamed, fileSizes: assetSize])
+					return(output);
+				}
+			
+			
+			]]>
+        </script>
+	</groovyStep>
+	
+	
+	
+	
+	​
+	<!-- ................................................. Initial Steps .................................................. -->
+	
+	​
+	​
+	<noopStep name="end" pctComplete="100"/>
+	
+	<failWorkflowStep name="workflow already executing"
+		reasonExpression="Workflow is already executing on ${subject.name}. Please wait for the restore to complete and then retry."
+		executionLabelExpression="Workflow is already executing on ${subject.name}. Please wait for the restore to complete and then retry."/>
+	​
+	​
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ............ INPUT ............. -->
+	<contextDataDef name="csvFile"          dataType="File"             required="true"     label="1. Input CSV" />
+	
+	<contextDataDef name="currentExecutions"    dataType="Data Object"  multiple="true" />
+	
+	<contextDataDef name="assetToUpdate"    dataType="Data Object"      />
+	<contextDataDef name="singleCsvJson"    dataType="JSON"             />
+	<contextDataDef name="assetNamed"       dataType="String"           defaultDataExpression="${singleCsvJson.assetName}" />
+	<contextDataDef name="assetSize"        dataType="String"           />
+	<contextDataDef name="newSingleCsv"     dataType="JSON"             />
+	​
+	​
+	<!-- ....... Processing Variables ........ -->
+	​
+</workflow>

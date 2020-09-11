@@ -1,0 +1,280 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="
+    http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-1.5.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-common-workflow-prelude.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/nimbus-projects-workflow-1.5.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/re-prod-custom-steps.xsd
+    http://levelsbeyond.com/schema/workflow/nimbus http://www.levelsbeyond.com/schema/production/workflow-plugin-anywhere-1.0.xsd
+    "
+	
+	id="blackPearlValidateBackup"
+	name="Black Pearl Validate Backup"
+	executionLabelExpression="Black Pearl Validate Backup Validate File Backup | ${subject.restoreKey}"
+	description="
+    
+    "
+	subjectDOClassName="AssetContent"
+	showInUserInterface="false"
+	resultDataDef="tapes"
+	deadlineExpression=""
+	sdkVersion=""
+>
+	
+	<initialStepName>send validation request</initialStepName>
+	
+	
+	
+	<!-- ................................................... Validation Steps .................................................. -->
+	<!-- verify the file is actually on Black Pearl | a second attempt to archive will say if the object already exists -->
+	<groovyStep name="send validation request"
+		executionLabelExpression="Back up file ${subject.file.absolutePath} to Black Pearl"
+		resultDataDef="validationResponse">
+		<transition condition="${archiveResponse.contains('ERROR')}">
+			<targetStepName>validation error</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>show validation response</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+				import com.google.common.base.Joiner
+				import com.spectralogic.ds3client.Ds3Client
+				import com.spectralogic.ds3client.Ds3ClientBuilder
+				import com.spectralogic.ds3client.helpers.Ds3ClientHelpers
+				import com.spectralogic.ds3client.helpers.options.*
+				import com.spectralogic.ds3client.helpers.FileObjectGetter
+				import com.spectralogic.ds3client.helpers.JobRecoveryException
+				import com.spectralogic.ds3client.models.*
+				import com.spectralogic.ds3client.models.Tape
+				import com.spectralogic.ds3client.models.TapeState
+				import com.spectralogic.ds3client.models.TapeList
+				import com.spectralogic.ds3client.models.common.Credentials
+				import com.spectralogic.ds3client.networking.FailedRequestUsingMgmtPortException
+				import com.spectralogic.ds3client.networking.FailedRequestException
+				import com.spectralogic.ds3client.models.bulk.Ds3Object
+				import com.spectralogic.ds3client.commands.spectrads3.*
+				
+				
+				import java.io.IOException
+				import java.nio.file.Path
+				import java.nio.file.Paths
+				import java.util.List
+				
+				//This will connect to Black Pearl and will import a new tape.
+				//The new tape is added to the specified bucket and then all objects in the specified bucket will be downloaded to the specified directory
+				try {
+					
+					// .....
+					// Here there be Variables to use
+					// .....
+					
+					// use data def bpEndpoint
+					String endpoint = url
+					// use data def bpClientId
+					String id = username
+					// use data def bpClientKey
+					String key = password
+					// The bucket that we will be writing to
+				    String bucketName = bPBucket
+				
+				
+					// .....
+					// Creating the connection object for Black Pearl
+					// .....
+				
+					//Connect to the server.
+					Ds3Client client = Ds3ClientBuilder.create(endpoint, new Credentials(id, key) ).withHttps(false).build()
+					
+					// Wrap the Ds3Client with the helper functions
+					Ds3ClientHelpers helper = Ds3ClientHelpers.wrap(client)
+				    
+				    // Check that the bucket exists
+				    helper.ensureBucketExists(bucketName)
+				    
+				    
+				    // This will get the id of the specified bucket
+					def bucketId = client.getBucketSpectraS3(new GetBucketSpectraS3Request(bucketName)).getBucketResult().getId().toString()
+				    
+				    // This will get the the number of objects in the bucket
+				    def bucketResponse = client.getObjectsDetailsSpectraS3( new GetObjectsDetailsSpectraS3Request().withBucketId(bucketId) )
+				    def bucketList = bucketResponse.getS3ObjectListResult().getS3Objects()
+				    for(item in bucketList)
+				    {
+				    	if(item.getName().equals(restoreKey) )
+				    	{
+				    		//println('Object was found with name ' + restoreKey)
+				    		return 'SUCCESS'
+				    	}
+				    }
+					//println('bucket name ' + bucketName + 'with the bucket size ' + bucketSize)
+				    
+				    // We did not find an object in the bucket with the name we are looking for. Fail.
+				    println("ERROR: Unable to find object with name " + restoreKey + " in bucket: " + bucketName)
+				    return "ERROR: Unable to find object with name " + restoreKey + " in bucket: " + bucketName
+					
+					
+					
+					
+				} catch (final UnknownHostException e) {
+				    println("Invalid Endpoint Server Name or IP Address")
+				    return "ERROR: Invalid Endpoint Server Name or IP Address"
+				    // Catch unknown host exceptions.
+				    
+				} catch (final FailedRequestUsingMgmtPortException e) {
+				    println("Attempted data access on management port -- check endpoint")
+				    return "ERROR: Attempted data access on management port -- check endpoint"
+				    // Catch failed requests with unexpected status codes.
+				    
+				} catch (final FailedRequestException e) {
+					// If this is invalid authorization.
+					if (e.getStatusCode() == 403) {
+						println("Invalid Access ID or Secret Key or Ensure System Clocks Match")
+						return "ERROR: Invalid Access ID or Secret Key or Ensure System Clocks Match"
+					// Else unexpected status code.
+					} else {
+						println("BlackPearl return an unexpected status code we did not expect " + e.getStatusCode() + " " + e.getResponseString() + ".")
+				        // e.getStatusCode() can be used to get the status code BlackPearl returned for more accurate error handling and detection
+				        String end = "ERROR: BlackPearl return an unexpected status code we did not expect " + e.getStatusCode() + " " + e.getResponseString() + "."
+				        return end
+					}
+					
+				} catch (final IOException e) {
+				
+			        println("Encountered a networking error OR an error while importing the new tape")
+			        println(e.printStackTrace())
+			        return "ERROR: Encountered a networking error OR an error while importing the new tape"
+				}
+			]]>
+		</script>
+	</groovyStep>
+	
+	
+	
+	<!-- display response code to the UI and full response to the log -->
+	<testStep name="show validation response"
+		outputExpression="backup ${subject.file.absolutePath} >>> response message: ${validationResponse}"
+		executionLabelExpression="backup ${subject.file.absolutePath} >>> response message: ${validationResponse}"
+		pctComplete="25"
+		nextStep="validate archive">
+	</testStep>
+	
+	
+	
+	<!-- did the file make it to archive successfully? -->
+	<noopStep name="validate archive"
+		executionLabelExpression="Response to Another Archive Attempt: ${validationResponse}"
+		pctComplete="40"
+	>
+		<transition condition="${validationResponse.contains('SUCCESS')}">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>set retry count</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	
+	<!-- we retry the backup two additional times before failing. -->
+	<setContextData name="set retry count"
+		executionLabelExpression="Retry count = ${ retryCount + 1 }"
+		targetDataDef="retryCount"
+		valueExpression="${ retryCount + 1 }"
+		nextStep="remove restoreKey" />
+	
+	
+	
+	<!-- if the file is not validated, remove the restoreKey -->
+	<saveDataObjectStep name="remove restoreKey"
+		targetDataObjectClass="AssetContent"
+		dataObjectExpression="${subject}"
+		executionLabelExpression="No File found on Black Pearl --- Remove restoreKey to allow future archive."
+		pctComplete="50"
+	>
+		<transition condition="${ retryCount &lt;= 2 }">
+			<targetStepName>retry backup file</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>validation error</targetStepName>
+		</transition>
+		
+		<property name="restoreKey"></property>
+	</saveDataObjectStep>
+	
+	
+	
+	<!--
+		Backup the file to Black Pearl.
+		Allows the option to retain the file on Tier 2 (truncates Tier 2 if the option is not specified)
+	-->
+	<executeSubflowStep name="retry backup file"
+		targetWorkflowId="blackPearlBackupFileToTape"
+		subjectChangePath="${subject}"
+		pctComplete="50"
+	>
+		<transition condition="true">
+			<targetStepName>send validation request</targetStepName>
+		</transition>
+		
+		<subflowContextDataMapping parentDataDef="archiveOrBackup" subflowDataDef="archiveOrBackup"/>
+	</executeSubflowStep>
+	
+	
+	
+	
+	
+	
+	
+	<!-- ...................................................... End Steps ...................................................... -->
+	<!-- success -->
+	<noopStep name="end" pctComplete="100"/>
+	
+	
+	
+	<!-- there was a problem with validation -->
+	<failWorkflowStep name="validation error"
+		reasonExpression="Black Pearl did not return expected results | validation response = ${validationResponse}"
+		executionLabelExpression="Black Pearl did not return expected results"
+	/>
+	
+	
+	
+	
+	
+	
+	<!-- .................................................. Context Data Defs .................................................. -->
+	<!-- Default Data Defs -->
+	
+	<!-- ......... Black Pearl Variables ........ -->
+	<!-- url = ip address or host name -->
+	<contextDataDef name="url"             	dataType="String"       defaultDataExpression="${#sysconfig('blackPearl.ip')}"/>
+	<!-- admin user for Black Pearl -->
+	<contextDataDef name="username"        	dataType="String"       defaultDataExpression="${#sysconfig('blackPearl.username')}"/>
+	<!-- matching password to the admin user -->
+	<contextDataDef name="password"        	dataType="String"       defaultDataExpression="${#sysconfig('blackPearl.password')}"/>
+	<!-- root archive directory -->
+	<contextDataDef name="bPBucket"        	dataType="String"       defaultDataExpression="${#sysconfig('blackPearl.archiveBucket')}"/>
+	
+	
+	<contextDataDef name="filePath" 		dataType="String" 		defaultDataExpression="${subject.file.absolutePath}"/>
+	<contextDataDef name="fileDir" 			dataType="String" 		defaultDataExpression="${#sysconfig('blackPearl.repoRoot')}"/>
+	
+	<contextDataDef name="restoreKey" 		dataType="String" 		defaultDataExpression="${subject.restoreKey}"/>
+	
+	
+	<!-- ..... CLI RESPONSE ..... -->
+	<contextDataDef name="validationResponse" 	dataType="String" />
+	
+	<!-- .............. Other Variables ............. -->
+	<!-- string that contains the location from fsfileinfo commant. ARCHIVE = on Black Pearl -->
+	<contextDataDef name="validation"           dataType="String"/>
+	<!-- retry count that we limit to 2 in the workflow -->
+	<contextDataDef name="retryCount"           dataType="Integer"      defaultDataExpression="0" />
+	<!-- used when kicking off backup retries - usually passed down from parent -->
+	<contextDataDef name="archiveOrBackup"      dataType="String"       defaultDataExpression="backup"/>
+
+
+</workflow>

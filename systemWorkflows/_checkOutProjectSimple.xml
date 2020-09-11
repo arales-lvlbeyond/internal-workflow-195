@@ -1,0 +1,215 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+
+    id="_checkOutProjectSimple"
+    name="Check Out Project"
+    executionLabelExpression="Check Out Project"
+    description=" "
+    subjectDOClassName="Project"
+    showInUserInterface="false" 
+    deadlineExpression=""
+    resultDataDef="projectLocationReturn" 
+    sdkVersion=""
+    >
+
+
+    <initialStepName>is project locked</initialStepName>
+
+
+
+    <noopStep name="is project locked">
+        <transition condition="${subject.projectAsset.dateLocked == null AND !#sysconfig('filesystem.root.checkOutRoot').toLowerCase().startsWith('s3')}">
+            <targetStepName>set check out location</targetStepName>
+        </transition>
+        <transition condition="${subject.projectAsset.dateLocked == null AND #sysconfig('filesystem.root.checkOutRoot').toLowerCase().startsWith('s3')}">
+            <targetStepName>set check out location s3</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>fail</targetStepName>
+        </transition>
+    </noopStep>
+
+
+    <setContextData
+        name="set check out location"
+        targetDataDef="checkOutLocation"
+        valueExpression="${#sysconfig('filesystem.root.checkOutRoot')}/${workflow.startedBy.username}/${subject.id}"
+        >
+
+        <transition condition="true">
+            <targetStepName>set projectExt</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData
+        name="set check out location s3"
+        targetDataDef="checkOutLocation"
+        valueExpression="${#sysconfig('filesystem.root.checkOutRoot')}/${workflow.startedBy.username}/${subject.id}/"
+        >
+        
+        <transition condition="true">
+            <targetStepName>set projectExt</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData
+        name="set projectExt"
+        targetDataDef="projectExt"
+        valueExpression="${extensionFunc}"
+        >
+        <transition condition="true">
+            <targetStepName>set whole file path</targetStepName>
+        </transition>
+    </setContextData>
+    
+    
+    <setContextData name="set whole file path"
+        valueExpression="${checkOutLocation + '/' + subject.name + '.' + projectExt}"
+        targetDataDef="fullPathToCheckout"
+        nextStep="set project file"
+        />
+    
+    
+    <setContextData name="set project file"
+        targetDataDef="projectFile"
+        valueExpression="${subject.projectAsset.file}"
+        executionLabelExpression="Setting the project file to ${projectFile.absolutePath}"
+        >
+        <!--<transition condition="${projectFile.absolutePath.toLowerCase().startsWith('s3')}">
+            <targetStepName>wrap file</targetStepName>
+        </transition>-->
+        <transition condition="${fullPathToCheckout.toLowerCase().startsWith('s3')}">
+            <targetStepName>copy project</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>Check Project File Exist</targetStepName>
+        </transition>
+    </setContextData>
+
+    
+    <!--<!-\- wrap the s3 file object in a RE s3FileWrapper -\->
+    <groovyStep name="wrap file"
+        executionLabelExpression="Wrapping ${projectFile.name} in RE S3FileWrapper"
+        resultDataDef="projectFile"
+        >
+        <transition condition="${projectFile?.exists() AND fullPathToCheckout.toLowerCase().startsWith('s3')}">
+            <targetStepName>copy project</targetStepName>
+        </transition>
+        <transition condition="${projectFile?.exists()}">
+            <targetStepName>Check Project File Exist</targetStepName>
+        </transition>
+        <transition condition="${true}">
+            <targetStepName>no project file</targetStepName>
+        </transition>
+        
+        <script>
+            <![CDATA[
+				import com.routeto1.filesystem.S3FileWrapper;
+				
+				def directoryArray = projectFile.absolutePath.split(":");
+				S3FileWrapper targetFile = new S3FileWrapper(directoryArray[1], directoryArray[2]);
+				
+				return targetFile;
+	
+				]]>
+        </script>
+    </groovyStep>-->
+
+                                                
+    <noopStep name="Check Project File Exist"  >
+        <transition condition="${#fileExists(fullPathToCheckout)}">
+            <targetStepName>file exist</targetStepName>                   
+        </transition>
+        <transition condition="true">
+            <targetStepName>copy project</targetStepName>
+        </transition>
+    </noopStep>
+
+
+    <copyFileStep
+        name="copy project"
+        sourceFileExpression="${projectFile}"
+        targetDirectoryExpression="${checkOutLocation}"
+        targetFilenameExpression="${subject.name + '.' + projectExt}"
+        createTargetDirectoryFlag="true"
+        resultDataDef="projectLocation"
+        executionLabelExpression="Project File: ${projectFile.absolutePath} || Check out Location: ${checkOutLocation} || Target Filename: ${subject.name + '.' + projectExt}"
+        >
+
+        <transition condition="true">
+            <targetStepName>set project string</targetStepName>
+        </transition>
+    </copyFileStep>
+
+    <setContextData
+        name="set project string"
+        targetDataDef="projectLocationString"
+        valueExpression="${projectLocation.absolutePath}" >
+        
+        <transition condition="true">
+            <targetStepName>set return</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData
+        name="set return"
+        targetDataDef="projectLocationReturn"
+        valueExpression="${projectLocationString.toLowerCase().startsWith('s3')? projectLocationString : #mapPath(projectLocationString, targetOS)}" >
+
+        <transition condition="true">
+            <targetStepName>project path</targetStepName>
+        </transition>
+    </setContextData>
+
+    <noopStep name="project path" executionLabelExpression="Project: ${projectLocationReturn}">
+        <transition condition="true">
+            <targetStepName>lock project</targetStepName>
+        </transition>
+    </noopStep>
+
+    <saveDataObjectStep name="lock project"
+        dataObjectExpression="${subject.projectAsset}"
+        >
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <property name="dateLocked">${#newDate()}</property>
+        <property name="lockedBy">${workflow.startedBy}</property>
+    </saveDataObjectStep>
+
+    <noopStep name="end"/>
+
+    <failWorkflowStep reasonExpression="project is locked" name="fail" executionLabelExpression="file is locked"/>
+    <failWorkflowStep reasonExpression="There is no project file to check out" name="no project file"></failWorkflowStep>
+    <failWorkflowStep reasonExpression="Project file alread exists at ${checkOutLocation + '/' + subject.name + '.' + projectExt}." name="file exist" executionLabelExpression="Project file alread exists at ${checkOutLocation + '/' + subject.name + '.' + projectExt}."/>
+
+    <contextDataDef name="projectExt"   dataType="String"/>
+    <contextDataDef name="projectName"   dataType="String"/>
+    <contextDataDef name="projectFile" dataType="File"/>
+    <contextDataDef name="projectAssets" dataType="Data Object" multiple="true"/>
+    <contextDataDef name="projectId" dataType="Integer"/>
+    <contextDataDef name="checkOutLocation" dataType="String"/>
+    <contextDataDef name="projectLocation" dataType="File"/>
+    <contextDataDef name="projectLocationString" dataType="String"/>
+    <contextDataDef name="targetOS" dataType="String" defaultDataExpression="mac"/>
+    <contextDataDef name="projectLocationReturn" dataType="String"/>
+    <contextDataDef name="fullPathToCheckout" dataType="String"/>
+    
+    <!-- S3 Stuff -->
+    <!-- Boolean if S3 Upload worked -->
+    <contextDataDef name="s3UploadBoolean" dataType="Boolean"/>
+    <!-- the region to use for s3 directories -->
+    <contextDataDef name="region" 				dataType="String" 							defaultDataExpression="${#sysconfig('s3.region')}"/>
+    
+    <contextDataDef name="extensionFunc" 				dataType="String" 	
+        defaultDataExpression="${subject.projectAsset.file.absolutePath.substring(subject.projectAsset.file.absolutePath.lastIndexOf('.') + 1 )}"/>
+    <contextDataDef name="filenameFunc" 				dataType="String" 	
+        defaultDataExpression="${subject.projectAsset.file.absolutePath.contains('/')? subject.projectAsset.file.absolutePath.substring(subject.projectAsset.file.absolutePath.lastIndexOf('/') + 1 ) : subject.projectAsset.file.absolutePath.substring(subject.projectAsset.file.absolutePath.lastIndexOf('\') + 1 ) }"/>
+    <contextDataDef name="baseFilenameFunc" 			dataType="String" 	
+        defaultDataExpression="${subject.projectAsset.file.absolutePath.contains('/')? subject.projectAsset.file.absolutePath.substring(subject.projectAsset.file.absolutePath.lastIndexOf('/') + 1 ,subject.projectAsset.file.absolutePath.lastIndexOf('.')) : subject.projectAsset.file.absolutePath.substring(subject.projectAsset.file.absolutePath.lastIndexOf('\') + 1 ,subject.projectAsset.file.absolutePath.lastIndexOf('.')) }"/>
+    <contextDataDef name="filepathFunc" 				dataType="String" 	
+        defaultDataExpression="${subject.projectAsset.file.absolutePath.contains('/')? subject.projectAsset.file.absolutePath.substring(0,subject.projectAsset.file.absolutePath.lastIndexOf('/'))+ '/' : subject.projectAsset.file.absolutePath.substring(0,subject.projectAsset.file.absolutePath.lastIndexOf('\'))+ '\'  }"/>
+    
+</workflow>

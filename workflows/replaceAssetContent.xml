@@ -1,0 +1,368 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="replaceAssetContent"
+	name="Replace Asset Content"
+	executionLabelExpression="Replace Asset Content on ${assetMaster.versions[0].name}"
+	subjectDOClassName="AssetMaster"
+	showInUserInterface="true"
+	resultDataDef="assetVersion"
+	sdkVersion=""
+>
+	
+	<initialStepName>is workflow executing</initialStepName>
+	
+	
+	<queryStep name="is workflow executing"
+		targetDataObjectClass="WorkflowExecution"
+		resultDataDef="currentExecutions"
+		executionLabelExpression="Check to see if this workflow is currently executing"
+	>
+		<transition condition="${currentExecutions.size() == 0}">
+			<targetStepName>check replacement source</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>workflow is running</targetStepName>
+		</transition>
+		
+		<criteria>
+			<![CDATA[
+                <criteria>
+                    <and>
+                        <condition property="workflowVersion.workflow.key" op="eq">
+                            <test value="${ #this.workflow.workflowVersion.workflow.key }" />
+                        </condition>
+                        <condition property="uuid" op="noteq">
+                            <test value="${ #this.workflow.uuid }" />
+                        </condition>
+                        <condition property="status" op="in">
+                            <tests>
+                                <test value="CREATED" />
+                                <test value="QUEUED" />
+                                <test value="EXECUTING" />
+                            </tests>
+                        </condition>
+                    </and>
+                </criteria>
+            ]]>
+		</criteria>
+	</queryStep>
+	
+	<noopStep name="check replacement source"
+		executionLabelExpression="Checking replacement source"
+		devStep="true"
+		>
+		<transition condition="${boxUrl.length() &gt; 0}">
+			<targetStepName>create temp dir</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>replace existing source file</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<runCommandStep
+		name="create temp dir"
+		devStep="true"
+		executionLabelExpression="Creating ${tempPath} directory"
+		executablePathExpression="/bin/mkdir"
+		nextStep="download box file">
+		<arg>-p</arg>
+		<arg>${tempPath}</arg>
+	</runCommandStep>
+	
+	
+	<groovyStep
+		name="download box file"
+		resultDataDef="downloadResultJson">
+		<transition condition="${downloadResultJson.hasNonNull('error')}">
+			<targetStepName>notify box download error</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>set ingest defs</targetStepName>
+		</transition>
+		<script>
+			<![CDATA[
+            import java.io.FileInputStream
+            import java.io.FileOutputStream
+            import java.io.FileReader
+            import java.io.IOException
+            import java.io.Reader
+
+            import com.box.sdk.BoxConfig
+            import com.box.sdk.BoxDeveloperEditionAPIConnection
+            import com.box.sdk.IAccessTokenCache
+            import com.box.sdk.InMemoryLRUAccessTokenCache
+
+            import com.box.sdk.BoxFile
+            import com.box.sdk.BoxFolder
+            import com.box.sdk.BoxItem
+
+            import org.slf4j.Logger
+            import org.slf4j.LoggerFactory
+
+            Logger log = LoggerFactory.getLogger('queryBox')
+
+            // Read config file into Box Config object
+            Reader reader = new FileReader("/reachengine/boxConfig/config.json")
+            BoxConfig boxConfig = BoxConfig.readFrom(reader)
+
+            // Set cache info
+            int MAX_CACHE_ENTRIES = 100
+            IAccessTokenCache accessTokenCache = new InMemoryLRUAccessTokenCache(MAX_CACHE_ENTRIES)
+
+            // Create new app enterprise connection object
+            BoxDeveloperEditionAPIConnection client = BoxDeveloperEditionAPIConnection.getAppEnterpriseConnection(boxConfig, accessTokenCache)
+
+            try {
+                // Get the Box File object
+                boxFile = new BoxFile(client, boxUrl)
+
+                // Set temp download path with Box File filename
+                tempFilepath = tempPath + boxFile.getInfo().getName()
+
+                // Download Box File
+                FileOutputStream stream = new FileOutputStream(tempFilepath)
+                boxFile.download(stream)
+                stream.close()
+
+                downloadResultJson.put('downloadedFilePath', tempFilepath)
+                downloadResultJson.putObject('metadata')
+                downloadResultJson.metadata.put('boxID', boxFileId)
+
+            } catch (Exception ex) {
+                downloadResultJson.put('error', ex)
+            }
+
+            return downloadResultJson
+            ]]>
+		</script>
+	</groovyStep>
+	
+	<setContextData
+		name="set ingest defs"
+		executionLabelExpression="Download File Path = ${fileToIngest}"
+		devStep="true"
+		nextStep="ingest box file">
+		<set targetDataDef="fileToIngest" valueExpression="${downloadResultJson.downloadedFilePath}"/>
+		<set targetDataDef="jsonMetadata" valueExpression="${downloadResultJson.metadata}"/>
+	</setContextData>
+	
+	
+	<executeSubflowStep
+		name="ingest box file"
+		executionLabelExpression="Ingest ${#filename(fileToIngest)}"
+		targetWorkflowId="_anyAssetIngest"
+		nextStep="cleanup">
+		<subflowContextDataMapping parentDataDef="fileToIngest" subflowDataDef="fileToIngest"/>
+		<!--<subflowContextDataMapping parentDataDef="collection" subflowDataDef="collections"/>-->
+		<subflowContextDataMapping parentDataDef="jsonMetadata" subflowDataDef="jsonMetadata"/>
+	</executeSubflowStep>
+	
+	
+	<deleteFileStep
+		name="cleanup"
+		devStep="true"
+		sourceFilesExpression="${tempPath}"
+		continueOnException="true"
+		nextStep="replace existing source file"/>
+	
+	<saveAssetStep name="replace existing source file"
+		executionLabelExpression="Saving ${fileToIngest.name} as source file"
+		contentExpression="${fileToIngest}"
+		contentUseExpression="${contentUse}"
+		versionAssetExpression="${false}"
+		assetExpression="${assetMaster.versions[0]}"
+		resultDataDef="assetVersion">
+		<!--<transition condition="${assetVersion.masterAsset.assetType.equals('Video') AND assetVersion.masterAsset.timelineAssets.size() &gt; 0}">-->
+			<!--<targetStepName>update timeline</targetStepName>-->
+		<!--</transition>-->
+		<transition condition="${true}">
+			<targetStepName>check for proxy</targetStepName>
+		</transition>
+	</saveAssetStep>
+	
+	<!-- ........................................... Updating Timeline Information .......................................... -->
+	<!-- update the timeline data object with valid properties -->
+	<saveDataObjectStep name="update timeline"
+		dataObjectExpression="${assetVersion.masterAsset.timelineAssets[0].timeline}"
+		resultDataDef="timeline"
+		executionLabelExpression="updating timeline id ${assetVersion.masterAsset.timelineAssets[0].timeline.id}"
+		nextStep="update timeline video"
+	>
+		
+		<property name="name">${assetVersion.name}</property>
+		<property name="targetFramerate">${T(com.routeto1.asset.video.util.Framerate).getFramerate(assetVersion.originalContent.frameRate)}</property>
+		<property name="timecodeFormat">${assetVersion.originalContent.timecodeFormat}</property>
+		<property name="type">VIDEO_TIMELINE</property>
+		<property name="zeroTime">${assetVersion.originalContent.startTime ?: 3600.0}</property>
+	</saveDataObjectStep>
+	
+	
+	
+	<!-- update the timeline video object with valid properties -->
+	<saveDataObjectStep name="update timeline video"
+		dataObjectExpression="${timeline.videos[0]}"
+		nextStep="check for proxy"
+	>
+		<property name="timeline">${assetVersion.masterAsset.timelineAssets[0].timeline}</property>
+		<property name="timelineAsset">${assetVersion.masterAsset.timelineAssets[0]}</property>
+		<property name="timelineStartOffset">0.0</property>
+		<property name="timelineEndOffset">${assetVersion.originalContent.duration}</property>
+	</saveDataObjectStep>
+	
+	
+	
+	<!-- ................................................ Handling Proxy Files .............................................. -->
+	<!-- Checking if a proxy file was passed in -->
+	<noopStep name="check for proxy"
+		executionLabelExpression="Checking ${assetMaster.name} for existing proxy">
+		<transition condition="${assetVersion.masterAsset.proxy.file.absolutePath.contains(proxyRoot)}">
+			<targetStepName>delete existing proxy</targetStepName>
+		</transition>
+		<transition condition="${assetVersion.masterAsset.assetType.equals('Video')}">
+			<targetStepName>create video proxy</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	
+	<deleteFileStep name="delete existing proxy"
+		sourceFilesExpression="${assetVersion.masterAsset.proxy.file.absolutePath }"
+		executionLabelExpression="Removing ${assetVersion.masterAsset.proxy.file.absolutePath}"
+		nextStep="create video proxy"
+	/>
+	<!-- ..................................................... Video Steps ..................................................... -->
+	<!-- video proxies -->
+	<executeSubflowStep name="create video proxy"
+		targetWorkflowId="_createVideoProxies"
+		executionLabelExpression="create video proxy and thumbnail for ${assetVersion.name}"
+		pctComplete="95"
+		subjectChangePath="${assetVersion.masterAsset}"
+		nextStep="reindex asset"
+	>
+	
+	</executeSubflowStep>
+	
+	
+	
+	<!-- save layout info for the timeline -->
+	<groovyStep
+		name="save layout info"
+		resultDataDef="groovyReturn"
+		nextStep="reindex timeline"
+	>
+		<script>
+			<![CDATA[
+              import com.routeto1.spring.ApplicationContextHolder
+              import com.levelsbeyond.studio.service.inventory.LayoutInfoService
+
+              def service = ApplicationContextHolder.getApplicationContext().getBean(LayoutInfoService.class)
+              service.syncLayoutItemsToAssets(timeline)
+
+              return true
+            ]]>
+		</script>
+	</groovyStep>
+	
+	
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	
+	<!-- ........................................... Ending Steps .......................................... -->
+	<!-- Reindex -->
+	<raiseWorkflowEventStep name="reindex asset"
+		eventTypeExpression="ensureIndexed"
+		executionLabelExpression="Update ${assetMaster.name} in elasticsearch"
+		pctComplete="80"
+		nextStep="save metadata"
+	>
+		<property name="indexTargetRef">${assetVersion.masterAsset}</property>
+	</raiseWorkflowEventStep>
+	
+	
+	
+	<!-- Reindex -->
+	<raiseWorkflowEventStep name="reindex timeline"
+		eventTypeExpression="ensureIndexed"
+		executionLabelExpression="Update ${assetMaster.name} in elasticsearch"
+		pctComplete="80"
+		nextStep="save metadata"
+	>
+		<property name="indexTargetRef">${timeline}</property>
+	</raiseWorkflowEventStep>
+	
+	
+	<saveDataObjectStep name="save metadata"
+		executionLabelExpression="saving metadata"
+		dataObjectExpression="${assetVersion.masterAsset.metadata}"
+		
+	>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		
+		<property name="assetReplacedBy" >${startedBy}</property>
+		<property name="assetReplacementDate" >${replacementDate}</property>
+	</saveDataObjectStep>
+	
+	
+	<noopStep name="end"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="workflow is running"
+		executionLabelExpression="Workflow already executing"
+		reasonExpression="Workflow already executing"
+	/>
+	
+	<createFailureNotificationStep
+		name="notify box download error"
+		notificationTypeExpression="error"
+		notificationBodyExpression="Error downloading file with ID ${boxUrl} from box.com: ${downloadResultJson.error}. Contact an Admin for assistance."
+		nextStep="fail box download error"/>
+	
+	<failWorkflowStep name="fail box download error" reasonExpression="fail box download error" executionLabelExpression="Error downloading file with ID ${boxFileId} from box.com: ${downloadResultJson.error}. Contact an Admin for assistance."/>
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	
+	<contextDataDef name="fileToIngest"             dataType="File"          userInput="true"       />
+	<contextDataDef name="boxUrl"                   dataType="String"           userInput="true"    />
+	
+	
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="currentExecutions"    dataType="Data Object"                      multiple="true"/>
+	<contextDataDef name="assetReplacedBy"      dataType="String"           />
+	<contextDataDef name="assetReplacementDate" dataType="String"           />
+	<contextDataDef name="assetMaster"          dataType="Data Object"      defaultDataExpression="${subject}"  />
+	<contextDataDef name="contentUse"           dataType="String"           defaultDataExpression="${ 'SOURCE|MEZZANINE' }"/>
+	<contextDataDef name="assetVersion"         dataType="Data Object"      />
+	<contextDataDef name="timeline"             dataType="Data Object"/>
+	<contextDataDef name="groovyReturn"         dataType="Boolean"/>
+	<contextDataDef name="oldVersionCount"      dataType="Integer"          defaultDataExpression="${assetMaster.versions.size()}" />
+	<contextDataDef name="oldVersions"          dataType="Data Object"     />
+	<contextDataDef name="startedBy"            dataType="String"           defaultDataExpression=" ${ #this.startedBy.userName } " />
+	<contextDataDef name="replacementDate" 		dataType="Date/Time"        defaultDataExpression="${#newDate()}"/>
+	<contextDataDef name="proxyRoot"            dataType="String"           defaultDataExpression="${#sysconfig('filesystem.root.proxies')}"/>
+	<contextDataDef name="jsonMetadata"         dataType="JSON"     />
+
+
+</workflow>

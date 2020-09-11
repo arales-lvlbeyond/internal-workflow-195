@@ -1,0 +1,131 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_exportVideoContent"
+	name="Export Video"
+	executionLabelExpression="Export Video | Video: ${subject.name}"
+	description="Video content export"
+	subjectDOClassName="VideoAssetMaster"
+	deadlineExpression=""
+	showInUserInterface="false"
+	resultDataDef="exportedFile"
+	sdkVersion="4.2"
+	>
+
+    <initialStepName>check for archived content</initialStepName>
+
+	
+    <noopStep name="check for archived content"
+	    pctComplete="5"
+	    executionLabelExpression="Is the source archived? ${contentArchived}"
+	    devStep="true"
+        >
+        <transition condition="${contentArchived}">
+            <targetStepName>content archived</targetStepName>
+        </transition>
+        <transition condition="=true">
+            <targetStepName>export video</targetStepName>
+        </transition>
+    </noopStep>
+
+	
+    <convertVideoStep name="export video"
+	    pctComplete="80"
+	    executionLabelExpression="Converting video with template: ${targetTemplateName}"
+		mediaConversionTemplateExpression="${targetTemplateName}"
+		targetContentTemplateExpression="${targetTemplateName}"
+		sourceFileExpression="${sourceFile}"
+		resultDataDef="transcodeResultFile"
+		priorityExpression="${priority}"
+        >
+	    <transition condition="${transcodeResultFile.exists()}">
+		    <targetStepName>copy transcode result</targetStepName>
+	    </transition>
+	    <transition condition="true">
+		    <targetStepName>transcode error</targetStepName>
+	    </transition>
+    </convertVideoStep>
+
+	
+    <copyFileStep name="copy transcode result"
+	    pctComplete="90"
+	    executionLabelExpression="Copy transcoded file to destination: ${exportPath.absolutePath})"
+		sourceFileExpression="${transcodeResultFile}"
+		targetDirectoryExpression="${exportPath}"
+		targetFilenameExpression="${#baseFilename(subject.name)}-${targetTemplateName}.${#extension(transcodeResultFile.name)}"
+		resultDataDef="exportedFile"
+        >
+	    <transition condition="${exportedFile.exists()}">
+		    <targetStepName>delete transcode artifact</targetStepName>
+	    </transition>
+	    <transition condition="true">
+		    <targetStepName>copy error</targetStepName>
+	    </transition>
+    </copyFileStep>
+	
+	
+	<deleteFileStep name="delete transcode artifact"
+		pctComplete="95"
+		executionLabelExpression="Deleting transcode artifact: ${transcodeResultFile.absolutePath}"
+		sourceFilesExpression="${transcodeResultFile}"
+		continueOnException="true"
+		devStep="true"
+		nextStep="end"
+		/>
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<noopStep name="end"/>
+	
+	
+	<failWorkflowStep name="content archived"
+		reasonExpression="can not export archived content"
+		executionLabelExpression="can not export archived content"
+		/>
+	
+	
+	<failWorkflowStep name="transcode error"
+		reasonExpression="unable to transcode"
+		executionLabelExpression="Unable to transcode with template: ${targetTemplateName}. Check transcoder and previous step for errors."
+		/>
+	
+	
+	<failWorkflowStep name="copy error"
+		reasonExpression="can not copy file to destination"
+		executionLabelExpression="can not copy the transcoded file to the final destination: ${exportPath.absolutePath}. Check previous step for error."
+		/>
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- .......... Input .......... -->
+	<!-- required -->
+	<contextDataDef name="exportPath"           dataType="Directory"    userInput="true"/>
+	<!-- optional -->
+	<contextDataDef name="targetTemplateName"   dataType="String"       userInput="true"    defaultDataExpression="${#sysconfig('video.export.path')}"/>
+	<contextDataDef name="priority"             dataType="Integer"      defaultDataExpression="85"/>
+	
+	<!-- ....... Processing ........ -->
+    <contextDataDef name="contentArchived"      dataType="Boolean"      defaultDataExpression="${subject.mezzanineContent.truncatedFlag}"/>
+    <contextDataDef name="sourceFile"           dataType="File"         defaultDataExpression="${subject.mezzanineContent.file}"/>
+    <contextDataDef name="transcodeResultFile"  dataType="File"/>
+    <contextDataDef name="exportedFile"         dataType="File"/>
+    
+
+</workflow>

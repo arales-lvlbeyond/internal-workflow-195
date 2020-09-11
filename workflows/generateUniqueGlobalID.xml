@@ -1,0 +1,80 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/workflow.xsd"
+		id="generateUniqueGlobalID"
+		name="Generate Unique Global ID"
+		executionLabelExpression="Generate unique Global ID:"
+		subjectDOClassName=""
+		showInUserInterface="true"
+		resultDataDef=""
+		sdkVersion="5.4"
+		>
+	
+	<initialStepName>check for global ids</initialStepName>
+	
+<!--	<queryStep
+		name="check for global ids"
+		resultDataDef="globalIDs"
+		targetDataObjectClass="AssetCollection"
+		>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<criteria>
+			<![CDATA[
+                <criteria>
+                  <and>
+                    <condition property="metadata" op="eq" nullTargets="false">
+                      <test value="globalId"/>
+                    </condition>
+                  </and>
+                </criteria>
+            ]]>
+		</criteria>
+	</queryStep>
+	-->
+	
+	<groovyStep
+		name="check for global ids"
+		resultDataDef="globalIDs"
+		nextStep="end"
+		devStep="true"
+		>
+		<script>
+            <![CDATA[
+			import com.levelsbeyond.service.inventory.InventorySearchService
+			import com.levelsbeyond.service.inventory.InventorySearchCriteria
+			import com.levelsbeyond.api.inventory.InventorySearchResponse
+			import com.levelsbeyond.api.inventory.InventorySearchResult
+			import com.fasterxml.jackson.databind.JsonNode
+			import com.routeto1.spring.ApplicationContextHolder
+			
+			InventorySearchService inventorySearchService = ApplicationContextHolder.getApplicationContext().getBean(InventorySearchService.class)
+			
+			
+			InventorySearchCriteria criteria = InventorySearchCriteria.builder()
+				.setRql("globalId gt 0 order by globalId desc")
+				.build()
+			Collection<JsonNode> esResults = inventorySearchService.search(criteria).getResults()
+			
+			return esResults
+			]]>
+        </script>
+	</groovyStep>
+	
+	<!-- END STEPS-->
+	
+	<noopStep name="end"/>
+	
+
+	
+	
+	
+	
+	<!-- Internal -->
+	<contextDataDef name="globalIDs"            dataType="JSON"             multiple="true"/>
+	<contextDataDef name="metadataField" 		dataType="String"		    defaultDataExpression="globalId"/>
+	
+
+</workflow>

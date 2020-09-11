@@ -1,0 +1,75 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+          id="saveAssetMetadataUsingJSON"
+          name="Save Asset Metadata Using JSON"
+          executionLabelExpression="Save Asset Metadata Using JSON | ${asset.name}"
+          subjectDOClassName="AssetMaster"
+          showInUserInterface="true"
+          sdkVersion=""
+>
+
+    <initialStepName>Set JSON Metadata</initialStepName>
+
+    <setContextData name="Set JSON Metadata"
+                    executionLabelExpression="Setting JSON Data"
+                    nextStep="Save JSON">
+                    <set targetDataDef="jsonDataDef">
+                        <![CDATA[
+                            {
+                                "name":"${asset.name}",
+                                "assetType":"${asset.assetType}",
+                                "metadataValue1":"${asset.metadata.testValueA}",
+                                "newMetadataValue":"${asset.metadata.testValueB}"
+                            }
+                        ]]>
+                    </set>
+
+    </setContextData>
+
+    <saveDataObjectStep name="Save JSON"
+                        dataObjectExpression="${subject.metadata}"
+                        jsonValuesDataDef = "jsonDataDef"
+                        nameValuePairsDataDef="metadata"
+                        executionLabelExpression="Saving newly built JSON metadata"
+                        nextStep="Log JSON"
+    >
+    </saveDataObjectStep>
+
+    <!-- display JSON in the RE log -->
+    <testStep name="Log JSON"
+              outputExpression="${jsonDataDef.toString()}"
+              executionLabelExpression="JSON printed in RE Log"
+              nextStep="end"
+    />
+    <!-- ................................................... End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end"/>
+
+
+    <!-- ................................................... Data Defs .................................................... -->
+    <!-- ............ INPUT ............. -->
+    <contextDataDef name="asset"  dataType="Data Object"  defaultDataExpression="${subject}"/>
+    <contextDataDef name="jsonDataDef"  dataType="JSON"/>
+
+    <!-- ......... PROCESSING ........... -->
+
+
+</workflow>

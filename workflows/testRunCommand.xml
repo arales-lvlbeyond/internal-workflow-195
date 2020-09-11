@@ -1,0 +1,74 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2019 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="testRunCommand"
+	name="Test Run Command"
+	executionLabelExpression="Test Run Command"
+	subjectDOClassName="AssetMaster"
+	showInUserInterface="true"
+	sdkVersion=""
+	>
+	
+	<initialStepName>nothing</initialStepName>
+	
+	
+	<noopStep name="nothing"
+		nextStep="run command"
+		/>
+	
+	
+	<runCommandStep name="run command"
+		executablePathExpression="${exifCmd}"
+		resultCodeDataDef="resultCode"
+		stdoutDataDef="stdOut"
+		stderrDataDef="stdErr"
+		nextStep="run script"
+		>
+		<arg>-j</arg>
+		<arg>${sourceFile.absolutePath}</arg>
+	</runCommandStep>
+	
+	
+	<runCommandStep name="run script"
+		executablePathExpression="${exifScript}"
+		resultCodeDataDef="resultCode2"
+		stdoutDataDef="stdOut2"
+		stderrDataDef="stdErr2"
+		nextStep="end"
+		>
+		<arg>${sourceFile.absolutePath}</arg>
+	</runCommandStep>
+	
+	
+	<noopStep name="end"/>
+	
+	
+	<!-- ................................................... Data Defs .................................................... -->
+	<contextDataDef name="sourceFile"      dataType="File"    defaultDataExpression="${subject.originalContent.file}"/>
+	<contextDataDef name="exifCmd"         dataType="String"  defaultDataExpression="/reachengine/utilities/exiftool"/>
+	<contextDataDef name="exifScript"      dataType="String"  defaultDataExpression="/reachengine/utilities/exiftool.sh"/>
+	<contextDataDef name="resultCode"      dataType="Integer"/>
+	<contextDataDef name="stdOut"          dataType="String"/>
+	<contextDataDef name="stdErr"          dataType="String"/>
+	<contextDataDef name="resultCode2"     dataType="Integer"/>
+	<contextDataDef name="stdOut2"         dataType="String"/>
+	<contextDataDef name="stdErr2"         dataType="String"/>
+	
+</workflow>

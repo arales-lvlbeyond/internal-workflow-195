@@ -1,0 +1,53 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="getEmailAddressesFromUserRoles"
+    name="Get Email Addresses From User Roles"
+    executionLabelExpression=""
+    description=""
+    subjectDOClassName=""
+    subjectQualifierExpression=""
+    resultDataDef=""
+    showInUserInterface="true"
+    adminOnly="true"
+    sdkVersion="5.21">
+
+
+    <initialStepName>query for users</initialStepName>
+
+    <queryStep name="query for users"
+        targetDataObjectClass="SecurityUser"
+        resultDataDef="users"
+        executionLabelExpression="Is a workflow running already? ${currentExecutions.size() != 0}"
+        nextStep="set emails">
+        <criteria>
+            <![CDATA[
+        <criteria>
+          <and>
+            <condition property="securityRoles.roleName" op="eq">
+              <test value="${roleName}" />
+            </condition>
+          </and>
+        </criteria>
+      ]]>
+        </criteria>
+    </queryStep>
+
+
+    <setContextData name="set emails"
+        nextStep="end"
+        targetDataDef="usersEmails"
+        valueExpression="${users.![emailAddress]}"/>
+
+
+
+    <noopStep name="end"/>
+
+    <!--..............Context Data Defs................-->
+    <contextDataDef name="users" dataType="Data Object" multiple="true"/>
+    <contextDataDef name="roleName" dataType="String" userInput="true" />
+    <contextDataDef name="usersEmails" dataType="Email" multiple="true"/>
+
+
+</workflow>

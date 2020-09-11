@@ -1,0 +1,125 @@
+<!--
+~ Levels Beyond CONFIDENTIAL
+~
+~ Copyright 2003 - 2018 Levels Beyond Incorporated
+~ All Rights Reserved.
+~
+~ NOTICE:  All information contained herein is, and remains
+~ the property of Levels Beyond Incorporated and its suppliers,
+~ if any.  The intellectual and technical concepts contained
+~ herein are proprietary to Levels Beyond Incorporated
+~ and its suppliers and may be covered by U.S. and Foreign Patents,
+~ patents in process, and are protected by trade secret or copyright law.
+~ Dissemination of this information or reproduction of this material
+~ is unlawful and strictly forbidden unless prior written permission is obtained
+~ from Levels Beyond Incorporated.
+-->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="_ingestLiveEvent"
+	name="Ingest Live Event"
+	executionLabelExpression="Ingest Live Event | Event Asset: ${asset.name}"
+	deadlineExpression=""
+	subjectDOClassName=""
+	showInUserInterface="false"
+	resultDataDef=""
+	sdkVersion="5.21"
+	>
+	
+	<initialStepName>check requirements</initialStepName>
+	
+
+	<noopStep name="check requirements"
+		executionLabelExpression="asset exists? >>> ${asset != null} | sourceFile exists? >>> ${sourceFile != null AND sourceFile.exists()} | proxyTemplate exists? >>> ${proxyTemplate != null AND !proxyTemplate.equals('')} | thumbVideoTemplate exists? >>> ${thumbVideoTemplate != null AND !thumbVideoTemplate.equals('')}"
+		pctComplete="5"
+		>
+		<transition condition="${asset != null AND sourceFile != null AND sourceFile.exists() AND proxyTemplate != null AND !proxyTemplate.equals('') AND thumbVideoTemplate != null AND !thumbVideoTemplate.equals('')}">
+			<targetStepName>ingest source</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>requirements error</targetStepName>
+		</transition>
+	</noopStep>
+	
+	
+	<executeSubflowStep name="ingest source"
+		targetWorkflowId="${ingestSubflow}"
+		subjectChangePath="${sourceFile}"
+		subflowTargetDataDef="fileToIngest"
+		resultDataDef="asset"
+		executionLabelExpression="ingesting ${sourceFile.absolutePath}"
+		pctComplete="25"
+		nextStep="create proxies"
+		>
+		<subflowContextDataMapping parentDataDef="assetVersion"         subflowDataDef="assetVersion"/>
+		<subflowContextDataMapping parentDataDef="sourceAsMezz"         subflowDataDef="sourceAsMezz"/>
+		<subflowContextDataMapping parentDataDef="overwriteExisting"    subflowDataDef="overwriteExisting"/>
+		<subflowContextDataMapping parentDataDef="assetName"            subflowDataDef="assetName"/>
+	</executeSubflowStep>
+	
+	
+	<executeSubflowStep name="create proxies"
+		targetWorkflowId="${proxySubflow}"
+		subjectChangePath="${asset}"
+		executionLabelExpression="create proxies for ${asset.name}"
+		pctComplete="90"
+		>
+		<transition condition="${liveEventContent != null}">
+			<targetStepName>delete live event content</targetStepName>
+		</transition>
+		<transition condition="true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		
+		<subflowContextDataMapping parentDataDef="proxyTemplate" 		subflowDataDef="proxyTemplate"/>
+		<subflowContextDataMapping parentDataDef="thumbVideoTemplate" 	subflowDataDef="thumbVideoTemplate"/>
+	</executeSubflowStep>
+	
+	
+	<!-- delete content object associated with the live event -->
+	<deleteDataObjectStep name="delete live event content"
+		dataObjectExpression="${liveEventContent}"
+		executionLabelExpression="Deleting AssetContent (id = ${liveEventContent.id})"
+		pctComplete="99"
+		nextStep="end"
+		/>
+	
+	
+	<!-- ...................................................... End Steps ...................................................... -->
+	<!-- success -->
+	<noopStep name="end" pctComplete="100"/>
+	
+	
+	<!-- fail -->
+	<failWorkflowStep name="requirements error"
+		reasonExpression="Requirements error. Asset, source file, proxy profile, or thumbnail profile was not given or is invalid"
+		executionLabelExpression="Requirements error. Asset, source file, proxy profile, or thumbnail profile was not given or is invalid"
+		/>
+	
+	
+	<!-- .................................................. Context Data Defs .................................................. -->
+	<!-- ............ Input Variables ............. -->
+	<!-- live event AssetMaster to ingest to -->
+	<contextDataDef name="asset"        		dataType="Data Object"/>
+	<!-- live event file to ingest as source -->
+	<contextDataDef name="sourceFilePath" 		dataType="String"/>
+	
+	<!-- .......... Processing variables .......... -->
+	<contextDataDef name="liveEventContent" 	dataType="Data Object"		defaultDataExpression="${asset.currentVersion.contents.?[contentUses.toString().toLowerCase().contains('live_stream')]}"/>
+	<!-- ingest -->
+	<contextDataDef name="sourceFile" 			dataType="File"				defaultDataExpression="${sourceFilePath}"/>
+	<contextDataDef name="sourceAsMezz"         dataType="Boolean"          defaultDataExpression="true"/>
+	<contextDataDef name="overwriteExisting"    dataType="Boolean"          defaultDataExpression="true"/>
+	<contextDataDef name="assetVersion"         dataType="Data Object"      defaultDataExpression="${asset.currentVersion}"/>
+	<contextDataDef name="assetName"            dataType="String"           defaultDataExpression="${asset.name}"/>
+	<!-- subflows -->
+	<contextDataDef name="ingestSubflow"        dataType="String"           defaultDataExpression="${#sysconfig('workflows.default.ingestAsset.sourceIngestWorkflow') ?: '_baseAssetIngest'}"/>
+	<contextDataDef name="proxySubflow"         dataType="String"           defaultDataExpression="${#sysconfig('workflows.default.proxies.video.workflow') ?: '_createVideoProxies'}"/>
+	<!-- templates -->
+	<contextDataDef name="proxyTemplate" 		dataType="String"			defaultDataExpression="${#sysconfig('ingest.liveEvent.proxyTranscodeProfile') ?: (#sysconfig('workflows.default.proxies.video.proxyTemplate') ?: (#sysconfig('import.proxySettingName') ?: 'FFmpeg Proxy'))}"/>
+	<contextDataDef name="thumbVideoTemplate" 	dataType="String"			defaultDataExpression="${#sysconfig('ingest.liveEvent.thumbnailTranscodeProfile') ?: (#sysconfig('workflows.default.proxies.video.thumbVideoTemplate') ?: (#sysconfig('import.thumbnailMovSettingName') ?: 'FFmpeg Thumb MOV'))}"/>
+	
+</workflow>

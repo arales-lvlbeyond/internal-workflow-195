@@ -1,0 +1,89 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+	id="placeholderGroovy"
+	name="Placeholder Groovy"
+	executionLabelExpression="Placeholder Groovy | Name: ${assetName} | Type: ${assetType}"
+	subjectDOClassName=""
+	showInUserInterface="true"
+	resultDataDef="assetMaster"
+	sdkVersion=""
+	>
+	
+	<initialStepName>create placeholder</initialStepName>
+	
+	
+	<groovyStep name="create placeholder"
+		resultDataDef="assetMaster"
+		nextStep="end"
+		>
+		<script>
+		<![CDATA[
+			import com.levelsbeyond.persistence.domain.asset.type.InventoryAssetType
+			import com.levelsbeyond.resource.asset.placeholder.PlaceholderAssetDTO
+			import com.levelsbeyond.service.inventory.reference.InventoryReferenceService
+			import com.levelsbeyond.service.inventory.PlaceholderAssetService
+			import com.routeto1.asset.filesystem.AssetMaster
+			import com.routeto1.services.asset.AssetService
+			import com.routeto1.spring.ApplicationContextHolder
+			
+			InventoryReferenceService inventoryReferenceService = ApplicationContextHolder.getApplicationContext().getBean(InventoryReferenceService.class)
+			PlaceholderAssetService placeholderAssetService = ApplicationContextHolder.getApplicationContext().getBean(PlaceholderAssetService.class)
+			AssetService assetService = ApplicationContextHolder.getApplicationContext().getBean(AssetService.class)
+			
+			InventoryAssetType inventoryAssetType
+			try {
+				inventoryAssetType = inventoryReferenceService.getAssetTypeForKey(assetType)
+			} catch (Exception e){
+				throw new Exception("Invalid assetType: " + assetType + ". Valid types are: video, image, audio, document, unclassified")
+			}
+			
+			AssetMaster assetMaster
+			try {
+				PlaceholderAssetDTO placeholderAsset = PlaceholderAssetDTO.builder().setName(assetName).setInventoryAssetType(inventoryAssetType.name()).build()
+				PlaceholderAssetDTO createdPlaceholderAsset = placeholderAssetService.create(placeholderAsset)
+				assetMaster = assetService.getAsset(createdPlaceholderAsset.getId(), AssetMaster.class)
+			} catch (Exception e) {
+				throw new Exception(e)
+			}
+			
+			return assetMaster
+			
+		]]>
+		</script>
+	</groovyStep>
+	
+	
+	<noopStep name="end"/>
+
+
+	<contextDataDef name="assetName"    dataType="String"       userInput="true"    required="true"/>
+	<contextDataDef name="assetType"    dataType="String"       userInput="true"    required="true">
+		<picklist>
+			<picklistItem value="video"/>
+			<picklistItem value="image"/>
+			<picklistItem value="audio"/>
+			<picklistItem value="document"/>
+			<picklistItem value="unclassified"/>
+		</picklist>
+	</contextDataDef>
+	<contextDataDef name="assetMaster"  dataType="Data Object"/>
+	
+</workflow>

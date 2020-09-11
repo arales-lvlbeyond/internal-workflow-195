@@ -1,0 +1,101 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+		http://levelsbeyond.com/schema/latest
+		https://s3-us-west-2.amazonaws.com/schema.levelsbeyond.com/2.3.16.17962/studio.xsd
+	"
+	id="setTimelineThumbnail"
+	name="Set Timeline Thumbnail"
+	executionLabelExpression="Set Timeline Thumbnail"
+	subjectDOClassName="Timeline"
+	showInUserInterface="true"
+	sdkVersion="">
+
+	<initialStepName>check if timeline has a video</initialStepName>
+	
+	<noopStep name="check if timeline has a video"
+		executionLabelExpression="Does Timeline have a Video? | ${timeline.mainVideoAsset != null}"
+	>
+		<transition condition="${timeline.mainVideoAsset != null}">
+			<targetStepName>set thumbnail</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>no video found</targetStepName>
+		</transition>
+	</noopStep>
+	<submitHttpStep name="set thumbnail"
+		executionLabelExpression="Setting Timeline Thumbnail to ${assetMaster.name}"
+		requestMethodExpression="PUT"
+		urlExpression="${requestUrl}"
+		responsePayloadDataDef="jsonResponse"
+		responseCodeDataDef="responseCode"
+	>
+		<transition condition="${responseCode.toString().startsWith('2')}">
+			<targetStepName>reindex</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>error setting thumbnail</targetStepName>
+		</transition>
+		<requestPayloadItem name="body">
+			{
+				"id" : ${timeline.id},
+				"chosenThumbnailAssetId" : ${timeline.mainVideoAsset.id}
+			}
+		</requestPayloadItem>
+		<requestHeader name="apikey">${apiKey}</requestHeader>
+	</submitHttpStep>
+	
+	<raiseWorkflowEventStep name="reindex"
+		eventTypeExpression="ensureIndexed"
+		executionLabelExpression="Ensure Asset Indexed"
+		nextStep="end"
+	>
+		<property name="indexTargetRef">${timeline}</property>
+	</raiseWorkflowEventStep>
+	
+	<noopStep name="no video found"
+		executionLabelExpression="No video can be used to make a thumbnail. Skipping this timeline."
+		nextStep="end"
+	/>
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- failure -->
+	<failWorkflowStep name="error setting thumbnail"
+		executionLabelExpression="Something went wrong when setting the thumbnail for timeline ${timeline.name}. Check the jsonResponse data def in context data to try and troubleshoot the issue."
+		reasonExpression="Something went wrong when setting the thumbnail for timeline ${timeline.name}. Check the jsonResponse data def in context data to try and troubleshoot the issue."
+	/>
+	
+	<!-- success -->
+	<noopStep name="end" />
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="timeline"                 dataType="Data Object"  defaultDataExpression="${subject}" />
+
+    <contextDataDef name="assetMaster"              dataType="Data Object"  defaultDataExpression="${timeline.mainVideoAsset}"/>
+	
+	<!-- reach api data defs -->
+	<contextDataDef name="jsonResponse"             dataType="JSON"         defaultDataExpression="{}" />
+    <contextDataDef name="responseCode"             dataType="Integer" />
+	<contextDataDef name="requestUrl"               dataType="String"       defaultDataExpression="${reachUrl}/reachengine/api/inventory/timelines/${timeline.id}/thumbnail/${assetMaster.id}" />
+	
+	<!-- Reach Info -->
+	<contextDataDef name="reachUrl"                 dataType="String"       defaultDataExpression="${#sysconfig('workflows.reachUrl')}" />
+	<contextDataDef name="apiKey"                   dataType="String"       defaultDataExpression="${#sysconfig('workflows.apiKey')}"    />
+</workflow>

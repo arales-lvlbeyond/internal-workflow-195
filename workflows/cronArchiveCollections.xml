@@ -1,0 +1,121 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="cronArchiveCollections"
+    name="Cron Archive Collections"
+    description=""
+    executionLabelExpression="Cron Archive Collections"
+    deadlineExpression=""
+    subjectDOClassName=""
+    showInUserInterface="true"
+    sdkVersion="">
+
+    <initialStepName>query test</initialStepName>
+
+
+    <queryStep name="query test"
+        targetDataObjectClass="AssetCollection"
+        resultDataDef="collections"
+        nextStep="sort by metadata">
+        <criteria>
+            <![CDATA[
+      <criteria>
+        <and>
+          <condition property="metadata.rating" op="eq">
+            <test value="5"/>
+
+          </condition>
+        </and>
+      </criteria>
+      ]]>
+        </criteria>
+
+        <sortOrder sortPropertyExpression="metadata.typeAsset" sortDirectionExpression="ASC"/>
+    </queryStep>
+
+
+    <groovyStep name="sort by metadata"
+        executionLabelExpression="sorting by specific criteria"
+        resultDataDef="sortedCollections"
+        nextStep="display collection order">
+        <script>
+  <![CDATA[
+            import com.routeto1.metadata.Metadata
+            import com.routeto1.data.IDataObjectDAO
+            import com.levelsbeyond.service.inventory.MetadataService
+            import com.routeto1.metadata.Metadata
+            import com.routeto1.data.impl.DynamicDataObjectDAO
+            import com.routeto1.asset.filesystem.AssetMaster
+            import com.routeto1.services.asset.AssetService
+            import com.routeto1.spring.ApplicationContextHolder
+            import com.routeto1.asset.AssetCollection
+
+            //MetadataService metadataService = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class)
+            class SortByTypeAndSize implements Comparator<AssetCollection> {
+                MetadataService metadataService = ApplicationContextHolder.getApplicationContext().getBean(MetadataService.class)
+
+                private int getPriority(String typeAsset) {
+                    if (typeAsset.contains("picture")) {
+                        return 1;
+                    } else if (typeAsset.contains("imf")) {
+                        return 2;
+                    } else if (typeAsset.contains("as02")) {
+                        return 3;
+                    } else if (typeAsset.contains("audio")) {
+                        return 4;
+                    } else if (typeAsset.contains("document")) {
+                        return 5;
+                    } else {
+                        return 6;
+                    }
+
+
+                }
+
+                //int define the method compare(java.lang.Object, java.lang.Object)
+                public int compare(Object aIn, Object bIn) {
+                    final AssetCollection a = (AssetCollection) aIn;
+                    final AssetCollection b = (AssetCollection) bIn;
+                    String aType = metadataService.getStoredMetadataValue("typeAsset", a.getMetadata())
+                    String bType = metadataService.getStoredMetadataValue("typeAsset", b.getMetadata())
+                    //first compare by typeAsset
+                    //if a is higher priority than b, return a positive value, else return negative
+                    int aPriority = getPriority(aType);
+                    int bPriority = getPriority(bType);
+                    if (aPriority != bPriority) {
+                        return aPriority - bPriority;
+                    }
+                    return b.getItems().size() - a.getItems().size();
+                    //if typeAsset is equal for both AssetCollections then compare by item count
+                    //if a has more items than b, return a positive value, else return negative
+                }
+
+            }
+
+
+            List<AssetCollection> copyList = new ArrayList();
+            copyList.addAll(collections);
+            Collections.sort(copyList, new SortByTypeAndSize());
+
+            return copyList;
+            ]]>
+  </script>
+    </groovyStep>
+
+
+    <noopStep name="display collection order"
+        executionLabelExpression="${sortedCollections} >>> collection order"
+        nextStep="end"/>
+
+    <noopStep name="end"/>
+
+
+
+
+
+
+
+    <contextDataDef name="collections" dataType="Data Object" multiple="true"/>
+    <contextDataDef name="sortedCollections" dataType="Data Object" multiple="true"/>
+
+</workflow>

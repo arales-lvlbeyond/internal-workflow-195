@@ -1,0 +1,27 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+          id="downloadAssetProxyTest"
+          name="Download Asset Proxy Test"
+          executionLabelExpression="Download Asset Proxy Test of ${subject.name}"
+          description="Download file content"
+          hasDownload="true"
+          showInUserInterface="true"
+          subjectDOClassName="AssetMaster"
+          subjectQualifierExpression=""
+          sdkVersion="">
+
+    <initialStepName>create download link</initialStepName>
+
+    <setWorkflowDownloadStep
+        name="create download link"
+        sourceFileExpression="${subject.getProxyContent().file}"
+        nextStep="end"/>
+
+    <noopStep name="end"/>
+    
+    <contextDataDef name="proxy" dataType="File" defaultDataExpression="${subject.getProxyContent().file}"/>
+    <contextDataDef name="source" dataType="File" defaultDataExpression="${subject.getOriginalContent().file}"/>
+
+</workflow>

@@ -1,0 +1,114 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+        http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+        "
+
+	id="_convertListToCollection"
+    name="Convert List to Collection"
+    executionLabelExpression="Convert List '${subject.name}' to Collection" 
+    subjectDOClassName="TimelineSegmentList" 
+    showInUserInterface="true"
+    defaultExecutionMode="sync"
+    subjectQualifierExpression="${migratedToCollectionFlag != true}"
+    resultDataDef="collection">
+
+	<initialStepName>create collection</initialStepName>
+	
+	<!-- create collection -->
+	<saveDataObjectStep name="create collection"
+			targetDataObjectClass="AssetCollection"
+			resultDataDef="collection">
+		<transition condition="=true">
+			<targetStepName>has clips test</targetStepName>
+		</transition>
+		
+		<property name="name">${subject.name}</property>
+	</saveDataObjectStep>
+	
+	<!-- copy clips -->
+	<noopStep name="has clips test" devStep="true">
+		<transition condition="${subject.clips.isEmpty() == false}">
+			<targetStepName>copy clips to collection</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>has timelines test</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<executeSubflowStep name="copy clips to collection"
+						targetWorkflowId="_addClipToCollection"
+						subjectChangePath="${subject.clips}">
+		<transition condition="=true">
+			<targetStepName>has timelines test</targetStepName>
+		</transition>
+		
+		<subflowContextDataMapping subflowDataDef="collection" parentDataDef="collection"/>
+	</executeSubflowStep>
+	
+	<!-- copy timelines -->
+	<noopStep name="has timelines test" devStep="true">
+		<transition condition="${subject.timelines.isEmpty() == false}">
+			<targetStepName>copy timelines to collection</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>mark list as migrated</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<executeSubflowStep name="copy timelines to collection"
+						targetWorkflowId="_addTimelineToCollection"
+						subjectChangePath="${subject.timelines}">
+		<transition condition="=true">
+			<targetStepName>mark list as migrated</targetStepName>
+		</transition>
+		
+		<subflowContextDataMapping subflowDataDef="collection" parentDataDef="collection"/>
+	</executeSubflowStep>
+	
+	<saveDataObjectStep name="mark list as migrated" dataObjectExpression="${subject}">
+		<transition condition="=true">
+			<targetStepName>end</targetStepName>
+		</transition>
+		<property name="migratedToCollectionFlag">true</property>
+	</saveDataObjectStep>
+	
+	<!-- delete list -->
+	<!--  DL:  removed delete, FK constraint is killing it -->
+<!-- 	<noopStep name="delete test" devStep="true">
+		<transition condition="${deleteList}">
+			<targetStepName>delete list</targetStepName>
+		</transition>
+		<transition condition="=true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</noopStep>
+	
+	<deleteDataObjectStep name="delete list" dataObjectExpression="${subject}">
+		<transition condition="=true">
+			<targetStepName>end</targetStepName>
+		</transition>
+	</deleteDataObjectStep>
+ -->	
+	<!-- end -->
+	<noopStep name="end"></noopStep>
+	
+<!-- 	<contextDataDef name="deleteList" dataType="Boolean" label="Delete List" userInput="true" defaultDataExpression="${false}"/> -->
+	<contextDataDef name="collection" dataType="Data Object"/>
+</workflow>

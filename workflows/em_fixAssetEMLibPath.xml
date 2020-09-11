@@ -1,0 +1,90 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd"
+    id="em_fixAssetEMLibPath"
+    name="em_Fix Asset EM Library Path"
+    executionLabelExpression="Fix Asset EM Library Path | Asset: '${itemToUpdate.name}'"
+    showInUserInterface="false"
+    subjectDOClassName=""
+    devWorkflow="true"
+    sdkVersion=""
+    >
+    
+    
+    <initialStepName>find arcisilon file path</initialStepName>
+    
+    
+    <setContextData name="find arcisilon file path"
+        executionLabelExpression="Finding arcisilon file path: ${itemToUpdate.metadata.arcisilonPath}"
+        pctComplete="15"
+        targetDataDef="arcisilonFilePath" 
+        valueExpression="${itemToUpdate.metadata.arcisilonPath}"
+        nextStep="set filename asset" />
+    
+    <setContextData name="set filename asset"
+        pctComplete="30"
+        executionLabelExpression="name: ${itemToUpdate.mezzanine.file.name}"
+        targetDataDef="filename" 
+        valueExpression="${itemToUpdate.mezzanine.file.name}"
+        devStep="true"
+        nextStep="set em lib file"
+        />
+    
+    
+    <setContextData name="set em lib file"
+        pctComplete="40"
+        executionLabelExpression="expected EM Library file: ${arcisilonFilePath.endsWith('/')? arcisilonFilePath.replace(arcRoot,emLibRoot) : arcisilonFilePath.replace(arcRoot,emLibRoot) + '/'}${filename}"
+        targetDataDef="emLibFile"
+        valueExpression="${arcisilonFilePath.endsWith('/')? arcisilonFilePath.replace(arcRoot,emLibRoot) : arcisilonFilePath.replace(arcRoot,emLibRoot) + '/'}${filename}"
+        nextStep="check file exists"
+        >
+    </setContextData>
+    
+    
+    <noopStep name="check file exists"
+        executionLabelExpression="EM Library File exists? ${emLibFile.exists()}"
+        pctComplete="45"
+        >
+        <transition condition="${emLibFile.exists()}">
+            <targetStepName>update metadata</targetStepName>
+        </transition>
+        <transition condition="true">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </noopStep>
+    
+    
+    <saveDataObjectStep name="update metadata"
+        pctComplete="50"
+        dataObjectExpression="${itemToUpdate.metadata}" 
+        executionLabelExpression="File Exists, updating emlibraryPath:  ${#filepath(emLibFile)}"
+        nextStep="remove em library file"
+        >
+        <property name="emlibraryPath">${#filepath(emLibFile)}</property>
+    </saveDataObjectStep>
+    
+    
+    <executeSubflowStep name="remove em library file"
+        pctComplete="99"
+        executionLabelExpression="remove EM Library file"
+        targetWorkflowId="em_removeAssetEMLibSubFlow"
+        subjectChangePath="${itemToUpdate}"
+        subflowTargetDataDef="itemToUpdate"
+        nextStep="end"
+        />
+    
+
+    <!-- ................................................... End Steps .................................................... -->
+    <noopStep name="end" pctComplete="100"/>
+    
+    
+    <!-- ............................................... Context Data Defs ................................................ -->
+    <contextDataDef name="itemToUpdate" 		 		dataType="Data Object"  userInput="true" 	required="true"/>
+    <contextDataDef name="arcisilonFilePath"           	dataType="String"/>
+    <contextDataDef name="filename"                	    dataType="String"/>
+    <contextDataDef name="emLibFile"                    dataType="File"/>
+    <contextDataDef name="arcRoot"                      dataType="String"       defaultDataExpression="${#sysconfig('filesystem.root.arcisilonMedia')}"/>
+    <contextDataDef name="emLibRoot"                    dataType="String"       defaultDataExpression="${#sysconfig('filesystem.root.emlibrary')}"/>
+
+</workflow>

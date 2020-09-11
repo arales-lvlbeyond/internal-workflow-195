@@ -1,0 +1,69 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="practice10Assignment"
+    name="Practice 10 Assignment"
+    executionLabelExpression="Practice 10 Assignment"
+    description="
+    	Create Workflow
+    		Take practice 9 and modify it to find multiple assets with findMe set to true
+    		Replace the saveDataObjectStep and reindex with calling practice 8 as a subflow to set findMe to false on each of the found assets
+    "
+    subjectDOClassName=""
+    resultDataDef=""
+    deadlineExpression=""
+    showInUserInterface="true"
+    sdkVersion=""
+    >
+	
+	<initialStepName>set findMe</initialStepName>
+	
+
+
+	<!-- save findMe to the user input on the selected asset -->
+	<saveDataObjectStep name="set findMe"
+		dataObjectExpression="${subject.metadata}"
+		executionLabelExpression="saving findMe as ${newValue} on ${subject.name}"
+		pctComplete="66"
+		nextStep="reindex"
+		>
+		<property name="findMe">${newValue}</property>
+	</saveDataObjectStep>
+	
+	
+	
+	<!-- reindex the found asset in elastisearch -->
+	<raiseWorkflowEventStep name="reindex" 
+		eventTypeExpression="ensureIndexed"
+		executionLabelExpression="Ensure Asset Indexed"
+		pctComplete="99"
+		nextStep="end"
+		>
+		
+		<property name="indexTargetRef">${subject}</property>
+	</raiseWorkflowEventStep>
+
+	
+	
+
+
+
+	
+    <!-- success -->
+    <noopStep name="end"/>
+	
+	
+	
+	
+	
+	
+	<!-- ..................................... Context Data Defs ....................... -->
+	
+	<contextDataDef name="newValue" dataType="Boolean"  userInput="true"    label="New Value for findMe"   defaultDataExpression="false" />
+	<contextDataDef name="hiddenContextData" dataType="String"  hidden="false"   defaultDataExpression="Hide Me"/>
+	
+
+	
+
+</workflow>

@@ -1,0 +1,116 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2018 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+          xsi:schemaLocation="
+    	    http://levelsbeyond.com/schema/latest http://levelsbeyond.com/schema/latest/studio.xsd
+            "
+          id="_divaRestoreAssetContent"
+          name="Diva Restore Asset Content"
+          executionLabelExpression="Diva Restore Asset Content ${subject.file?.absolutePath} from ${subject.restoreKey}"
+          description=""
+          subjectDOClassName="VideoAssetContent"
+          showInUserInterface="false"
+          deadlineExpression=""
+          resultDataDef="repoFile"
+          sdkVersion="4.2">
+
+	<initialStepName>run diva restore script</initialStepName>
+
+	<nimbus:divaRestoreStep
+		name="run diva restore script"
+		executionLabelExpression="Restoring ${subject.restoreKey} to repo (${restorePath})"
+		sourceFileExpression="${subject.restoreKey}"
+		restorePath="${restorePath}"
+		divaRestorePath="${divaRestorePath}"
+		objectCategoryExpression="${archiveCategory}"
+		archivePriorityExpression="${restorePriority}"
+		transferServerNameExpression="${transferServerName}"
+		deleteAfterRestore="${deleteAfterRestore}"
+		waitForResponseExpression="${waitForResponseFlag}"
+		pctComplete="80"
+		resultDataDef="restoredFile"
+		>
+		<transition condition="=true">
+			<targetStepName>copy restored file to repository</targetStepName>
+		</transition>
+	</nimbus:divaRestoreStep>
+
+	<copyFileStep
+		name="copy restored file to repository"
+		executionLabelExpression="Copy restored file ${restoredFile.absolutePath} to repo (${subject.file.absolutePath})"
+		sourceFileExpression="=restoredFile"
+		targetDirectoryExpression="=#filepath(subject.file)"
+		pctComplete="90"
+		resultDataDef="repoFile"
+		>
+		<transition condition="=true">
+			<targetStepName>delete restored file</targetStepName>
+		</transition>
+	</copyFileStep>
+
+	<deleteFileStep
+		name="delete restored file"
+		executionLabelExpression="Delete restored file ${restoredFile.absolutePath}"
+		sourceFilesExpression="${restoredFile}"
+		pctComplete="95"
+		>
+		<transition condition="=true">
+			<targetStepName>update asset content</targetStepName>
+		</transition>
+	</deleteFileStep>
+
+	<saveDataObjectStep
+		name="update asset content"
+		executionLabelExpression="Mark asset content ${subject.id} as restored"
+		targetDataObjectClass="AssetContent"
+		dataObjectExpression="${subject}"
+		pctComplete="98"
+		>
+		<transition condition="true">
+			<targetStepName>raise content restored event</targetStepName>
+		</transition>
+		<property name="truncatedFlag">false</property>
+		<!--  <property name="restoreKey"></property> -->
+		<property name="contentUuid">=#filename(repoFile)</property>
+	</saveDataObjectStep>
+
+	<raiseWorkflowEventStep
+		name="raise content restored event"
+		eventTypeExpression="ContentRestoredDIVA"
+		executionLabelExpression="Sending Content Restored event"
+		summaryExpression="Asset content has been restored"
+		>
+		<property name="archiveFile">${subject.restoreKey}</property>
+		<property name="archiveCategory">${archiveCategory}</property>
+		<property name="repoFile">${repoFile.absolutePath }</property>
+	</raiseWorkflowEventStep>
+
+	<contextDataDef name="restoredFile" dataType="File"/>
+	<contextDataDef name="repoFile" dataType="File"/>
+	<contextDataDef name="restorePath" dataType="Directory" defaultDataExpression="=#sysconfig('asset.archive.diva.path')"/>
+	<contextDataDef name="divaRestorePath" dataType="String" defaultDataExpression="=#sysconfig('asset.archive.diva.divaArchivePath')"/>
+	<contextDataDef name="deleteAfterRestore" dataType="String" defaultDataExpression="=#sysconfig('asset.archive.diva.deleteAfterRestore')"/>
+	<contextDataDef name="archiveCategory" dataType="String" defaultDataExpression="=#sysconfig('asset.archive.diva.category')"/>
+	<contextDataDef name="transferServerName" dataType="String" defaultDataExpression="=#sysconfig('asset.archive.diva.transferServerName')"/>
+	<contextDataDef name="waitForResponseFlag" dataType="Boolean" defaultDataExpression="=#sysconfig('asset.archive.diva.waitForResponseFlag')"/>
+	<contextDataDef name="restorePriority" dataType="Integer" defaultDataExpression="=#sysconfig('asset.archive.diva.restorePriority')"/>
+	<contextDataDef name="archiveStatus" dataType="String"/>
+
+</workflow>

@@ -1,0 +1,118 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    id="exportTimelineClipSubflow"
+    name="Export Timeline Clip Subflow"
+    executionLabelExpression="Export ${subject.name} to ${exportPath.absolutePath} as ${targetTemplateName}"
+    description=""
+    subjectDOClassName=""
+    deadlineExpression=""
+    showInUserInterface="false"
+    resultDataDef="clipFile"
+    sdkVersion="4.2">
+
+    <initialStepName>calculate timeline video clip start</initialStepName>
+
+
+    <setContextData name="calculate timeline video clip start"
+        targetDataDef="timelineVideoClipStart"
+        valueExpression="${T(java.lang.Math).max(clip.timelineStartOffset, timelineVideo.timelineStartOffset)}">
+        <transition condition="=true">
+            <targetStepName>calculate timeline video clip end</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData name="calculate timeline video clip end"
+        targetDataDef="timelineVideoClipEnd"
+        valueExpression="${T(java.lang.Math).min(clip.timelineEndOffset, timelineVideo.timelineEndOffset)}">
+        <transition condition="=true">
+            <targetStepName>calculate video clip start</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData name="calculate video clip start"
+        targetDataDef="videoClipStart"
+        valueExpression="${T(java.lang.Math).max(timelineVideoClipStart - timelineVideo.timelineStartOffset, 0.0d)}">
+        <transition condition="=true">
+            <targetStepName>calculate video clip end</targetStepName>
+        </transition>
+    </setContextData>
+
+    <setContextData name="calculate video clip end"
+        targetDataDef="videoClipEnd"
+        valueExpression="${videoClipStart + timelineVideoClipEnd - timelineVideoClipStart}">
+        <transition condition="=true">
+            <targetStepName>check for archived content</targetStepName>
+        </transition>
+    </setContextData>
+
+    <noopStep name="check for archived content">
+        <transition condition="${contentArchived}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <transition condition="=true">
+            <targetStepName>end</targetStepName>
+        </transition>
+    </noopStep>
+
+    <executeSubflowStep
+        name="restore content"
+        subjectChangePath="mezzanine"
+        targetWorkflowId="${pfrWorkflowId}"
+        pctComplete="50"
+        resultDataDef="sourceFile">
+        <transition condition="=true">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <subflowContextDataMapping parentDataDef="videoClipStart" subflowDataDef="startOffset"/>
+        <subflowContextDataMapping parentDataDef="videoClipEnd" subflowDataDef="endOffset"/>
+        <subflowContextDataMapping parentDataDef="targetTemplateName" subflowDataDef="targetTemplateName"/>
+    </executeSubflowStep>
+
+    <!--executeSubflowStep
+        name="create video clip file"
+        executionLabelExpression="Create video clip file.. Result: ${videoClipFile.absolutePath}."
+        targetWorkflowId="${transcodeSubflow}"
+        resultDataDef="clipFile">
+        <transition condition="${true}">
+            <targetStepName>end</targetStepName>
+        </transition>
+        <subflowContextDataMapping parentDataDef="sourceFile"             subflowDataDef="sourceFile"/>
+        <subflowContextDataMapping parentDataDef="videoClipStart"         subflowDataDef="startTime"/>
+        <subflowContextDataMapping parentDataDef="videoClipEnd"           subflowDataDef="endTime"/>
+        <subflowContextDataMapping parentDataDef="outputDir"              subflowDataDef="outputDirectory"/>
+        <subflowContextDataMapping parentDataDef="targetTemplateName"     subflowDataDef="conversionTemplate"/>
+    </executeSubflowStep-->
+
+
+
+    <raiseWorkflowEventStep
+        name="raise clip exported event"
+        eventTypeExpression="ClipExported"
+        executionLabelExpression="Sending Clip Exported event"
+        summaryExpression="Clip ${subject.name} has been exported"
+        nextStep="end">
+        <property name="clipName">${subject.name}</property>
+        <property name="exportPath">${clipFile.absolutePath}</property>
+        <property name="targetTemplateName">${targetTemplateName}</property>
+    </raiseWorkflowEventStep>
+
+    <noopStep name="end" />
+
+    <contextDataDef name="clip" dataType="Data Object" />
+    <contextDataDef name="timelineVideo" dataType="Data Object" />
+    <contextDataDef name="contentArchived" dataType="Boolean" defaultDataExpression="${timelineVideo.timelineAsset?.asset?.mezzanine.truncatedFlag}" />
+    <contextDataDef name="outputDir" dataType="Directory"/>
+    <contextDataDef name="targetTemplateName" dataType="String"/>
+    <contextDataDef name="pfrWorkflowId" dataType="String"  defaultDataExpression="${#sysconfig('workflows.assetPartialRestoreWorkflow')}" />
+    <contextDataDef name="sourceFile" dataType="File" defaultDataExpression="${timelineVideo.timelineAsset?.asset?.mezzanine.file}" />
+    <contextDataDef name="transcodeResultFile" dataType="File"/>
+    <contextDataDef name="priority" dataType="Integer" defaultDataExpression="85" />
+    <contextDataDef name="clipFile" dataType="File" />
+    <!-- start and end of clip relative to timeline -->
+    <contextDataDef name="timelineVideoClipStart" dataType="Double" />
+    <contextDataDef name="timelineVideoClipEnd" dataType="Double" />
+    <!-- start and end of clip relative to video start -->
+    <contextDataDef name="videoClipStart" dataType="Double" />
+    <contextDataDef name="videoClipEnd" dataType="Double" />
+    <contextDataDef name="transcodeSubflow" dataType="String"/>
+</workflow>

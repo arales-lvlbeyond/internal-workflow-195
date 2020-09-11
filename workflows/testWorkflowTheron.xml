@@ -1,0 +1,22 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://levelsbeyond.com/schema/workflow"
+          xsi:schemaLocation="http://levelsbeyond.com/schema/latest http://schema.levelsbeyond.com/latest/studio.xsd"
+          id="testWorkflowTheron"
+          name="Theron's Test Workflow"
+          executionLabelExpression="Theron's Test workflow"
+          description="Theron's test Workflow."
+          subjectDOClassName=""
+          deadlineExpression=""
+          showInUserInterface="true"
+          resultDataDef="resultString"
+          sdkVersion="">
+
+    <initialStepName>fin</initialStepName>
+
+    <noopStep name="fin" executionLabelExpression="${resultString}" />
+    
+
+    <contextDataDef name="userInput" dataType="String" userInput="true" required="true" label="Input something interesting"/>
+    <contextDataDef name="resultString" dataType="String" defaultDataExpression="${T(com.fasterxml.jackson.core.io.JsonStringEncoder).getInstance().quoteAsString(userInput)"/>
+
+</workflow>

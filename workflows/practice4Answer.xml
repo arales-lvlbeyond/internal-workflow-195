@@ -1,0 +1,97 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://levelsbeyond.com/schema/workflow"
+    xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+    xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+    id="practice4Answer"
+    name="Practice 4 Answer"
+    executionLabelExpression="Practice 4 Answer"
+    description="
+    	Complete the workflow
+    		finish the JSON
+    		print the JSON in the log
+    "
+    subjectDOClassName=""
+    resultDataDef=""
+    deadlineExpression=""
+    showInUserInterface="true"
+    sdkVersion=""
+    >
+	
+    
+	<initialStepName>set json</initialStepName>
+	
+	
+	<!-- set json to hardcoded values -->
+	<setContextData name="set json"
+		executionLabelExpression="setting jsonDataDef"
+		nextStep="log json"
+		>
+		<set targetDataDef="jsonDataDef">
+			<![CDATA[
+				{
+					"key1":"value1",
+					"key2":"value2",
+					"key3":[
+						"blah1",
+						"blah2"
+					],
+					"key4":{
+						"test1":"t1",
+						"test2":"t2",
+						"test3":"t3"
+					},a
+					"key5":[
+						{
+							"key1":"value1",
+							"key2":"value2",
+							"key3":[
+								"blah1",
+								"blah2"
+							],
+							"key4":{
+								"test1":"t1",
+								"test2":"t2",
+								"test3":"t3"
+							}
+						},
+						{
+							"key4":"value4",
+							"key5":"value5",
+							"key6":[
+								"blah3",
+								"blah4"
+							],
+							"key4":{
+								"test4":"t4",
+								"test5":"t5",
+								"test6":"t6"
+							}
+						}
+					]
+				}
+			]]>
+		</set>
+	</setContextData>
+	
+	
+	<!-- display JSON in the RE log -->
+	<testStep name="log json"
+		outputExpression="${jsonDataDef.toString()}"
+		executionLabelExpression="JSON printed in RE Log"
+		nextStep="end"
+		/>
+
+	
+    <!-- ................................................... End Steps .................................................... -->
+    <!-- success -->
+    <noopStep name="end"/>
+	
+
+    <!-- ............................................... Context Data Defs ................................................ -->
+    <!-- ..... inputs ..... -->
+	
+	<!-- ... Calculated ... -->
+	<!-- JSON set and displayed -->
+	<contextDataDef name="jsonDataDef" 		dataType="JSON"/>
+	
+</workflow>

@@ -1,0 +1,152 @@
+<!--
+  ~ Levels Beyond CONFIDENTIAL
+  ~
+  ~ Copyright 2003 - 2020 Levels Beyond Incorporated
+  ~ All Rights Reserved.
+  ~
+  ~ NOTICE:  All information contained herein is, and remains
+  ~ the property of Levels Beyond Incorporated and its suppliers,
+  ~ if any.  The intellectual and technical concepts contained
+  ~ herein are proprietary to Levels Beyond Incorporated
+  ~ and its suppliers and may be covered by U.S. and Foreign Patents,
+  ~ patents in process, and are protected by trade secret or copyright law.
+  ~ Dissemination of this information or reproduction of this material
+  ~ is unlawful and strictly forbidden unless prior written permission is obtained
+  ~ from Levels Beyond Incorporated.
+  -->
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xsi:schemaLocation="
+		http://levelsbeyond.com/schema/latest
+		https://s3-us-west-2.amazonaws.com/schema.levelsbeyond.com/2.3.16.17962/studio.xsd
+	"
+	id="calculateStartEndTimecodes"
+	name="calculateStartEndTimecodes"
+	executionLabelExpression="calculateStartEndTimecodes"
+	subjectDOClassName=""
+	showInUserInterface="false"
+	resultDataDef="timeJSON"
+	sdkVersion="">
+
+	<initialStepName>get video start time from PFR-INDEX</initialStepName>
+	
+	<groovyStep name="get time from frames"
+		resultDataDef="durationTimecode"
+		nextStep="end"
+	>
+		<script>
+			<![CDATA[
+				import com.levelsbeyond.timecode.TimecodeUtil
+				import com.levelsbeyond.timecode.TimecodeData
+				import com.levelsbeyond.timecode.TimecodeFormat
+				import com.routeto1.spring.ApplicationContextHolder
+				
+				TimecodeData timeData = TimecodeUtil.toTimecodeDataFromFrames(totalFrames.longValue(), frameRate, timecodeFormat.equals('DROP_FRAME') ? TimecodeFormat.DROP_FRAME : TimecodeFormat.NON_DROP_FRAME)
+			
+				String timecodeString = TimecodeUtil.toSMPTETimecodeString(timeData)
+			
+				return timecodeString
+				
+			]]>
+		</script>
+	</groovyStep>
+	
+	<groovyStep name="get video start time from PFR-INDEX"
+		resultDataDef="startTimecode"
+	>
+		<transition condition="${pfrIndexFile.exists() AND startTimecode != null}">
+			<targetStepName>get clip start and end time from start time of video</targetStepName>
+		</transition>
+		<transition condition="${true}">
+			<targetStepName>pfr index not found</targetStepName>
+		</transition>
+		
+		<script>
+			<![CDATA[
+				import javax.xml.parsers.DocumentBuilderFactory
+				import javax.xml.parsers.DocumentBuilder
+				import org.w3c.dom.Document
+				import org.w3c.dom.NodeList
+				import org.w3c.dom.Node
+				import org.w3c.dom.Element
+				import java.io.File
+				
+				File fXmlFile = new File(pfrIndexFile)
+				DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance()
+				DocumentBuilder dBuilder = dbFactory.newDocumentBuilder()
+				Document doc = dBuilder.parse(fXmlFile)
+				
+				doc.getDocumentElement().normalize()
+				
+				NodeList nList = doc.getElementsByTagName("IndexerReport")
+				
+				Node nNode = nList.item(0)
+				
+				if (nNode.getNodeType() == Node.ELEMENT_NODE) {
+					Element eElement = (Element) nNode
+					
+					return eElement.getAttribute("FileStartTC")
+				}
+			]]>
+		</script>
+	</groovyStep>
+	
+	<groovyStep name="get clip start and end time from start time of video"
+		resultDataDef="timeJSON"
+		nextStep="end"
+	>
+		<script>
+			<![CDATA[
+				import com.levelsbeyond.timecode.TimecodeUtil
+				import com.levelsbeyond.timecode.TimecodeData
+				import com.levelsbeyond.timecode.TimecodeFormat
+				import groovy.json.JsonSlurper
+				
+				def json = new JsonSlurper().parseText('{}')
+				
+				TimecodeData startTimeData = TimecodeUtil.toTimecodeData(startTimecode, frameRate)
+				def startTimeSeconds = TimecodeUtil.toSeconds(startTimeData)
+				def clipStartTime = startTimeSeconds + clipStartOffset
+				
+				def clipStartTimeCode = TimecodeUtil.toSMPTETimecodeString(startTimeSeconds, clipStartOffset, frameRate, timecodeFormat.equals('DROP_FRAME') ? TimecodeFormat.DROP_FRAME : TimecodeFormat.NON_DROP_FRAME)
+				
+				def clipEndTimeCode = TimecodeUtil.toSMPTETimecodeString(startTimeSeconds, clipStartOffset + clipDuration, frameRate, timecodeFormat.equals('DROP_FRAME') ? TimecodeFormat.DROP_FRAME : TimecodeFormat.NON_DROP_FRAME)
+				
+				json.put('startTimecode', clipStartTimeCode)
+				json.put('endTimecode', clipEndTimeCode)
+			
+				return json
+				
+			]]>
+		</script>
+	</groovyStep>
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- fail -->
+	<failWorkflowStep name="pfr index not found"
+		executionLabelExpression="Index file for ${fileToRestore} not found. Cannot determine source video startTimecode. Please try again or contact your stornext administrator."
+		reasonExpression="Index file for ${fileToRestore} not found. Cannot determine source video startTimecode. Please try again or contact your stornext administrator."
+	/>
+	
+	<!-- success -->
+	<noopStep name="end" />
+	<!-- ................................................... Data Defs .................................................... -->
+	<!-- ............ INPUT ............. -->
+	<contextDataDef name="fileToRestore"                    dataType="File" />
+	<contextDataDef name="startTimecode"                    dataType="String" />
+	<contextDataDef name="totalFrames"                      dataType="Integer" />
+	<contextDataDef name="frameRate"                        dataType="Double" />
+	<contextDataDef name="timecodeFormat"                   dataType="String" />
+	
+	<contextDataDef name="clipStartOffset"                  dataType="Double" />
+	<contextDataDef name="clipEndOffset"                    dataType="Double" />
+	<contextDataDef name="clipDuration"                     dataType="Double"           defaultDataExpression="${clipEndOffset - clipStartOffset}" />
+	<!-- ......... PROCESSING ........... -->
+	<contextDataDef name="durationTimecode"                 dataType="String" />
+	<contextDataDef name="timeJSON"                         dataType="JSON" />
+	
+	<contextDataDef name="pfrIndexFile"                     dataType="String" />
+	
+	<contextDataDef name="result"                           dataType="Integer" />
+  
+    
+</workflow>

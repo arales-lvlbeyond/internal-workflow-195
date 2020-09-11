@@ -1,0 +1,66 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="practice10Answer_21"
+	name="Practice 10 Answer 21"
+	executionLabelExpression="saving stuffs"
+	description="
+		Subflow of practice 10
+	"
+	subjectDOClassName="AssetMaster"
+	resultDataDef=""
+	deadlineExpression=""
+	showInUserInterface="true"
+	sdkVersion=""
+	>
+	
+	
+	
+	<initialStepName>set findMe</initialStepName>
+	
+	
+	
+	<!-- save 'findMe' to the user input on the selected asset -->
+	<saveDataObjectStep name="set findMe"
+		dataObjectExpression="${subject.metadata}"
+		executionLabelExpression="saving 'findMe' as ${newValue} on ${subject.name}"
+		pctComplete="66"
+		nextStep="reindex"
+		>
+		<property name="findMe">${newValue}</property>
+	</saveDataObjectStep>
+	
+	
+	
+	<!-- reindex the found asset in elasticsearch -->
+	<raiseWorkflowEventStep name="reindex"
+		eventTypeExpression="ensureIndexed"
+		executionLabelExpression="Ensure Asset Indexed" 
+		pctComplete="99"
+		nextStep="end"
+		>
+		
+		<property name="indexTargetRef">${subject}</property>   
+	</raiseWorkflowEventStep>
+	
+	
+	
+	
+	
+	
+	<!-- ................................................... End Steps .................................................... -->
+	<!-- success -->
+	<noopStep name="end"/>
+	
+	
+	
+	
+	
+	
+	<!-- ............................................... Context Data Defs ................................................ -->
+	<!-- ..... inputs ..... -->
+	<!-- value to set the metadata field 'findMe' to -->
+	<contextDataDef name="newValue" 	dataType="Boolean"	userInput="true"	label="New Value For findMe"	defaultDataExpression="false"/>
+	
+</workflow>

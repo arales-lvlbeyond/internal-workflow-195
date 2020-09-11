@@ -1,0 +1,47 @@
+<workflow xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://levelsbeyond.com/schema/workflow"
+	xmlns:nimbus="http://levelsbeyond.com/schema/workflow/nimbus"
+	xsi:schemaLocation="http://levelsbeyond.com/schema/workflow http://www.levelsbeyond.com/schema/latest/studio.xsd"
+	id="csvIngestTest"
+	name="CSV Ingest"
+	executionLabelExpression="csv ingest"
+	description="This workflow ingests assets and their metadata specified within a CSV file."
+	showInUserInterface="true"
+	adminOnly="true"
+	devWorkflow="true"
+	sdkVersion=""
+	>
+	
+	<initialStepName>evaluate definitions</initialStepName>
+	
+	<groovyStep name="evaluate definitions"
+		executionLabelExpression="evaluating definitions 2"
+		resultDataDef="result"
+		nextStep="ingest asset"
+		>
+		<script>
+			<![CDATA[
+				return true
+			]]>
+		</script>
+	</groovyStep>
+	
+	<executeSubflowStep name="ingest asset"
+		executionLabelExpression="Ingest ${ingestFile.name}"
+		targetWorkflowId="_anyAssetIngest"
+		subjectChangePath="${fileToIngest}"
+		subflowTargetDataDef="fileToIngest"
+		resultDataDef="assetMaster"
+		nextStep="end"
+	>
+	</executeSubflowStep>
+	
+	<noopStep name="end"/>
+	
+	<contextDataDef name="csvFile" dataType="File" userInput="true" required="true" />
+	<contextDataDef name="csvFilePath" dataType="String" defaultDataExpression="${csvFile.absolutePath}" />
+	<contextDataDef name="csvJson" dataType="JSON" multiple="true" defaultDataExpression="${#convertCsvToJson(csvFilePath)}" />
+	<contextDataDef name="metadata" dataType="JSON" defaultDataExpression="{}"/>
+	<contextDataDef name="assetMaster" dataType="Data Object" />
+	<contextDataDef name="result" dataType="Boolean" />
+</workflow>
